@@ -1,0 +1,10 @@
+^D:\FLUENTPINYIN\BUILD-FP-SAFE\CMAKEFILES\02D8993D5B2AE2624BAA96FC66579048\GENERATE.STAMP.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SD:/FluentPinyin -BD:/FluentPinyin/build-fp-safe --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file D:/FluentPinyin/build-fp-safe/FluentPinyin.sln
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

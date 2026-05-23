@@ -1,0 +1,7 @@
+{
+	"InstallScripts" : 
+	[
+		"D:/FluentPinyin/build-verify-safe/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

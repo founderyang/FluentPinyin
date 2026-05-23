@@ -1,0 +1,9 @@
+D:/FluentPinyin/build-langbar-icon/CMakeFiles/fp_common.dir
+D:/FluentPinyin/build-langbar-icon/CMakeFiles/fp_core.dir
+D:/FluentPinyin/build-langbar-icon/CMakeFiles/fp_tsf.dir
+D:/FluentPinyin/build-langbar-icon/CMakeFiles/fp_ui.dir
+D:/FluentPinyin/build-langbar-icon/CMakeFiles/fp_config.dir
+D:/FluentPinyin/build-langbar-icon/CMakeFiles/fp_updater.dir
+D:/FluentPinyin/build-langbar-icon/CMakeFiles/fp_devtools.dir
+D:/FluentPinyin/build-langbar-icon/CMakeFiles/ALL_BUILD.dir
+D:/FluentPinyin/build-langbar-icon/CMakeFiles/ZERO_CHECK.dir

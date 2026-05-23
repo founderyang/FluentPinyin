@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="D:\FluentPinyin\build-dev-check\CMakeFiles\6201cd136d0125d700204d3181028217\generate.stamp.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{DBAE2FDF-8996-378F-B0DF-34A96564F666}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="D:\FluentPinyin\build-input-hardening\CMakeFiles\985adc8c7095e11b4eaf733970fa4cc8\generate.stamp.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{BDF404C4-0C67-3202-86E8-D6302E0479F7}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

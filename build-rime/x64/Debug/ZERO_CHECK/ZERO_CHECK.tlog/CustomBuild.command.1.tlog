@@ -1,0 +1,10 @@
+^D:\FLUENTPINYIN\BUILD-RIME\CMAKEFILES\3FC623709DE6DECF0C5A5296E4B2C09B\GENERATE.STAMP.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SD:/FluentPinyin -BD:/FluentPinyin/build-rime --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file D:/FluentPinyin/build-rime/FluentPinyin.sln
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

@@ -1,0 +1,10 @@
+^D:\FLUENTPINYIN\BUILD-VERIFY-SAFE2\CMAKEFILES\3DB61BDF7438B43E1214B2B369C75A01\GENERATE.STAMP.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SD:/FluentPinyin -BD:/FluentPinyin/build-verify-safe2 --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file D:/FluentPinyin/build-verify-safe2/FluentPinyin.sln
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

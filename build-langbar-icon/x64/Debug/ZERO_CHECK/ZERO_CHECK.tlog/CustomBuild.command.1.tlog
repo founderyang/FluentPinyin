@@ -1,0 +1,10 @@
+^D:\FLUENTPINYIN\BUILD-LANGBAR-ICON\CMAKEFILES\0EDC68711E60AE85B75E9C5894DB3F9F\GENERATE.STAMP.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SD:/FluentPinyin -BD:/FluentPinyin/build-langbar-icon --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file D:/FluentPinyin/build-langbar-icon/FluentPinyin.sln
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
