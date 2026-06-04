@@ -1,4 +1,8 @@
-﻿build/
+build/
+build-*/
+build-guid-v*/
+dist/
+artifacts/
 out/
 .vs/
 .vscode/
@@ -19,6 +23,7 @@ out/
 *.tmp
 *.cache
 packages/
+packages/downloads/
 third_party/librime/
 schemas/frost/current/
 schemas/frost/staging/

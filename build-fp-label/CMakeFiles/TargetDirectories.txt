@@ -1,9 +1,0 @@
-D:/FluentPinyin/build-fp-label/CMakeFiles/fp_common.dir
-D:/FluentPinyin/build-fp-label/CMakeFiles/fp_core.dir
-D:/FluentPinyin/build-fp-label/CMakeFiles/fp_tsf.dir
-D:/FluentPinyin/build-fp-label/CMakeFiles/fp_ui.dir
-D:/FluentPinyin/build-fp-label/CMakeFiles/fp_config.dir
-D:/FluentPinyin/build-fp-label/CMakeFiles/fp_updater.dir
-D:/FluentPinyin/build-fp-label/CMakeFiles/fp_devtools.dir
-D:/FluentPinyin/build-fp-label/CMakeFiles/ALL_BUILD.dir
-D:/FluentPinyin/build-fp-label/CMakeFiles/ZERO_CHECK.dir
