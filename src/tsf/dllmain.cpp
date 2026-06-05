@@ -2,15 +2,28 @@
 #include "tsf/guids.h"
 #include "tsf/module.h"
 
+#include <gdiplus.h>
 #include <windows.h>
 
 #include <new>
+#include <mutex>
 
 namespace fp::tsf {
 
 HINSTANCE g_module_instance = nullptr;
 std::atomic<unsigned long> g_object_count = 0;
 std::atomic<unsigned long> g_server_lock_count = 0;
+ULONG_PTR g_gdiplus_token = 0;
+bool g_gdiplus_ready = false;
+std::once_flag g_gdiplus_once;
+
+void EnsureGdiplus() {
+  std::call_once(g_gdiplus_once, [] {
+    Gdiplus::GdiplusStartupInput gdiplus_input{};
+    g_gdiplus_ready =
+        Gdiplus::GdiplusStartup(&g_gdiplus_token, &gdiplus_input, nullptr) == Gdiplus::Ok;
+  });
+}
 
 }  // namespace fp::tsf
 
@@ -20,6 +33,12 @@ BOOL APIENTRY DllMain(HINSTANCE instance, DWORD reason, LPVOID reserved) {
   if (reason == DLL_PROCESS_ATTACH) {
     fp::tsf::g_module_instance = instance;
     DisableThreadLibraryCalls(instance);
+  } else if (reason == DLL_PROCESS_DETACH) {
+    if (fp::tsf::g_gdiplus_ready) {
+      Gdiplus::GdiplusShutdown(fp::tsf::g_gdiplus_token);
+      fp::tsf::g_gdiplus_ready = false;
+      fp::tsf::g_gdiplus_token = 0;
+    }
   }
 
   return TRUE;

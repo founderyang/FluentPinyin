@@ -1,0 +1,5 @@
+#include "resource.h"
+
+IDI_APP_ICON ICON "fluent-pinyin-dark.ico"
+IDI_FLUENT_PINYIN_DARK ICON "fluent-pinyin-dark.ico"
+IDI_FLUENT_PINYIN_LIGHT ICON "fluent-pinyin-light.ico"

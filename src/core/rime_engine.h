@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -22,8 +23,9 @@ struct RimeEngineOptions {
   std::filesystem::path log_dir;
   std::filesystem::path staging_dir;
   std::filesystem::path prebuilt_data_dir;
-  std::string schema_id = "rime_frost";
+  std::string schema_id;
   bool deploy = true;
+  bool force_rebuild_cache = false;
 };
 
 struct RimeEngineStatus {
@@ -43,6 +45,13 @@ struct RimeCandidatePage {
   bool has_next_page = false;
 };
 
+struct RimeCandidateCommit {
+  bool handled = false;
+  std::wstring text;
+  std::string remaining_input;
+  std::wstring remaining_composition;
+};
+
 class FP_CORE_API RimeEngine {
  public:
   RimeEngine() = default;
@@ -52,6 +61,12 @@ class FP_CORE_API RimeEngine {
 
   RimeEngineStatus Initialize(const RimeEngineOptions& options = {});
   void Shutdown();
+  RimeEngineStatus Redeploy();
+  static RimeEngineStatus RedeployDefaultUserData();
+  void ResetComposition();
+  bool SetOption(const std::string& option_name, bool enabled);
+  [[nodiscard]] bool GetOption(const std::string& option_name);
+  [[nodiscard]] bool HasBuiltSchema() const;
 
   [[nodiscard]] std::vector<RimeCandidateView> GetCandidatesForInput(
       const std::string& input,
@@ -59,6 +74,10 @@ class FP_CORE_API RimeEngine {
   [[nodiscard]] RimeCandidatePage GetCandidatePageForInput(const std::string& input,
                                                            int page_index,
                                                            int page_size = 8);
+  [[nodiscard]] RimeCandidateCommit SelectCandidateForInput(const std::string& input,
+                                                            int page_index,
+                                                            int page_size,
+                                                            size_t candidate_index);
   [[nodiscard]] const std::filesystem::path& shared_data_dir() const noexcept {
     return shared_data_dir_;
   }
@@ -70,6 +89,12 @@ class FP_CORE_API RimeEngine {
 
  private:
   bool EnsureUserConfig();
+  bool EnsureSession();
+  bool SyncSessionInput(const std::string& input, bool reset_page = false);
+  void DestroySession();
+  [[nodiscard]] std::wstring ConvertOutputText(const char* utf8_text);
+  bool EnsureOpenCcS2TConverter();
+  void CloseOpenCcConverters();
 
   bool initialized_ = false;
   std::filesystem::path shared_data_dir_;
@@ -77,8 +102,16 @@ class FP_CORE_API RimeEngine {
   std::filesystem::path log_dir_;
   std::filesystem::path staging_dir_;
   std::filesystem::path prebuilt_data_dir_;
-  std::string schema_id_ = "rime_frost";
+  std::string schema_id_ = "wanxiang";
   std::string rime_version_;
+  std::uintptr_t session_id_ = 0;
+  std::string session_input_;
+  int session_page_index_ = 0;
+  void* opencc_s2t_ = nullptr;
+  bool opencc_s2t_failed_ = false;
+  bool output_traditional_ = false;
+  bool user_config_changed_ = false;
+  bool schema_id_overridden_ = false;
 };
 
 }  // namespace fp::core

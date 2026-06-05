@@ -1,0 +1,64 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+    Name="FluentPinyin"
+    Manufacturer="FluentPinyin"
+    Version="$(var.ProductVersion)"
+    UpgradeCode="{9C0DE7C8-10B5-4C23-9DF7-2C23D6B8683D}"
+    Scope="perMachine">
+    <MajorUpgrade DowngradeErrorMessage="A newer version of FluentPinyin is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+    <Icon Id="AppIcon" SourceFile="src\tsf\fluent-pinyin.ico" />
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="FluentPinyin">
+        <Component Id="InstallRegistry" Guid="{D0762DC7-2C6B-4D92-BB79-6D0A4475359C}">
+          <RegistryKey Root="HKLM" Key="Software\FluentPinyin">
+            <RegistryValue Name="InstallDir" Value="[INSTALLFOLDER]" Type="string" KeyPath="yes" />
+          </RegistryKey>
+        </Component>
+      </Directory>
+    </StandardDirectory>
+    <Feature Id="MainFeature" Title="FluentPinyin" Level="1">
+      <ComponentRef Id="InstallRegistry" />
+      <ComponentGroupRef Id="PayloadComponents" />
+    </Feature>
+    <CustomAction
+      Id="InstallFonts"
+      Directory="INSTALLFOLDER"
+      Execute="deferred"
+      Impersonate="no"
+      ExeCommand='[SystemFolder]WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File "[INSTALLFOLDER]scripts\install-fonts.ps1" -SourceFontDir "[INSTALLFOLDER]fonts"' />
+    <CustomAction
+      Id="RegisterTsf"
+      Directory="INSTALLFOLDER"
+      Execute="deferred"
+      Impersonate="no"
+      ExeCommand='[SystemFolder]regsvr32.exe /s "[INSTALLFOLDER]fluent-pinyin-tsf.dll"' />
+    <CustomAction
+      Id="ActivateTsf"
+      Directory="INSTALLFOLDER"
+      Execute="deferred"
+      Impersonate="no"
+      ExeCommand='"[INSTALLFOLDER]fluent-pinyin-devtools.exe" activate-session' />
+    <CustomAction
+      Id="ActivateFallbackInput"
+      Directory="INSTALLFOLDER"
+      Execute="deferred"
+      Impersonate="no"
+      ExeCommand='"[INSTALLFOLDER]fluent-pinyin-devtools.exe" activate-ms-pinyin-session' />
+    <CustomAction
+      Id="UnregisterTsf"
+      Directory="INSTALLFOLDER"
+      Execute="deferred"
+      Impersonate="no"
+      ExeCommand='[SystemFolder]regsvr32.exe /u /s "[INSTALLFOLDER]fluent-pinyin-tsf.dll"' />
+    <InstallExecuteSequence>
+      <Custom Action="ActivateFallbackInput" Before="UnregisterTsf" Condition="REMOVE=&quot;ALL&quot;" />
+      <Custom Action="UnregisterTsf" Before="RemoveFiles" Condition="REMOVE=&quot;ALL&quot;" />
+      <Custom Action="InstallFonts" After="InstallFiles" Condition="NOT Installed" />
+      <Custom Action="RegisterTsf" After="InstallFonts" Condition="NOT Installed" />
+      <Custom Action="ActivateTsf" After="RegisterTsf" Condition="NOT Installed" />
+    </InstallExecuteSequence>
+  </Package>
+</Wix>

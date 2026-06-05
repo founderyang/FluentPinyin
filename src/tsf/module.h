@@ -9,6 +9,8 @@ namespace fp::tsf {
 extern HINSTANCE g_module_instance;
 extern std::atomic<unsigned long> g_object_count;
 extern std::atomic<unsigned long> g_server_lock_count;
+extern bool g_gdiplus_ready;
+void EnsureGdiplus();
 
 HRESULT RegisterServer();
 HRESULT UnregisterServer();

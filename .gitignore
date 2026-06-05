@@ -4,6 +4,9 @@ build-guid-v*/
 dist/
 artifacts/
 out/
+docs/
+install.bat
+uninstall.bat
 .vs/
 .vscode/
 *.user
@@ -25,5 +28,10 @@ out/
 packages/
 packages/downloads/
 third_party/librime/
+assets/fonts/
+schemas/wanxiang/current/
+schemas/frost/
 schemas/frost/current/
 schemas/frost/staging/
+scripts/capture-candidate.py
+scripts/reinstall-dev.ps1

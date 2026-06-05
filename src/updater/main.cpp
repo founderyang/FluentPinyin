@@ -1,8 +1,9 @@
-#include "common/constants.h"
+﻿#include "common/constants.h"
 #include "common/logging.h"
 #include "common/path_utils.h"
 
 #include <windows.h>
+#include <shellapi.h>
 #include <wininet.h>
 
 #include <filesystem>
@@ -17,8 +18,38 @@ namespace {
 
 struct ReleaseInfo {
   std::string tag;
+  std::string asset_name;
   std::string asset_url;
 };
+
+std::string WideToUtf8(std::wstring_view value) {
+  if (value.empty()) {
+    return {};
+  }
+
+  const int required = WideCharToMultiByte(CP_UTF8,
+                                           0,
+                                           value.data(),
+                                           static_cast<int>(value.size()),
+                                           nullptr,
+                                           0,
+                                           nullptr,
+                                           nullptr);
+  if (required <= 0) {
+    return {};
+  }
+
+  std::string result(static_cast<size_t>(required), '\0');
+  WideCharToMultiByte(CP_UTF8,
+                      0,
+                      value.data(),
+                      static_cast<int>(value.size()),
+                      result.data(),
+                      required,
+                      nullptr,
+                      nullptr);
+  return result;
+}
 
 std::wstring Utf8ToWide(std::string_view value) {
   if (value.empty()) {
@@ -197,87 +228,97 @@ std::optional<ReleaseInfo> CheckRelease(const wchar_t* latest_url,
     return std::nullopt;
   }
 
-  return ReleaseInfo{.tag = *tag, .asset_url = *asset_url};
+  return ReleaseInfo{.tag = *tag, .asset_name = std::string(asset_name), .asset_url = *asset_url};
 }
 
-struct UpdateInfo {
-  ReleaseInfo librime;
-  ReleaseInfo frost;
-};
+std::optional<ReleaseInfo> QueryAppRelease() {
+  const std::wstring latest_url(fp::kGitHubLatestReleaseApiUrl);
+  auto release = CheckRelease(latest_url.c_str(), WideToUtf8(fp::kReleaseSetupAssetName));
+  if (release) {
+    return release;
+  }
+  return CheckRelease(latest_url.c_str(), WideToUtf8(fp::kReleaseMsiAssetName));
+}
 
-std::optional<UpdateInfo> QueryUpdates() {
-  const auto librime =
-      CheckRelease(L"https://api.github.com/repos/rime/librime/releases/latest",
-                   "rime-de4700e-Windows-msvc-x64.7z");
-  const auto frost =
-      CheckRelease(L"https://api.github.com/repos/gaboolic/rime-frost/releases/latest",
-                   "rime-frost-schemas.zip");
-
-  if (!librime || !frost) {
-    return std::nullopt;
+bool LaunchInstaller(const std::filesystem::path& installer_path, std::string_view asset_name) {
+  if (asset_name.ends_with(".msi")) {
+    const std::wstring params = L"/i \"" + installer_path.wstring() + L"\" /qn";
+    return reinterpret_cast<intptr_t>(
+               ShellExecuteW(nullptr, L"runas", L"msiexec.exe", params.c_str(), nullptr, SW_SHOWNORMAL)) > 32;
   }
 
-  return UpdateInfo{.librime = *librime, .frost = *frost};
+  return reinterpret_cast<intptr_t>(
+             ShellExecuteW(nullptr, L"runas", installer_path.c_str(), L"/S", nullptr, SW_SHOWNORMAL)) > 32;
 }
 
 int CheckUpdates() {
-  const auto updates = QueryUpdates();
-  if (!updates) {
+  const auto app = QueryAppRelease();
+  if (!app) {
     std::wcerr << L"Update check failed.\n";
     return 1;
   }
 
-  std::wcout << L"FluentPinyin " << fp::kProductVersion << L"\n";
-  std::wcout << L"librime latest: " << Utf8ToWide(updates->librime.tag) << L"\n";
-  std::wcout << L"librime asset: " << Utf8ToWide(updates->librime.asset_url) << L"\n";
-  std::wcout << L"Frost latest: " << Utf8ToWide(updates->frost.tag) << L"\n";
-  std::wcout << L"Frost asset: " << Utf8ToWide(updates->frost.asset_url) << L"\n";
+  std::wcout << L"FluentPinyin current: " << fp::kProductVersion << L"\n";
+  std::wcout << L"FluentPinyin latest: " << Utf8ToWide(app->tag) << L"\n";
+  std::wcout << L"Installer asset: " << Utf8ToWide(app->asset_url) << L"\n";
   return 0;
 }
 
-int DownloadUpdates() {
-  const auto updates = QueryUpdates();
-  if (!updates) {
+int UpdateApp() {
+  const auto release = QueryAppRelease();
+  if (!release) {
     std::wcerr << L"Update check failed.\n";
+    MessageBoxW(nullptr,
+                L"未找到可用的 GitHub Release 安装包。",
+                L"流畅拼音 更新",
+                MB_OK | MB_ICONWARNING);
     return 1;
   }
 
-  const auto package_dir = fp::GetFpLocalDataPath() / L"Packages" / L"downloads";
-  const auto librime_target = package_dir / L"rime-de4700e-Windows-msvc-x64.7z";
-  const auto frost_target = package_dir / L"rime-frost-schemas.zip";
-
-  std::wcout << L"Downloading librime " << Utf8ToWide(updates->librime.tag) << L"...\n";
-  if (!DownloadFile(Utf8ToWide(updates->librime.asset_url), librime_target)) {
-    std::wcerr << L"Failed to download librime.\n";
+  const auto update_dir = fp::GetFpLocalDataPath() / L"Updates";
+  const auto target = update_dir / Utf8ToWide(release->asset_name);
+  std::wcout << L"Downloading FluentPinyin " << Utf8ToWide(release->tag) << L"...\n";
+  if (!DownloadFile(Utf8ToWide(release->asset_url), target)) {
+    std::wcerr << L"Failed to download installer.\n";
+    MessageBoxW(nullptr,
+                L"下载安装包失败，请稍后重试。",
+                L"流畅拼音 更新",
+                MB_OK | MB_ICONERROR);
     return 2;
   }
 
-  std::wcout << L"Downloading Frost " << Utf8ToWide(updates->frost.tag) << L"...\n";
-  if (!DownloadFile(Utf8ToWide(updates->frost.asset_url), frost_target)) {
-    std::wcerr << L"Failed to download Frost.\n";
+  if (!LaunchInstaller(target, release->asset_name)) {
+    std::wcerr << L"Failed to launch installer.\n";
+    MessageBoxW(nullptr,
+                L"安装包已下载，但启动失败。",
+                L"流畅拼音 更新",
+                MB_OK | MB_ICONERROR);
     return 3;
   }
 
-  std::wcout << L"Downloaded packages to " << package_dir.wstring() << L"\n";
+  std::wcout << L"Installer launched: " << target.wstring() << L"\n";
+  MessageBoxW(nullptr,
+              L"最新安装包已启动。",
+              L"流畅拼音 更新",
+              MB_OK | MB_ICONINFORMATION);
   return 0;
 }
 
 void PrintUsage() {
-  std::wcout << L"Usage: fp-updater <check|download>\n";
+  std::wcout << L"Usage: fluent-pinyin-updater <check|update>\n";
 }
 
 }  // namespace
 
 int wmain(int argc, wchar_t** argv) {
-  fp::LogInfo(L"updater", L"fp-updater started.");
+  fp::LogInfo(L"updater", L"fluent-pinyin-updater started.");
 
   if (argc == 2 && std::wstring_view(argv[1]) == L"check") {
     return CheckUpdates();
   }
-  if (argc == 2 && std::wstring_view(argv[1]) == L"download") {
-    return DownloadUpdates();
+  if (argc == 2 && std::wstring_view(argv[1]) == L"update") {
+    return UpdateApp();
   }
-
   PrintUsage();
   return argc == 1 ? 0 : 1;
 }

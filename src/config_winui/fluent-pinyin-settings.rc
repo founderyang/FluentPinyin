@@ -1,0 +1,38 @@
+﻿#include "../tsf/resource.h"
+#include <winver.h>
+
+IDI_APP_ICON ICON "../tsf/fluent-pinyin-dark.ico"
+IDI_FLUENT_PINYIN_DARK ICON "../tsf/fluent-pinyin-dark.ico"
+IDI_FLUENT_PINYIN_LIGHT ICON "../tsf/fluent-pinyin-light.ico"
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 0,0,1,0
+ PRODUCTVERSION 0,0,1,0
+ FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+ FILEFLAGS 0x1L
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS 0x40004L
+ FILETYPE 0x1L
+ FILESUBTYPE 0x0L
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "080404B0"
+    BEGIN
+      VALUE "CompanyName", L"FluentPinyin"
+      VALUE "FileDescription", L"\x6D41\x7545\x62FC\x97F3\x8F93\x5165\x6CD5\x8BBE\x7F6E"
+      VALUE "FileVersion", L"0.0.1.0"
+      VALUE "InternalName", L"fluent-pinyin-settings"
+      VALUE "OriginalFilename", L"fluent-pinyin-settings.exe"
+      VALUE "ProductName", L"\x6D41\x7545\x62FC\x97F3"
+      VALUE "ProductVersion", L"0.0.1.0"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x0804, 1200
+  END
+END

@@ -8,6 +8,7 @@
 #include <windows.h>
 
 #include <cwchar>
+#include <filesystem>
 #include <iterator>
 #include <string>
 
@@ -57,6 +58,42 @@ HRESULT DeleteRegistryTree(HKEY root, const std::wstring& subkey) {
   return HRESULT_FROM_WIN32(status);
 }
 
+std::wstring ModulePath() {
+  std::wstring module_path(32768, L'\0');
+  const DWORD length = GetModuleFileNameW(
+      g_module_instance, module_path.data(), static_cast<DWORD>(module_path.size()));
+  if (length == 0 || length >= module_path.size()) {
+    return {};
+  }
+  module_path.resize(length);
+  return module_path;
+}
+
+bool SystemUsesLightTheme() {
+  DWORD value = 1;
+  DWORD size = sizeof(value);
+  const LSTATUS status =
+      RegGetValueW(HKEY_CURRENT_USER,
+                   L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+                   L"SystemUsesLightTheme",
+                   RRF_RT_REG_DWORD,
+                   nullptr,
+                   &value,
+                   &size);
+  return status != ERROR_SUCCESS || value != 0;
+}
+
+std::wstring ProfileIconPath(const std::wstring& module_path) {
+  const auto module = std::filesystem::path(module_path);
+  const auto icon = module.parent_path() /
+                    (SystemUsesLightTheme() ? L"fluent-pinyin-light.ico"
+                                            : L"fluent-pinyin-dark.ico");
+  if (GetFileAttributesW(icon.c_str()) != INVALID_FILE_ATTRIBUTES) {
+    return icon.wstring();
+  }
+  return module_path;
+}
+
 HRESULT SetRegistryDword(HKEY root,
                          const std::wstring& subkey,
                          const wchar_t* name,
@@ -77,6 +114,34 @@ HRESULT SetRegistryDword(HKEY root,
 
   status = RegSetValueExW(
       key, name, 0, REG_DWORD, reinterpret_cast<const BYTE*>(&value), sizeof(value));
+  RegCloseKey(key);
+  return HRESULT_FROM_WIN32(status);
+}
+
+HRESULT SetRegistryExpandableString(HKEY root,
+                                    const std::wstring& subkey,
+                                    const wchar_t* name,
+                                    const std::wstring& value) {
+  HKEY key = nullptr;
+  LSTATUS status = RegCreateKeyExW(root,
+                                   subkey.c_str(),
+                                   0,
+                                   nullptr,
+                                   REG_OPTION_NON_VOLATILE,
+                                   KEY_WRITE,
+                                   nullptr,
+                                   &key,
+                                   nullptr);
+  if (status != ERROR_SUCCESS) {
+    return HRESULT_FROM_WIN32(status);
+  }
+
+  status = RegSetValueExW(key,
+                          name,
+                          0,
+                          REG_EXPAND_SZ,
+                          reinterpret_cast<const BYTE*>(value.c_str()),
+                          static_cast<DWORD>((value.size() + 1) * sizeof(wchar_t)));
   RegCloseKey(key);
   return HRESULT_FROM_WIN32(status);
 }
@@ -107,9 +172,19 @@ std::wstring SubstituteKeyboardLayoutKey() {
          SubstituteKeyboardLayoutId();
 }
 
+constexpr const GUID* kRegisteredCategories[] = {
+    &GUID_TFCAT_TIP_KEYBOARD,
+    &GUID_TFCAT_TIPCAP_UIELEMENTENABLED,
+    &GUID_TFCAT_TIPCAP_INPUTMODECOMPARTMENT,
+    &GUID_TFCAT_TIPCAP_IMMERSIVESUPPORT,
+    &GUID_TFCAT_TIPCAP_SYSTRAYSUPPORT,
+    &GUID_TFCAT_DISPLAYATTRIBUTEPROVIDER,
+    &GUID_TFCAT_DISPLAYATTRIBUTEPROPERTY,
+};
+
 HRESULT RegisterSubstituteKeyboardLayout() {
   HRESULT result = SetRegistryString(
-      HKEY_LOCAL_MACHINE, SubstituteKeyboardLayoutKey(), L"Layout Text", kProfileDescription);
+      HKEY_LOCAL_MACHINE, SubstituteKeyboardLayoutKey(), L"Layout Text", kLanguageListLabel);
   if (FAILED(result)) {
     return result;
   }
@@ -129,16 +204,10 @@ HRESULT UnregisterSubstituteKeyboardLayout() {
 }
 
 HRESULT RegisterComServer() {
-  std::wstring module_path(32768, L'\0');
-  const DWORD length = GetModuleFileNameW(
-      g_module_instance, module_path.data(), static_cast<DWORD>(module_path.size()));
-  if (length == 0) {
+  const std::wstring module_path = ModulePath();
+  if (module_path.empty()) {
     return HRESULT_FROM_WIN32(GetLastError());
   }
-  if (length >= module_path.size()) {
-    return HRESULT_FROM_WIN32(ERROR_INSUFFICIENT_BUFFER);
-  }
-  module_path.resize(length);
 
   const std::wstring clsid = GuidToString(kTextServiceClsid);
   const std::wstring clsid_key = L"Software\\Classes\\CLSID\\" + clsid;
@@ -177,34 +246,61 @@ HRESULT RegisterTsfProfile() {
     return result;
   }
 
+  const std::wstring module_path = ModulePath();
+  if (module_path.empty()) {
+    profiles->Release();
+    return HRESULT_FROM_WIN32(GetLastError());
+  }
+  const std::wstring profile_icon_path = ProfileIconPath(module_path);
+
   result = profiles->Register(kTextServiceClsid);
-  if (SUCCEEDED(result) || result == E_FAIL) {
-    result = profiles->AddLanguageProfile(kTextServiceClsid,
-                                          kLanguageId,
-                                          kProfileGuid,
-                                          kProfileDescription,
-                                          static_cast<ULONG>(wcslen(kProfileDescription)),
-                                          nullptr,
-                                          0,
-                                          0);
-  }
-
-  if (SUCCEEDED(result)) {
-    profiles->SubstituteKeyboardLayout(
-        kTextServiceClsid, kLanguageId, kProfileGuid, SubstituteKeyboardLayout());
-
-    const HRESULT enable_result =
-        profiles->EnableLanguageProfile(kTextServiceClsid, kLanguageId, kProfileGuid, TRUE);
-    if (FAILED(enable_result)) {
-      fp::LogWarning(L"tsf", L"EnableLanguageProfile failed; continuing registration.");
-    }
-
-  }
-
-  profiles->Release();
-  if (FAILED(result)) {
+  if (FAILED(result) && result != E_FAIL) {
+    profiles->Release();
     return result;
   }
+
+  ITfInputProcessorProfileMgr* profile_mgr = nullptr;
+  result = CoCreateInstance(CLSID_TF_InputProcessorProfiles,
+                            nullptr,
+                            CLSCTX_INPROC_SERVER,
+                            IID_ITfInputProcessorProfileMgr,
+                            reinterpret_cast<void**>(&profile_mgr));
+  if (FAILED(result)) {
+    profiles->Release();
+    return result;
+  }
+
+  constexpr DWORD kProfileCaps = TF_IPP_CAPS_UIELEMENTENABLED |
+                                 TF_IPP_CAPS_IMMERSIVESUPPORT |
+                                 TF_IPP_CAPS_SYSTRAYSUPPORT;
+  result = profile_mgr->RegisterProfile(kTextServiceClsid,
+                                        kLanguageId,
+                                        kProfileGuid,
+                                        kProfileDescription,
+                                        static_cast<ULONG>(wcslen(kProfileDescription)),
+                                        profile_icon_path.c_str(),
+                                        static_cast<ULONG>(profile_icon_path.size()),
+                                        0,
+                                        SubstituteKeyboardLayout(),
+                                        0,
+                                        TRUE,
+                                        kProfileCaps);
+  profile_mgr->Release();
+  if (FAILED(result)) {
+    profiles->Release();
+    return result;
+  }
+
+  profiles->SubstituteKeyboardLayout(
+      kTextServiceClsid, kLanguageId, kProfileGuid, SubstituteKeyboardLayout());
+
+  const HRESULT enable_result =
+      profiles->EnableLanguageProfile(kTextServiceClsid, kLanguageId, kProfileGuid, TRUE);
+  if (FAILED(enable_result)) {
+    fp::LogWarning(L"tsf", L"EnableLanguageProfile failed; continuing registration.");
+  }
+  profiles->EnableLanguageProfileByDefault(kTextServiceClsid, kLanguageId, kProfileGuid, TRUE);
+  profiles->Release();
 
   ITfCategoryMgr* category_mgr = nullptr;
   result = CoCreateInstance(CLSID_TF_CategoryMgr,
@@ -216,9 +312,12 @@ HRESULT RegisterTsfProfile() {
     return result;
   }
 
-  result = category_mgr->RegisterCategory(kTextServiceClsid,
-                                          GUID_TFCAT_TIP_KEYBOARD,
-                                          kTextServiceClsid);
+  for (const GUID* category : kRegisteredCategories) {
+    result = category_mgr->RegisterCategory(kTextServiceClsid, *category, kTextServiceClsid);
+    if (FAILED(result)) {
+      break;
+    }
+  }
   category_mgr->Release();
   if (FAILED(result)) {
     return result;
@@ -228,6 +327,12 @@ HRESULT RegisterTsfProfile() {
       HKEY_LOCAL_MACHINE, TipLanguageProfileKey(), L"Display Description", kProfileDescription);
   SetRegistryString(
       HKEY_CURRENT_USER, TipLanguageProfileKey(), L"Display Description", kProfileDescription);
+  SetRegistryExpandableString(
+      HKEY_LOCAL_MACHINE, TipLanguageProfileKey(), L"IconFile", profile_icon_path);
+  SetRegistryDword(HKEY_LOCAL_MACHINE, TipLanguageProfileKey(), L"IconIndex", 0);
+  SetRegistryExpandableString(
+      HKEY_CURRENT_USER, TipLanguageProfileKey(), L"IconFile", profile_icon_path);
+  SetRegistryDword(HKEY_CURRENT_USER, TipLanguageProfileKey(), L"IconIndex", 0);
   SetRegistryDword(
       HKEY_CURRENT_USER, UserLanguageProfileKey(), UserLanguageProfileKeyName().c_str(), 1);
 
@@ -242,9 +347,9 @@ HRESULT UnregisterTsfProfile() {
                                     IID_ITfCategoryMgr,
                                     reinterpret_cast<void**>(&category_mgr));
   if (SUCCEEDED(result)) {
-    category_mgr->UnregisterCategory(kTextServiceClsid,
-                                     GUID_TFCAT_TIP_KEYBOARD,
-                                     kTextServiceClsid);
+    for (const GUID* category : kRegisteredCategories) {
+      category_mgr->UnregisterCategory(kTextServiceClsid, *category, kTextServiceClsid);
+    }
     category_mgr->Release();
   }
 
@@ -263,6 +368,17 @@ HRESULT UnregisterTsfProfile() {
   profiles->RemoveLanguageProfile(kTextServiceClsid, kLanguageId, kProfileGuid);
   result = profiles->Unregister(kTextServiceClsid);
   profiles->Release();
+
+  ITfInputProcessorProfileMgr* profile_mgr = nullptr;
+  const HRESULT profile_mgr_result = CoCreateInstance(CLSID_TF_InputProcessorProfiles,
+                                                      nullptr,
+                                                      CLSCTX_INPROC_SERVER,
+                                                      IID_ITfInputProcessorProfileMgr,
+                                                      reinterpret_cast<void**>(&profile_mgr));
+  if (SUCCEEDED(profile_mgr_result) && profile_mgr != nullptr) {
+    profile_mgr->UnregisterProfile(kTextServiceClsid, kLanguageId, kProfileGuid, 0);
+    profile_mgr->Release();
+  }
 
   HKEY user_language_key = nullptr;
   if (RegOpenKeyExW(HKEY_CURRENT_USER,

@@ -1,35 +1,63 @@
-﻿#include "common/constants.h"
+#include "common/constants.h"
 #include "common/logging.h"
 
 #include <windows.h>
+#include <shellapi.h>
 
-#include <cwchar>
+#include <filesystem>
 #include <string>
+#include <string_view>
 
-int APIENTRY wWinMain(HINSTANCE instance, HINSTANCE previous, LPWSTR command_line, int show_command) {
-  (void)instance;
-  (void)previous;
-  (void)show_command;
+namespace {
 
-  fp::LogInfo(L"ui", L"fp-ui placeholder started.");
+std::filesystem::path ModuleDirectory() {
+  std::wstring buffer(32768, L'\0');
+  const DWORD length =
+      GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
+  if (length == 0 || length >= buffer.size()) {
+    return std::filesystem::current_path();
+  }
+  buffer.resize(length);
+  return std::filesystem::path(buffer).parent_path();
+}
 
-  if (command_line == nullptr || wcsstr(command_line, L"--service") == nullptr) {
-    const std::wstring title(fp::kProductName);
-    const std::wstring body =
-        title + L" candidate UI placeholder.\n\nRun with --service to keep the UI process alive.";
-    MessageBoxW(nullptr,
-                body.c_str(),
-                title.c_str(),
-                MB_OK | MB_ICONINFORMATION);
-    return 0;
+bool HasArgument(std::wstring_view command_line, std::wstring_view argument) {
+  return command_line.find(argument) != std::wstring_view::npos;
+}
+
+UINT ToolbarHostShutdownMessage() {
+  static const UINT message =
+      RegisterWindowMessageW(std::wstring(fp::kToolbarHostShutdownMessageName).c_str());
+  return message;
+}
+
+void RequestToolbarHostShutdown() {
+  const UINT message = ToolbarHostShutdownMessage();
+  if (message != 0) {
+    PostMessageW(HWND_BROADCAST, message, 0, 0);
+  }
+}
+
+void OpenSettings() {
+  const auto settings = ModuleDirectory() / L"fluent-pinyin-settings.exe";
+  ShellExecuteW(nullptr, L"open", settings.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+}
+
+int RunToolbarHost() {
+  RequestToolbarHostShutdown();
+  fp::LogWarning(L"ui", L"Toolbar host mode is disabled to avoid recursive TSF activation.");
+  return 0;
+}
+
+}  // namespace
+
+int APIENTRY wWinMain(HINSTANCE, HINSTANCE, LPWSTR command_line, int) {
+  SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+  const std::wstring_view args = command_line != nullptr ? std::wstring_view(command_line) : L"";
+  if (HasArgument(args, L"--toolbar") || HasArgument(args, L"--service")) {
+    return RunToolbarHost();
   }
 
-  MSG message{};
-  while (GetMessageW(&message, nullptr, 0, 0) > 0) {
-    TranslateMessage(&message);
-    DispatchMessageW(&message);
-  }
-
-  fp::LogInfo(L"ui", L"fp-ui placeholder stopped.");
+  OpenSettings();
   return 0;
 }

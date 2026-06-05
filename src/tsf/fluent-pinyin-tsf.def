@@ -1,4 +1,4 @@
-﻿LIBRARY "fp-tsf"
+﻿LIBRARY "fluent-pinyin-tsf"
 
 EXPORTS
   DllCanUnloadNow PRIVATE
