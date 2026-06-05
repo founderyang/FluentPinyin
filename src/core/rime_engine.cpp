@@ -1433,7 +1433,7 @@ RimeEngineStatus RimeEngine::Initialize(const RimeEngineOptions& options) {
 
   const std::string shared_data_dir = WideToUtf8(shared_data_dir_.wstring());
   const std::string user_data_dir = WideToUtf8(user_data_dir_.wstring());
-  const std::string log_dir = WideToUtf8(log_dir_.wstring());
+  const std::string log_dir;
   const std::string staging_dir = WideToUtf8(staging_dir_.wstring());
   const std::string prebuilt_data_dir = WideToUtf8(prebuilt_data_dir_.wstring());
   const std::string distribution_name = WideToUtf8(std::wstring(fp::kProductName));

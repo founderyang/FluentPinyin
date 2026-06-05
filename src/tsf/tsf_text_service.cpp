@@ -233,6 +233,12 @@ UINT RestartInputCoreMessage() {
   return message;
 }
 
+UINT ShutdownInputCoreMessage() {
+  static const UINT message =
+      RegisterWindowMessageW(std::wstring(fp::kShutdownInputCoreMessageName).c_str());
+  return message;
+}
+
 UINT ApplyInputConfigMessage() {
   static const UINT message =
       RegisterWindowMessageW(std::wstring(fp::kApplyInputConfigMessageName).c_str());
@@ -7905,6 +7911,10 @@ LRESULT TsfTextService::ControlWindowProc(HWND window,
     }
     return 0;
   }
+  if (message == ShutdownInputCoreMessage()) {
+    ShutdownRimeForUninstall();
+    return 0;
+  }
   if (message == RefreshInputStateMessage() || message == LegacyRefreshInputStateMessage()) {
     fp::LogInfo(L"tsf", L"Settings requested input state refresh.");
     RefreshInputStateFromSettings();
@@ -10262,6 +10272,20 @@ void TsfTextService::RestartRimeAndAlgorithmServiceAsync() {
     Release();
     fp::LogError(L"tsf", L"Failed to start settings input-config apply thread.");
   }
+}
+
+void TsfTextService::ShutdownRimeForUninstall() {
+  fp::LogInfo(L"tsf", L"Uninstall requested input core shutdown.");
+  DestroyCandidateWindow();
+  HideStatusTip();
+  ClearCompositionState();
+
+  std::lock_guard<std::mutex> lock(rime_mutex_);
+  if (rime_ != nullptr) {
+    rime_->Shutdown();
+    rime_.reset();
+  }
+  rime_ready_ = false;
 }
 
 void TsfTextService::ReloadRimeAndAlgorithmService() {

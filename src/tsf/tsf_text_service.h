@@ -246,6 +246,7 @@ class TsfTextService final : public ITfTextInputProcessorEx,
   void OpenRimeUserDirectory();
   void RedeployRime();
   void RestartRimeAndAlgorithmServiceAsync();
+  void ShutdownRimeForUninstall();
   void ReloadRimeAndAlgorithmService();
   void RestartRimeAndAlgorithmService();
   void OpenEmojiPanel();

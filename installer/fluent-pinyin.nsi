@@ -6,7 +6,7 @@ SilentUnInstall normal
 AutoCloseWindow true
 
 !ifndef PRODUCT_VERSION
-!define PRODUCT_VERSION "00.00.01"
+!define PRODUCT_VERSION "00.00.02"
 !endif
 
 !ifndef PAYLOAD_DIR
@@ -40,7 +40,11 @@ Section "Install"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FluentPinyin" "DisplayVersion" "${PRODUCT_VERSION}"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FluentPinyin" "Publisher" "FluentPinyin"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FluentPinyin" "InstallLocation" "$INSTDIR"
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FluentPinyin" "UninstallString" "$INSTDIR\FluentPinyin-Uninstall.exe"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FluentPinyin" "DisplayIcon" "$INSTDIR\fluent-pinyin.ico"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FluentPinyin" "UninstallString" '"$INSTDIR\FluentPinyin-Uninstall.exe"'
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FluentPinyin" "QuietUninstallString" '"$INSTDIR\FluentPinyin-Uninstall.exe" /S'
+  WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FluentPinyin" "NoModify" 1
+  WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FluentPinyin" "NoRepair" 1
   WriteUninstaller "$INSTDIR\FluentPinyin-Uninstall.exe"
   ExecWait '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\scripts\install-fonts.ps1" -SourceFontDir "$INSTDIR\fonts"'
   ExecWait '"$SYSDIR\regsvr32.exe" /s "$INSTDIR\fluent-pinyin-tsf.dll"'
@@ -53,8 +57,12 @@ Section "Uninstall"
   SetRegView 64
   IfFileExists "$INSTDIR\fluent-pinyin-devtools.exe" 0 +2
     ExecWait '"$INSTDIR\fluent-pinyin-devtools.exe" activate-ms-pinyin-session'
+  IfFileExists "$INSTDIR\fluent-pinyin-devtools.exe" 0 +2
+    ExecWait '"$INSTDIR\fluent-pinyin-devtools.exe" shutdown-core'
   IfFileExists "$INSTDIR\fluent-pinyin-tsf.dll" 0 +2
     ExecWait '"$SYSDIR\regsvr32.exe" /u /s "$INSTDIR\fluent-pinyin-tsf.dll"'
+  IfFileExists "$INSTDIR\scripts\cleanup-install.ps1" 0 +2
+    ExecWait '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\scripts\cleanup-install.ps1" -InstallDir "$INSTDIR"'
   DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FluentPinyin"
   DeleteRegKey HKLM "Software\FluentPinyin"
   RMDir /r "$INSTDIR"

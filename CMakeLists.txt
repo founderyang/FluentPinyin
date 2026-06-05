@@ -1,6 +1,6 @@
 ﻿cmake_minimum_required(VERSION 3.24)
 
-project(FluentPinyin VERSION 00.00.01 LANGUAGES CXX)
+project(FluentPinyin VERSION 00.00.02 LANGUAGES CXX)
 
 if(NOT WIN32)
   message(FATAL_ERROR "FluentPinyin targets Windows 11 x64 only.")

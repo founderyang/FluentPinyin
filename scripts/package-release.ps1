@@ -203,6 +203,7 @@ try {
     $scriptsDir = Join-Path $resolvedPayload "scripts"
     New-Item -ItemType Directory -Force -Path $scriptsDir | Out-Null
     Copy-Item -LiteralPath ".\scripts\install-fonts.ps1" -Destination (Join-Path $scriptsDir "install-fonts.ps1") -Force
+    Copy-Item -LiteralPath ".\scripts\cleanup-install.ps1" -Destination (Join-Path $scriptsDir "cleanup-install.ps1") -Force
 
     $readme = @"
 FluentPinyin $ProductVersion

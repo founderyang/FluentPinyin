@@ -24,8 +24,12 @@ Section "Remove FluentPinyin"
     StrCpy $INSTDIR "${INSTALL_DIR}"
   IfFileExists "$INSTDIR\fluent-pinyin-devtools.exe" 0 +2
     ExecWait '"$INSTDIR\fluent-pinyin-devtools.exe" activate-ms-pinyin-session'
+  IfFileExists "$INSTDIR\fluent-pinyin-devtools.exe" 0 +2
+    ExecWait '"$INSTDIR\fluent-pinyin-devtools.exe" shutdown-core'
   IfFileExists "$INSTDIR\fluent-pinyin-tsf.dll" 0 +2
     ExecWait '"$SYSDIR\regsvr32.exe" /u /s "$INSTDIR\fluent-pinyin-tsf.dll"'
+  IfFileExists "$INSTDIR\scripts\cleanup-install.ps1" 0 +2
+    ExecWait '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\scripts\cleanup-install.ps1" -InstallDir "$INSTDIR"'
   DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FluentPinyin"
   DeleteRegKey HKLM "Software\FluentPinyin"
   RMDir /r "$INSTDIR"

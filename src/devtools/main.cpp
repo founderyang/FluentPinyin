@@ -263,6 +263,24 @@ int ActiveProfile() {
   return IsFpProfile(profile) || IsMicrosoftPinyinProfile(profile) ? 0 : 2;
 }
 
+int BroadcastRegisteredMessage(std::wstring_view message_name, const char* label) {
+  const UINT message = RegisterWindowMessageW(std::wstring(message_name).c_str());
+  if (message == 0) {
+    std::wcerr << L"RegisterWindowMessage failed.\n";
+    return 1;
+  }
+
+  SendMessageTimeoutW(HWND_BROADCAST,
+                      message,
+                      0,
+                      0,
+                      SMTO_ABORTIFHUNG | SMTO_NORMAL,
+                      3000,
+                      nullptr);
+  std::cout << label << " broadcast sent.\n";
+  return 0;
+}
+
 int SmokeTestService() {
   ComPtr<ITfTextInputProcessor> service;
   HRESULT result = CoCreateInstance(fp::tsf::kTextServiceClsid,
@@ -470,7 +488,7 @@ int ShowToolbarForVerification() {
 
 void PrintUsage() {
   std::cout
-      << "Usage: fluent-pinyin-devtools <profiles|activate|activate-process|activate-session|activate-ms-pinyin-session|activate-ms-pinyin-process|active|smoke|langbar|toolbar>\n";
+      << "Usage: fluent-pinyin-devtools <profiles|activate|activate-process|activate-session|activate-ms-pinyin-session|activate-ms-pinyin-process|active|shutdown-core|smoke|langbar|toolbar>\n";
 }
 
 }  // namespace
@@ -508,6 +526,9 @@ int wmain(int argc, wchar_t** argv) {
   }
   if (command == L"active") {
     return ActiveProfile();
+  }
+  if (command == L"shutdown-core") {
+    return BroadcastRegisteredMessage(fp::kShutdownInputCoreMessageName, "Input core shutdown");
   }
   if (command == L"smoke") {
     return SmokeTestService();

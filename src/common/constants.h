@@ -5,7 +5,7 @@
 namespace fp {
 
 inline constexpr std::wstring_view kProductName = L"\u6D41\u7545\u62FC\u97F3";
-inline constexpr std::wstring_view kProductVersion = L"00.00.01";
+inline constexpr std::wstring_view kProductVersion = L"00.00.02";
 inline constexpr std::wstring_view kGitHubRepoOwner = L"founderyang";
 inline constexpr std::wstring_view kGitHubRepoName = L"FluentPinyin";
 inline constexpr std::wstring_view kGitHubRepoUrl =
@@ -21,6 +21,8 @@ inline constexpr std::wstring_view kApplyInputConfigMessageName =
     L"FluentPinyin.RequestApplyInputConfig";
 inline constexpr std::wstring_view kRestartInputCoreMessageName =
     L"FluentPinyin.RequestRestartInputCore";
+inline constexpr std::wstring_view kShutdownInputCoreMessageName =
+    L"FluentPinyin.RequestShutdownInputCore";
 inline constexpr std::wstring_view kRefreshInputStateMessageName =
     L"FluentPinyin.RequestRefreshInputState.V2";
 inline constexpr std::wstring_view kLegacyRefreshInputStateMessageName =

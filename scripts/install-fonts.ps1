@@ -4,6 +4,73 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Remove-StalePendingDeletes {
+    $sessionManager = "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager"
+    $property = Get-ItemProperty `
+        -Path $sessionManager `
+        -Name PendingFileRenameOperations `
+        -ErrorAction SilentlyContinue
+    if (-not $property -or -not $property.PendingFileRenameOperations) {
+        return
+    }
+
+    $needles = @(
+        "\FluentPinyin",
+        "MiSans-Regular.ttf",
+        "MiSans-Medium.ttf",
+        "MiSans-Semibold.ttf",
+        "MiSansTC-Regular.ttf",
+        "MiSansTC-Medium.ttf",
+        "MiSansTC-Semibold.ttf",
+        "MiSansL3-Regular.ttf",
+        "SourceHanSansSC-Regular.otf",
+        "SourceHanSansTC-Regular.otf",
+        "PlangothicP1-Regular.ttf",
+        "PlangothicP2-Regular.ttf"
+    )
+
+    $entries = [string[]]$property.PendingFileRenameOperations
+    $filtered = @()
+    for ($index = 0; $index -lt $entries.Count; $index += 2) {
+        $source = $entries[$index]
+        $target = if ($index + 1 -lt $entries.Count) { $entries[$index + 1] } else { "" }
+        $remove = $false
+        foreach ($needle in $needles) {
+            if ($source.IndexOf($needle, [StringComparison]::OrdinalIgnoreCase) -ge 0 -or
+                $target.IndexOf($needle, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
+                $remove = $true
+                break
+            }
+        }
+        if (-not $remove) {
+            $filtered += $source
+            if ($index + 1 -lt $entries.Count) {
+                $filtered += $target
+            }
+        }
+    }
+
+    if ($filtered.Count -eq $entries.Count) {
+        return
+    }
+
+    if ($filtered.Count -gt 0) {
+        Set-ItemProperty `
+            -Path $sessionManager `
+            -Name PendingFileRenameOperations `
+            -Value ([string[]]$filtered) `
+            -Type MultiString `
+            -ErrorAction SilentlyContinue
+    } else {
+        Remove-ItemProperty `
+            -Path $sessionManager `
+            -Name PendingFileRenameOperations `
+            -ErrorAction SilentlyContinue
+    }
+}
+
+Remove-StalePendingDeletes
+
 $root = Split-Path -Parent $PSScriptRoot
 if (-not [IO.Path]::IsPathRooted($SourceFontDir)) {
     $cwdRelative = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($SourceFontDir)
