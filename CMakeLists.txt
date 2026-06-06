@@ -393,6 +393,21 @@ if(BUILD_TESTING)
     user32
   )
 
+  add_executable(sync_settings
+    tests/sync_settings.cpp
+    src/sync/sync_service.cpp
+  )
+  target_link_libraries(sync_settings PRIVATE
+    fluent_pinyin_common
+    bcrypt
+    crypt32
+    taskschd
+    comsuppw
+    winhttp
+    ole32
+    user32
+  )
+
   add_test(
     NAME smoke_release
     COMMAND powershell
@@ -410,5 +425,9 @@ if(BUILD_TESTING)
   add_test(
     NAME sync_package_integrity
     COMMAND sync_package_integrity "${CMAKE_BINARY_DIR}/sync-package-integrity"
+  )
+  add_test(
+    NAME sync_settings
+    COMMAND sync_settings "${CMAKE_BINARY_DIR}/sync-settings"
   )
 endif()

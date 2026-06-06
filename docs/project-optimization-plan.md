@@ -202,14 +202,16 @@ Acceptance:
 
 ## Phase 4: Tests and CI
 
-Status: continued in `codex/phase10-common-tests`.
+Status: continued in `codex/phase14-settings-tests`.
 
 Work:
 
 - Add unit tests for:
   - encoding helpers. Implemented with `common_unit`.
   - path helpers. Implemented with `common_unit`.
-  - settings parsing and patch generation
+  - settings parsing and patch generation. Started with Phase 14 coverage for
+    sync settings read/write, line-value sanitization, provider normalization,
+    boolean parsing, interval clamping, and `LoadConfig`.
   - Rime cache-signature logic
   - candidate page selection behavior
 - Add integration smoke tests for COM registration and TSF activation.
@@ -225,6 +227,8 @@ Acceptance:
 - Core tests run locally without requiring an installed IME.
 - CI catches CMake, packaging, and updater regressions.
 - Risky refactors have a test harness before they land.
+- Settings-file changes are covered before adding caches or splitting settings
+  UI code.
 
 ## Phase 5: Security and Robustness
 

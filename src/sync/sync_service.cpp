@@ -1441,7 +1441,10 @@ bool WriteSetting(const std::filesystem::path& settings_path,
     }
   }
   const std::wstring wanted(key);
-  const std::wstring new_line = wanted + L"=" + std::wstring(value);
+  std::wstring sanitized(value);
+  std::replace(sanitized.begin(), sanitized.end(), L'\r', L',');
+  std::replace(sanitized.begin(), sanitized.end(), L'\n', L',');
+  const std::wstring new_line = wanted + L"=" + sanitized;
   bool updated = false;
   for (auto& line : lines) {
     const size_t equals = line.find(L'=');
