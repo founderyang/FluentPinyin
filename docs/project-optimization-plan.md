@@ -218,7 +218,7 @@ Acceptance:
 
 ## Phase 5: Security and Robustness
 
-Status: continued in `codex/phase8-sync-integrity`.
+Status: continued in `codex/phase11-pbkdf2-policy`.
 
 Work:
 
@@ -231,7 +231,11 @@ Work:
   over encrypted data. Current `.fpsync` packages already use AES-GCM with a
   16-byte authentication tag; Phase 8 adds a CTest smoke that tampers with an
   encrypted package and verifies restore fails.
-- Review PBKDF2 iteration policy and document migration behavior.
+- Review PBKDF2 iteration policy and document migration behavior. Current
+  `.fpsync` packages store and require `150000` PBKDF2-SHA256 iterations with
+  package version `2`; changing this value must either bump the package version
+  or add multi-iteration read compatibility. Phase 11 extends the sync package
+  smoke to verify the stored iteration count and reject a tampered count.
 - Normalize error handling for operations that cross process, filesystem,
   registry, COM, network, or crypto boundaries.
 
