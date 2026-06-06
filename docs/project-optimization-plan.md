@@ -15,6 +15,7 @@
 ## 硬约束
 
 - 不修改 `schemas/wanxiang/current` 中的万象上游数据，不修改 RIME 上游源码或预编译二进制。
+- 不拆分万象 grammar 模型为可选下载，不提供“无扩展字体”的基础版安装包；发行版必须完整包含上游万象模型、词库和当前字体资源。
 - 不把 MiSans、Source Han Sans、Plangothic 等字体注册到系统字体表。
 - MSI 安装验证必须限时，不能再使用可能长期卡住的无限等待方式。
 - 大重构前必须先补测试、日志、基准或脚本，确保可回滚。
@@ -207,11 +208,7 @@
 
 ## 当前执行队列
 
-1. 完成本轮 Core 设置缓存和限时安装脚本。
-2. 更新 CI/package smoke，纳入安装验证脚本的语法或轻量检查。
-3. 增加 Debug CI 和 payload 大小阈值。
-4. 增加 updater HTTP 超时。
-5. 增加 updater JSON 离线边界测试。
-6. 抽出 `common/settings_store.*`。
-7. 候选布局纯函数测试和模块拆分。
-8. 逐步拆分 TSF、设置 App、Sync、Updater。
+1. 已完成 Core/TSF 共享设置缓存、候选设置即时刷新、DPI work area 修复、emoji 热键接线、限时安装脚本、Debug CI、payload 大小阈值、updater 超时和 JSON 离线边界测试。
+2. 已完成 package smoke 对万象 grammar 完整性、上游 patch 污染和私有字体打包的检查。
+3. 当前收尾执行：重新构建、打包、运行 CTest/smoke/package smoke、上传 `v00.00.04` Release、本机卸载旧版并安装新版。
+4. 后续维护性重构继续按 P2 顺序推进，但不得影响 `00.00.04` 已验证行为，也不得拆分万象模型或移除字体资源。
