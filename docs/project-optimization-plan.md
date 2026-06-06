@@ -94,7 +94,7 @@ Acceptance:
 
 ## Phase 1: User-Visible Performance
 
-Status: continued in `codex/phase16-candidate-expand`.
+Status: continued in `codex/phase17-rime-lock-fastpath`.
 
 Work:
 
@@ -112,7 +112,9 @@ Work:
   Phase 15 changes deploy from an unconditional default path to "deploy only
   when cache is missing, user config changed, or force rebuild is requested";
   TSF first-key initialization and installer warmup now avoid a failed
-  no-deploy pass followed by a second deploy pass.
+  no-deploy pass followed by a second deploy pass. Phase 17 keeps deploy paths
+  serialized, but allows cache-hit initialization to continue when another
+  background warmup still owns the deploy lock.
 - Cache candidate layout metrics for the current candidate list and visual
   settings, then reuse them across visible-count calculation, positioning, and
   draw. Started by reusing the layout calculated during

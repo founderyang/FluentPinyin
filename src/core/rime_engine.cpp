@@ -1486,9 +1486,13 @@ RimeEngineStatus RimeEngine::Initialize(const RimeEngineOptions& options) {
                   (options.force_rebuild_cache ? std::wstring(L"yes") : std::wstring(L"no")) +
                   L"; staging=" + staging_dir_.wstring());
   NamedMutexLock deploy_lock(L"Local\\FluentPinyinRimeDeploy",
-                             should_deploy ? 120000 : 1500);
+                             should_deploy ? 120000 : 120);
   if (!deploy_lock.locked()) {
-    return {.initialized = false, .message = L"Timed out waiting for Rime deploy lock."};
+    if (should_deploy) {
+      return {.initialized = false, .message = L"Timed out waiting for Rime deploy lock."};
+    }
+    fp::LogInfo(L"core",
+                L"Rime deploy lock is busy, but build cache is fresh; continuing without deploy.");
   }
   log_step(L"check build cache and acquire deploy lock");
 
