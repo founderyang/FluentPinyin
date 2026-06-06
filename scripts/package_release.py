@@ -290,23 +290,35 @@ def directory_size(path):
     return sum(child.stat().st_size for child in path.rglob("*") if child.is_file())
 
 
-def print_payload_size_report(payload_dir):
+def payload_size_report_lines(payload_dir):
+    lines = []
     total = directory_size(payload_dir)
-    print("Payload size report:")
-    print(f"  total: {total / 1024 / 1024:.1f} MB")
+    lines.append("Payload size report:")
+    lines.append(f"  total: {total / 1024 / 1024:.1f} MB")
     for child in sorted(payload_dir.iterdir(), key=lambda item: directory_size(item), reverse=True):
         size = directory_size(child)
-        print(f"  {child.name}: {size / 1024 / 1024:.1f} MB")
+        lines.append(f"  {child.name}: {size / 1024 / 1024:.1f} MB")
 
     largest_files = sorted(
         (path for path in payload_dir.rglob("*") if path.is_file()),
         key=lambda path: path.stat().st_size,
         reverse=True,
     )[:10]
-    print("Largest payload files:")
+    lines.append("Largest payload files:")
     for path in largest_files:
         size = path.stat().st_size
-        print(f"  {path.relative_to(payload_dir)}: {size / 1024 / 1024:.1f} MB")
+        lines.append(f"  {path.relative_to(payload_dir)}: {size / 1024 / 1024:.1f} MB")
+    return lines
+
+
+def write_payload_size_report(payload_dir, release_dir):
+    lines = payload_size_report_lines(payload_dir)
+    for line in lines:
+        print(line)
+    (release_dir / "payload-size-report.txt").write_text(
+        "\n".join(lines) + "\n",
+        encoding="utf-8",
+    )
 
 
 def zip_payload(payload_dir, archive_path):
@@ -346,6 +358,7 @@ def main():
         "FluentPinyin.msi",
         "LICENSE.txt",
         "THIRD_PARTY_NOTICES.txt",
+        "payload-size-report.txt",
         "payload.wxs",
         "FluentPinyin.wixpdb",
     ):
@@ -399,7 +412,7 @@ def main():
         (payload_dir / output_name).write_text(text, encoding="utf-8")
 
     copy_third_party_licenses(payload_dir)
-    print_payload_size_report(payload_dir)
+    write_payload_size_report(payload_dir, release_dir)
 
     if args.include_zip:
         archive = release_dir / "FluentPinyin-payload.zip"

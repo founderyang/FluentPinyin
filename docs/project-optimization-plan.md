@@ -132,11 +132,14 @@ Acceptance:
 
 ## Phase 2: Package and Installer
 
+Status: continued in `codex/phase5-package-diagnostics`.
+
 Work:
 
 - Add package-size reporting to `scripts/package_release.py` by top-level
   payload area and largest files. Implemented; current release payload is about
-  559.3 MB, led by `rime-data` at 432.5 MB and fonts at 117.5 MB.
+  559.3 MB, led by `rime-data` at 432.5 MB and fonts at 117.5 MB. The report is
+  now also persisted as `payload-size-report.txt` in the release directory.
 - Decide whether all dictionaries and fonts must ship in the base MSI or can be
   optional packages.
 - Keep font cleanup logic, but avoid unnecessary registry/font cleanup work on
@@ -194,6 +197,7 @@ Work:
   - candidate page selection behavior
 - Add integration smoke tests for COM registration and TSF activation.
 - Add packaging smoke tests for generated payload content.
+  Implemented with `tests/package_smoke.ps1`.
 - Add GitHub Actions or equivalent CI for configure, build, and package smoke.
   Started with a Windows Release build workflow and a non-mutating CTest smoke
   test for build artifacts, generated version constants, and basic tool entry

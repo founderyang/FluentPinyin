@@ -31,3 +31,10 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build-release -C Release --output-on-failure
+
+      - name: Package payload smoke
+        run: python scripts/package_release.py --skip-installers
+
+      - name: Verify package payload
+        shell: pwsh
+        run: tests/package_smoke.ps1 -PayloadDir dist/FluentPinyin -ReleaseDir dist/release
