@@ -294,13 +294,14 @@ bool SetRegistryString(HKEY root,
   return set_status == ERROR_SUCCESS;
 }
 
-void DeleteRegistryValue(HKEY root, const wchar_t* subkey, const std::wstring& name) {
+bool DeleteRegistryValue(HKEY root, const wchar_t* subkey, const std::wstring& name) {
   HKEY key = nullptr;
   if (RegOpenKeyExW(root, subkey, 0, KEY_SET_VALUE, &key) != ERROR_SUCCESS) {
-    return;
+    return false;
   }
-  RegDeleteValueW(key, name.c_str());
+  const bool deleted = RegDeleteValueW(key, name.c_str()) == ERROR_SUCCESS;
   RegCloseKey(key);
+  return deleted;
 }
 
 void DeleteRegistryTree(HKEY root, const wchar_t* subkey) {
@@ -726,24 +727,45 @@ bool IsSafeInstallDirectory(const std::filesystem::path& path) {
   return EqualsInsensitive(path.filename().wstring(), kInstallDirName);
 }
 
-void RemoveFontFilesAndRegistry() {
+struct FontCleanupSummary {
+  int resource_remove_attempts = 0;
+  int registry_values_deleted = 0;
+  int file_delete_requests = 0;
+};
+
+FontCleanupSummary RemoveFontFilesAndRegistry() {
   constexpr wchar_t kFontsRegistry[] =
       L"Software\\Microsoft\\Windows NT\\CurrentVersion\\Fonts";
   const auto target_dir = fp::GetLocalAppDataPath() / L"Microsoft" / L"Windows" / L"Fonts";
+  FontCleanupSummary summary;
 
   for (const auto& font : kFontEntries) {
     const auto target = target_dir / std::wstring(font.file);
     for (int attempt = 0; attempt < 4; ++attempt) {
       RemoveFontResourceExW(target.c_str(), 0, nullptr);
+      ++summary.resource_remove_attempts;
     }
-    DeleteRegistryValue(HKEY_CURRENT_USER, kFontsRegistry, FontRegistryName(font, L"TrueType"));
-    DeleteRegistryValue(HKEY_CURRENT_USER, kFontsRegistry, FontRegistryName(font, L"OpenType"));
+    if (DeleteRegistryValue(HKEY_CURRENT_USER, kFontsRegistry, FontRegistryName(font, L"TrueType"))) {
+      ++summary.registry_values_deleted;
+    }
+    if (DeleteRegistryValue(HKEY_CURRENT_USER, kFontsRegistry, FontRegistryName(font, L"OpenType"))) {
+      ++summary.registry_values_deleted;
+    }
     RemoveFileNowOrOnReboot(target);
+    ++summary.file_delete_requests;
   }
   BroadcastFontChange();
+  fp::LogInfo(L"installer",
+              L"font cleanup: resource_remove_attempts=" +
+                  std::to_wstring(summary.resource_remove_attempts) +
+                  L", registry_values_deleted=" +
+                  std::to_wstring(summary.registry_values_deleted) +
+                  L", file_delete_requests=" +
+                  std::to_wstring(summary.file_delete_requests) + L".");
+  return summary;
 }
 
-void RemoveScheduledTask() {
+bool RemoveScheduledTask() {
   ComPtr<ITaskService> service;
   HRESULT result = CoCreateInstance(CLSID_TaskScheduler,
                                     nullptr,
@@ -751,14 +773,20 @@ void RemoveScheduledTask() {
                                     IID_ITaskService,
                                     reinterpret_cast<void**>(service.put()));
   if (FAILED(result) || !service) {
-    return;
+    fp::LogWarning(L"installer",
+                   L"scheduled task cleanup: failed to create task service: " +
+                       HresultToString(result));
+    return false;
   }
 
   VARIANT empty;
   VariantInit(&empty);
   result = service->Connect(empty, empty, empty, empty);
   if (FAILED(result)) {
-    return;
+    fp::LogWarning(L"installer",
+                   L"scheduled task cleanup: failed to connect task service: " +
+                       HresultToString(result));
+    return false;
   }
 
   ComPtr<ITaskFolder> root;
@@ -766,12 +794,26 @@ void RemoveScheduledTask() {
   result = service->GetFolder(root_path, root.put());
   SysFreeString(root_path);
   if (FAILED(result) || !root) {
-    return;
+    fp::LogWarning(L"installer",
+                   L"scheduled task cleanup: failed to open root folder: " +
+                       HresultToString(result));
+    return false;
   }
 
   BSTR task_name = SysAllocString(std::wstring(kTaskName).c_str());
-  root->DeleteTask(task_name, 0);
+  result = root->DeleteTask(task_name, 0);
   SysFreeString(task_name);
+  if (SUCCEEDED(result)) {
+    fp::LogInfo(L"installer", L"scheduled task cleanup: removed task.");
+    return true;
+  }
+  if (HRESULT_CODE(result) == ERROR_FILE_NOT_FOUND) {
+    fp::LogInfo(L"installer", L"scheduled task cleanup: task not present.");
+    return true;
+  }
+  fp::LogWarning(L"installer",
+                 L"scheduled task cleanup: DeleteTask failed: " + HresultToString(result));
+  return false;
 }
 
 std::vector<DWORD> FindProcessIds(std::wstring_view process_name) {
@@ -1043,11 +1085,15 @@ int RestartTextServicesProcess() {
 int PrepareInstall() {
   const ULONGLONG start_tick = GetTickCount64();
   RemoveStalePendingDeletes();
-  RemoveFontFilesAndRegistry();
+  const auto font_cleanup = RemoveFontFilesAndRegistry();
   const ULONGLONG elapsed_ms = GetTickCount64() - start_tick;
   fp::LogInfo(L"installer",
               std::wstring(L"prepare-install completed in ") +
-                  std::to_wstring(elapsed_ms) + L" ms.");
+                  std::to_wstring(elapsed_ms) +
+                  L" ms; font_registry_values_deleted=" +
+                  std::to_wstring(font_cleanup.registry_values_deleted) +
+                  L"; font_file_delete_requests=" +
+                  std::to_wstring(font_cleanup.file_delete_requests) + L".");
   std::cout << "Install prepared in " << elapsed_ms << " ms.\n";
   return 0;
 }
@@ -1166,14 +1212,23 @@ int CleanupInstall(const std::filesystem::path& install_dir,
                    bool skip_install_dir,
                    bool keep_user_data,
                    bool restart_text_services) {
+  const ULONGLONG start_tick = GetTickCount64();
+  fp::LogInfo(L"installer",
+              L"cleanup started: install_dir=" + install_dir.wstring() +
+                  L"; skip_install_dir=" +
+                  (skip_install_dir ? std::wstring(L"yes") : std::wstring(L"no")) +
+                  L"; keep_user_data=" +
+                  (keep_user_data ? std::wstring(L"yes") : std::wstring(L"no")) +
+                  L"; restart_text_services=" +
+                  (restart_text_services ? std::wstring(L"yes") : std::wstring(L"no")) + L".");
   RemoveStalePendingDeletes();
   CloseSettingsProcess();
   CloseProcessesUsingDirectory(install_dir);
   if (restart_text_services) {
     RestartTextServicesProcess();
   }
-  RemoveFontFilesAndRegistry();
-  RemoveScheduledTask();
+  const auto font_cleanup = RemoveFontFilesAndRegistry();
+  const bool scheduled_task_cleanup_ok = RemoveScheduledTask();
 
   constexpr wchar_t kClsid[] = L"{76e3ad5b-1dd8-4584-b3cd-127df0239720}";
   constexpr wchar_t kProfile[] = L"{21e29f6d-32dc-4f6d-8477-9ed72313c625}";
@@ -1226,6 +1281,8 @@ int CleanupInstall(const std::filesystem::path& install_dir,
 
   if (!skip_install_dir) {
     if (!IsSafeInstallDirectory(install_dir)) {
+      fp::LogError(L"installer",
+                   L"cleanup refused unexpected install directory: " + install_dir.wstring());
       std::wcerr << L"Refusing to remove unexpected install directory: "
                  << install_dir.wstring() << L"\n";
       return 1;
@@ -1233,6 +1290,16 @@ int CleanupInstall(const std::filesystem::path& install_dir,
     RemovePathTree(install_dir);
   }
 
+  const ULONGLONG elapsed_ms = GetTickCount64() - start_tick;
+  fp::LogInfo(L"installer",
+              L"cleanup completed in " + std::to_wstring(elapsed_ms) +
+                  L" ms; font_registry_values_deleted=" +
+                  std::to_wstring(font_cleanup.registry_values_deleted) +
+                  L"; font_file_delete_requests=" +
+                  std::to_wstring(font_cleanup.file_delete_requests) +
+                  L"; scheduled_task_cleanup=" +
+                  (scheduled_task_cleanup_ok ? std::wstring(L"ok") : std::wstring(L"failed")) +
+                  L".");
   std::cout << "Cleanup completed.\n";
   return 0;
 }

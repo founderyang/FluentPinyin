@@ -132,7 +132,7 @@ Acceptance:
 
 ## Phase 2: Package and Installer
 
-Status: continued in `codex/phase9-font-uninstall-safety`.
+Status: continued in `codex/phase12-installer-diagnostics`.
 
 Work:
 
@@ -147,7 +147,10 @@ Work:
   private resources under the app `fonts` directory; Phase 9 keeps the generated
   WiX payload manifest and adds package smoke checks that reject system font
   registration entries.
-- Record install and uninstall logs to a deterministic local path.
+- Record install and uninstall logs to a deterministic local path. Phase 12
+  extends custom-action diagnostics so install cleanup logs input parameters,
+  elapsed time, font resource attempts, registry value deletions, scheduled task
+  removal state, and unsafe install-directory refusals.
 - Split devtools install commands into narrower helpers where possible:
   registration, activation, cleanup, warmup, diagnostics.
 
@@ -157,7 +160,8 @@ Acceptance:
 - Clean install, upgrade, repair, and uninstall all leave no system font
   residues.
 - Installer diagnostics explain custom action failures without requiring MSI log
-  spelunking first.
+  spelunking first. Implemented for prepare/install cleanup, font cleanup, and
+  scheduled-task cleanup summaries.
 
 ## Phase 3: Maintainability Refactor
 
