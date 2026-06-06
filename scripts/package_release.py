@@ -282,6 +282,33 @@ def remove_if_exists(path):
         path.unlink()
 
 
+def directory_size(path):
+    if path.is_file():
+        return path.stat().st_size
+    if not path.exists():
+        return 0
+    return sum(child.stat().st_size for child in path.rglob("*") if child.is_file())
+
+
+def print_payload_size_report(payload_dir):
+    total = directory_size(payload_dir)
+    print("Payload size report:")
+    print(f"  total: {total / 1024 / 1024:.1f} MB")
+    for child in sorted(payload_dir.iterdir(), key=lambda item: directory_size(item), reverse=True):
+        size = directory_size(child)
+        print(f"  {child.name}: {size / 1024 / 1024:.1f} MB")
+
+    largest_files = sorted(
+        (path for path in payload_dir.rglob("*") if path.is_file()),
+        key=lambda path: path.stat().st_size,
+        reverse=True,
+    )[:10]
+    print("Largest payload files:")
+    for path in largest_files:
+        size = path.stat().st_size
+        print(f"  {path.relative_to(payload_dir)}: {size / 1024 / 1024:.1f} MB")
+
+
 def zip_payload(payload_dir, archive_path):
     with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for path in payload_dir.rglob("*"):
@@ -372,6 +399,7 @@ def main():
         (payload_dir / output_name).write_text(text, encoding="utf-8")
 
     copy_third_party_licenses(payload_dir)
+    print_payload_size_report(payload_dir)
 
     if args.include_zip:
         archive = release_dir / "FluentPinyin-payload.zip"

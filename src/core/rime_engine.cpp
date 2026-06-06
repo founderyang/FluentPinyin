@@ -782,10 +782,58 @@ bool CopyFileIfNewer(const std::filesystem::path& source,
   return true;
 }
 
+bool LinkOrCopyFileIfNewer(const std::filesystem::path& source,
+                           const std::filesystem::path& target) {
+  const ULONGLONG start_tick = GetTickCount64();
+  std::error_code error;
+  if (!std::filesystem::exists(source, error)) {
+    return false;
+  }
+
+  bool should_update = !std::filesystem::exists(target, error);
+  if (!should_update) {
+    const auto source_time = LastWriteTime(source);
+    const auto target_time = LastWriteTime(target);
+    should_update = !target_time || (source_time && *source_time > *target_time);
+  }
+  if (!should_update) {
+    return false;
+  }
+
+  fp::EnsureDirectory(target.parent_path());
+
+  if (std::filesystem::exists(target, error)) {
+    std::filesystem::remove(target, error);
+  }
+
+  if (!std::filesystem::exists(target, error) &&
+      CreateHardLinkW(target.c_str(), source.c_str(), nullptr) != FALSE) {
+    fp::LogInfo(L"core",
+                L"Linked Rime data file in " +
+                    std::to_wstring(GetTickCount64() - start_tick) + L" ms: " +
+                    target.wstring());
+    return true;
+  }
+
+  std::filesystem::copy_file(source,
+                             target,
+                             std::filesystem::copy_options::overwrite_existing,
+                             error);
+  if (error) {
+    fp::LogWarning(L"core", L"Failed to copy Rime data file: " + target.wstring());
+    return false;
+  }
+  fp::LogInfo(L"core",
+              L"Copied Rime data file in " +
+                  std::to_wstring(GetTickCount64() - start_tick) + L" ms: " +
+                  target.wstring());
+  return true;
+}
+
 void EnsureWanxiangRuntimeFiles(const std::filesystem::path& shared_data_dir,
                                 const std::filesystem::path& user_data_dir) {
-  CopyFileIfNewer(shared_data_dir / L"wanxiang-lts-zh-hans.gram",
-                  user_data_dir / L"wanxiang-lts-zh-hans.gram");
+  LinkOrCopyFileIfNewer(shared_data_dir / L"wanxiang-lts-zh-hans.gram",
+                        user_data_dir / L"wanxiang-lts-zh-hans.gram");
 
   for (const auto& dir : {L"lua",
                           L"lua\\predict.userdb",

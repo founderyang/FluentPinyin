@@ -94,22 +94,31 @@ Acceptance:
 
 ## Phase 1: User-Visible Performance
 
+Status: started in `codex/phase1-performance`.
+
 Work:
 
 - Prebuild default Rime cache during packaging and include it under
   `rime-data/build`.
 - Prefer direct shared-data reference or hard link for
-  `wanxiang-lts-zh-hans.gram`; copy only as a fallback.
+  `wanxiang-lts-zh-hans.gram`; copy only as a fallback. Implemented with a
+  hard-link-first runtime file path, with copy fallback for filesystems that do
+  not support hard links.
 - Add a non-blocking post-install warmup command that validates or builds the
   default cache after MSI completion.
 - Cache candidate layout metrics for the current candidate list and visual
   settings, then reuse them across visible-count calculation, positioning, and
-  draw.
+  draw. Started by reusing the layout calculated during
+  `ShowCandidateWindow` for that same layered render.
 - Cache text measurement and glyph fallback decisions by text, font family,
-  point size, DPI, and simplified/traditional mode.
+  point size, DPI, and simplified/traditional mode. Started with a bounded
+  process-local text measurement cache for candidate-window text.
 - Keep private font loading, but make large fallback fonts lazy when possible.
+  Implemented in the TSF process by loading MiSans base fonts first and
+  deferring Source Han Sans, Plangothic, and MiSans L3 until fallback or
+  Source-Han candidate rendering is requested.
 - Cache expanded brand icons by DPI and theme instead of loading them on every
-  draw.
+  draw. Implemented with a small process-local icon cache.
 
 Acceptance:
 
@@ -124,7 +133,8 @@ Acceptance:
 Work:
 
 - Add package-size reporting to `scripts/package_release.py` by top-level
-  payload area and largest files.
+  payload area and largest files. Implemented; current release payload is about
+  559.3 MB, led by `rime-data` at 432.5 MB and fonts at 117.5 MB.
 - Decide whether all dictionaries and fonts must ship in the base MSI or can be
   optional packages.
 - Keep font cleanup logic, but avoid unnecessary registry/font cleanup work on

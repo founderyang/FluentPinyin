@@ -613,33 +613,64 @@ std::array<const wchar_t*, 5> CandidateUiFontFallbackFamilies(CandidateFontFamil
   return {ui_fallback[0], ui_fallback[1], ui_fallback[2], nullptr, nullptr};
 }
 
-void EnsureUiFontsLoaded() {
-  static std::atomic_bool loaded = false;
+enum class UiFontLoadSet {
+  kBase,
+  kCandidateFallback,
+};
+
+bool IsBaseUiFontFamily(const wchar_t* family) {
+  if (family == nullptr) {
+    return true;
+  }
+  const std::wstring_view name(family);
+  return name == L"MiSans" || name == L"MiSans TC";
+}
+
+void AddPrivateFontIfExists(const std::filesystem::path& font_dir, const wchar_t* file) {
+  const std::filesystem::path path = font_dir / file;
+  std::error_code error;
+  if (std::filesystem::exists(path, error)) {
+    AddFontResourceExW(path.c_str(), FR_PRIVATE, nullptr);
+  }
+}
+
+void EnsureUiFontsLoaded(UiFontLoadSet load_set = UiFontLoadSet::kBase) {
+  static std::atomic_bool base_loaded = false;
   bool expected = false;
-  if (!loaded.compare_exchange_strong(expected, true)) {
+  const std::filesystem::path font_dir = ModuleDirectory() / L"fonts";
+  if (base_loaded.compare_exchange_strong(expected, true)) {
+    const wchar_t* base_font_files[] = {
+        L"MiSans-Regular.ttf",
+        L"MiSans-Medium.ttf",
+        L"MiSans-Semibold.ttf",
+        L"MiSansTC-Regular.ttf",
+        L"MiSansTC-Medium.ttf",
+        L"MiSansTC-Semibold.ttf",
+    };
+    for (const wchar_t* file : base_font_files) {
+      AddPrivateFontIfExists(font_dir, file);
+    }
+  }
+
+  if (load_set == UiFontLoadSet::kBase) {
     return;
   }
 
-  const std::filesystem::path font_dir = ModuleDirectory() / L"fonts";
-  const wchar_t* font_files[] = {
-      L"MiSans-Regular.ttf",
-      L"MiSans-Medium.ttf",
-      L"MiSans-Semibold.ttf",
-      L"MiSansTC-Regular.ttf",
-      L"MiSansTC-Medium.ttf",
-      L"MiSansTC-Semibold.ttf",
+  static std::atomic_bool fallback_loaded = false;
+  expected = false;
+  if (!fallback_loaded.compare_exchange_strong(expected, true)) {
+    return;
+  }
+
+  const wchar_t* fallback_font_files[] = {
       L"MiSansL3-Regular.ttf",
       L"SourceHanSansSC-Regular.otf",
       L"SourceHanSansTC-Regular.otf",
       L"PlangothicP1-Regular.ttf",
       L"PlangothicP2-Regular.ttf",
   };
-  for (const wchar_t* file : font_files) {
-    const std::filesystem::path path = font_dir / file;
-    std::error_code error;
-    if (std::filesystem::exists(path, error)) {
-      AddFontResourceExW(path.c_str(), FR_PRIVATE, nullptr);
-    }
+  for (const wchar_t* file : fallback_font_files) {
+    AddPrivateFontIfExists(font_dir, file);
   }
 }
 
@@ -712,8 +743,9 @@ HFONT CreateUiFontForDpi(int point_size,
                          int weight = FW_NORMAL,
                          const wchar_t* family = nullptr,
                          DWORD quality = ANTIALIASED_QUALITY) {
-  EnsureUiFontsLoaded();
   const wchar_t* font_family = family != nullptr ? family : UiFontFamily(false);
+  EnsureUiFontsLoaded(IsBaseUiFontFamily(font_family) ? UiFontLoadSet::kBase
+                                                      : UiFontLoadSet::kCandidateFallback);
   return CreateFontW(-MulDiv(point_size, static_cast<int>(dpi), 72),
                      0,
                      0,
@@ -1077,6 +1109,80 @@ bool FontHasText(HDC dc, const std::wstring& text) {
   });
 }
 
+struct TextMeasureCacheEntry {
+  std::wstring text;
+  std::wstring face;
+  int point_size = 0;
+  UINT dpi = 0;
+  int weight = FW_NORMAL;
+  bool traditional = false;
+  CandidateFontFamily candidate_font_family = CandidateFontFamily::kMiSans;
+  SIZE size{};
+};
+
+std::mutex& TextMeasureCacheMutex() {
+  static std::mutex mutex;
+  return mutex;
+}
+
+std::vector<TextMeasureCacheEntry>& TextMeasureCache() {
+  static std::vector<TextMeasureCacheEntry> cache;
+  return cache;
+}
+
+bool TryGetCachedTextMeasure(const std::wstring& text,
+                             const std::wstring& face,
+                             int point_size,
+                             UINT dpi,
+                             int weight,
+                             bool traditional,
+                             CandidateFontFamily candidate_font_family,
+                             SIZE* size) {
+  if (size == nullptr || text.size() > 64) {
+    return false;
+  }
+  std::lock_guard<std::mutex> lock(TextMeasureCacheMutex());
+  for (const auto& entry : TextMeasureCache()) {
+    if (entry.point_size == point_size && entry.dpi == dpi && entry.weight == weight &&
+        entry.traditional == traditional &&
+        entry.candidate_font_family == candidate_font_family && entry.text == text &&
+        entry.face == face) {
+      *size = entry.size;
+      return true;
+    }
+  }
+  return false;
+}
+
+void StoreCachedTextMeasure(const std::wstring& text,
+                            const std::wstring& face,
+                            int point_size,
+                            UINT dpi,
+                            int weight,
+                            bool traditional,
+                            CandidateFontFamily candidate_font_family,
+                            SIZE size) {
+  if (text.empty() || text.size() > 64) {
+    return;
+  }
+  constexpr size_t kMaxTextMeasureCacheEntries = 768;
+  std::lock_guard<std::mutex> lock(TextMeasureCacheMutex());
+  auto& cache = TextMeasureCache();
+  for (auto& entry : cache) {
+    if (entry.point_size == point_size && entry.dpi == dpi && entry.weight == weight &&
+        entry.traditional == traditional &&
+        entry.candidate_font_family == candidate_font_family && entry.text == text &&
+        entry.face == face) {
+      entry.size = size;
+      return;
+    }
+  }
+  if (cache.size() >= kMaxTextMeasureCacheEntries) {
+    cache.erase(cache.begin());
+  }
+  cache.push_back({text, face, point_size, dpi, weight, traditional, candidate_font_family, size});
+}
+
 std::wstring CurrentTextFace(HDC dc) {
   wchar_t face[LF_FACESIZE]{};
   if (dc == nullptr || GetTextFaceW(dc, LF_FACESIZE, face) <= 0) {
@@ -1359,15 +1465,42 @@ SIZE MeasureTextWithFallback(HDC dc,
   if (candidate_font_family == CandidateFontFamily::kMiSans) {
     candidate_font_family = CandidateFontFamilyForFace(current_face);
   }
+  if (TryGetCachedTextMeasure(text,
+                              current_face,
+                              point_size,
+                              dpi,
+                              weight,
+                              traditional,
+                              candidate_font_family,
+                              &size)) {
+    return size;
+  }
   const auto fallback_families =
       CandidateUiFontFallbackFamilies(candidate_font_family, traditional);
   for (const wchar_t* family : fallback_families) {
     if (family != nullptr && TextFaceMatchesFamily(current_face, family) && FontHasText(dc, text)) {
-      return MeasureText(dc, text);
+      size = MeasureText(dc, text);
+      StoreCachedTextMeasure(text,
+                             current_face,
+                             point_size,
+                             dpi,
+                             weight,
+                             traditional,
+                             candidate_font_family,
+                             size);
+      return size;
     }
   }
   for (const wchar_t* family : fallback_families) {
     if (MeasureTextWithFontFamily(dc, text, point_size, dpi, weight, family, current_face, &size)) {
+      StoreCachedTextMeasure(text,
+                             current_face,
+                             point_size,
+                             dpi,
+                             weight,
+                             traditional,
+                             candidate_font_family,
+                             size);
       return size;
     }
   }
@@ -1375,10 +1508,27 @@ SIZE MeasureTextWithFallback(HDC dc,
   std::vector<FallbackTextRun> runs;
   if (BuildFallbackTextRuns(
           dc, text, point_size, dpi, weight, traditional, candidate_font_family, &runs, &size)) {
+    StoreCachedTextMeasure(text,
+                           current_face,
+                           point_size,
+                           dpi,
+                           weight,
+                           traditional,
+                           candidate_font_family,
+                           size);
     return size;
   }
 
-  return FontHasText(dc, text) ? MeasureText(dc, text) : size;
+  size = FontHasText(dc, text) ? MeasureText(dc, text) : size;
+  StoreCachedTextMeasure(text,
+                         current_face,
+                         point_size,
+                         dpi,
+                         weight,
+                         traditional,
+                         candidate_font_family,
+                         size);
+  return size;
 }
 
 void DrawTextWithFallback(HDC dc,
@@ -1451,6 +1601,41 @@ bool AppsUseLightTheme() {
                    &value,
                    &size);
   return status != ERROR_SUCCESS || value != 0;
+}
+
+struct CachedIconEntry {
+  bool light = false;
+  int width = 0;
+  int height = 0;
+  HICON icon = nullptr;
+};
+
+HICON CachedFluentPinyinIcon(bool light, int width, int height) {
+  if (width <= 0 || height <= 0) {
+    return nullptr;
+  }
+
+  static std::mutex mutex;
+  static std::vector<CachedIconEntry> cache;
+  std::lock_guard<std::mutex> lock(mutex);
+  for (const auto& entry : cache) {
+    if (entry.light == light && entry.width == width && entry.height == height) {
+      return entry.icon;
+    }
+  }
+
+  HICON icon =
+      static_cast<HICON>(LoadImageW(g_module_instance,
+                                    MAKEINTRESOURCEW(light ? IDI_FLUENT_PINYIN_LIGHT
+                                                           : IDI_FLUENT_PINYIN_DARK),
+                                    IMAGE_ICON,
+                                    width,
+                                    height,
+                                    LR_DEFAULTCOLOR));
+  if (icon != nullptr) {
+    cache.push_back({light, width, height, icon});
+  }
+  return icon;
 }
 
 struct CandidateWindowPalette {
@@ -3703,6 +3888,26 @@ struct CandidateLayoutMetrics {
   std::vector<RECT> candidate_rects;
   std::vector<int> candidate_rows;
   std::vector<int> candidate_columns;
+};
+
+thread_local const CandidateLayoutMetrics* g_candidate_render_layout = nullptr;
+
+class CandidateRenderLayoutScope {
+ public:
+  explicit CandidateRenderLayoutScope(const CandidateLayoutMetrics* layout)
+      : previous_(g_candidate_render_layout) {
+    g_candidate_render_layout = layout;
+  }
+
+  CandidateRenderLayoutScope(const CandidateRenderLayoutScope&) = delete;
+  CandidateRenderLayoutScope& operator=(const CandidateRenderLayoutScope&) = delete;
+
+  ~CandidateRenderLayoutScope() {
+    g_candidate_render_layout = previous_;
+  }
+
+ private:
+  const CandidateLayoutMetrics* previous_ = nullptr;
 };
 
 RECT CandidateToolRect(const CandidateLayoutMetrics& layout, int tool) {
@@ -11725,7 +11930,17 @@ void TsfTextService::ShowCandidateWindow(ITfContext* context) {
   }
   ApplyCandidateDwmFrame(candidate_window_, theme_mode_, theme_preset_);
 
-  if (!candidates_.empty()) {
+  const int requested_candidate_page_size =
+      CandidatePageSizeLimit(horizontal_candidate_layout_,
+                             expanded_candidate_window_,
+                             compact_candidate_count_);
+  const bool candidate_page_already_trimmed =
+      last_candidate_query_input_ == composition_input_ &&
+      last_candidate_query_page_index_ == candidate_page_index_ &&
+      last_candidate_query_page_size_ > 0 &&
+      last_candidate_query_page_size_ < requested_candidate_page_size &&
+      candidates_.size() <= static_cast<size_t>(last_candidate_query_page_size_);
+  if (!candidates_.empty() && !candidate_page_already_trimmed) {
     const size_t visible_count =
         CalculateVisibleCandidateCountForWindow(candidate_window_,
                                                 horizontal_candidate_layout_,
@@ -11820,7 +12035,10 @@ void TsfTextService::ShowCandidateWindow(ITfContext* context) {
     PositionCandidateTooltip(candidate_tooltip_tool_);
   }
   SetTimer(candidate_window_, kCandidateWindowWatchTimer, 250, nullptr);
-  RenderCandidateLayeredWindow();
+  {
+    CandidateRenderLayoutScope layout_scope(&layout);
+    RenderCandidateLayeredWindow();
+  }
   LogTsfPerfIfSlow(L"ShowCandidateWindow",
                    GetTickCount64() - show_start_tick,
                    20,
@@ -12535,15 +12753,20 @@ void TsfTextService::DrawCandidateWindow(HDC dc) {
                          CandidateUiFontFamily(CandidateFontFamilyFromSetting(candidate_font_family_),
                                                !simplified_charset_));
   HGDIOBJ old_font = font != nullptr ? SelectObject(dc, font) : nullptr;
-  const CandidateLayoutMetrics layout = CalculateCandidateLayout(candidate_window_,
-                                                                 dc,
-                                                                 dpi,
-                                                                  horizontal_candidate_layout_,
-                                                                  expanded_candidate_window_,
-                                                                  compact_candidate_count_,
-                                                                  CandidateFontPointSize(),
-                                                                  !simplified_charset_,
-                                                                  candidates_);
+  const CandidateLayoutMetrics calculated_layout =
+      g_candidate_render_layout == nullptr
+          ? CalculateCandidateLayout(candidate_window_,
+                                     dc,
+                                     dpi,
+                                     horizontal_candidate_layout_,
+                                     expanded_candidate_window_,
+                                     compact_candidate_count_,
+                                     CandidateFontPointSize(),
+                                     !simplified_charset_,
+                                     candidates_)
+          : CandidateLayoutMetrics{};
+  const CandidateLayoutMetrics& layout =
+      g_candidate_render_layout != nullptr ? *g_candidate_render_layout : calculated_layout;
 
   RECT edge{client.left, client.top, client.right, client.bottom};
   const int corner_radius = s(8);
@@ -12792,14 +13015,9 @@ void TsfTextService::DrawCandidateWindow(HDC dc) {
         fp::EffectiveThemePreset(theme_mode_, theme_preset_, AppsUseLightTheme()) ==
         fp::kThemePresetDefaultLight;
     HICON brand_icon =
-        static_cast<HICON>(LoadImageW(g_module_instance,
-                                      MAKEINTRESOURCEW(brand_light_icon
-                                                           ? IDI_FLUENT_PINYIN_LIGHT
-                                                           : IDI_FLUENT_PINYIN_DARK),
-                                      IMAGE_ICON,
-                                      layout.brand_icon_rect.right - layout.brand_icon_rect.left,
-                                      layout.brand_icon_rect.bottom - layout.brand_icon_rect.top,
-                                      LR_DEFAULTCOLOR));
+        CachedFluentPinyinIcon(brand_light_icon,
+                               layout.brand_icon_rect.right - layout.brand_icon_rect.left,
+                               layout.brand_icon_rect.bottom - layout.brand_icon_rect.top);
     if (brand_icon != nullptr) {
       DrawIconEx(dc,
                  layout.brand_icon_rect.left,
@@ -12810,7 +13028,6 @@ void TsfTextService::DrawCandidateWindow(HDC dc) {
                  0,
                  nullptr,
                  DI_NORMAL);
-      DestroyIcon(brand_icon);
     }
     SetTextColor(dc, palette.text);
     if (!horizontal_candidate_layout_) {
