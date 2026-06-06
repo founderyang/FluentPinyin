@@ -112,11 +112,7 @@ $devtools = Join-Path $BinDir "fluent-pinyin-devtools.exe"
 Assert-ProcessExitCode -FilePath $updater -Expected 0
 Assert-ProcessExitCode -FilePath $devtools -Expected 1
 
-Invoke-ReleaseJsonParser -Updater $updater -ExpectedExitCode 0 -ExpectedOutput @(
-  "tag=v00.00.04",
-  "asset=FluentPinyin.msi",
-  "url=https://example.invalid/downloads/FluentPinyin.msi?label=FluentPinyin%20MSI"
-) -JsonText @'
+$releaseJsonWithNestedTag = @'
 {
   "assets": [
     {
@@ -129,19 +125,22 @@ Invoke-ReleaseJsonParser -Updater $updater -ExpectedExitCode 0 -ExpectedOutput @
       "name": "FluentPinyin.msi"
     }
   ],
-  "tag_name": "v00.00.04",
+  "tag_name": "v__EXPECTED_VERSION__",
   "nested": { "tag_name": "v99.99.99" },
   "escaped": "quote: \" slash: \\ unicode: \u6d41\u7545"
 }
 '@
+$releaseJsonWithNestedTag = $releaseJsonWithNestedTag.Replace("__EXPECTED_VERSION__", $ExpectedVersion)
 
-Invoke-ReleaseJsonParser -Updater $updater -ExpectedExitCode 0 -Utf8Bom -ExpectedOutput @(
-  "tag=v00.00.04",
+Invoke-ReleaseJsonParser -Updater $updater -ExpectedExitCode 0 -ExpectedOutput @(
+  "tag=v$ExpectedVersion",
   "asset=FluentPinyin.msi",
-  "url=https://example.invalid/releases/FluentPinyin.msi?x=quote%5C%22"
-) -JsonText @'
+  "url=https://example.invalid/downloads/FluentPinyin.msi?label=FluentPinyin%20MSI"
+) -JsonText $releaseJsonWithNestedTag
+
+$releaseJsonWithBom = @'
 {
-  "tag_name": "v00.00.04",
+  "tag_name": "v__EXPECTED_VERSION__",
   "assets": [
     {
       "name": "FluentPinyin.msi",
@@ -150,10 +149,17 @@ Invoke-ReleaseJsonParser -Updater $updater -ExpectedExitCode 0 -Utf8Bom -Expecte
   ]
 }
 '@
+$releaseJsonWithBom = $releaseJsonWithBom.Replace("__EXPECTED_VERSION__", $ExpectedVersion)
 
-Invoke-ReleaseJsonParser -Updater $updater -ExpectedExitCode 2 -JsonText @'
+Invoke-ReleaseJsonParser -Updater $updater -ExpectedExitCode 0 -Utf8Bom -ExpectedOutput @(
+  "tag=v$ExpectedVersion",
+  "asset=FluentPinyin.msi",
+  "url=https://example.invalid/releases/FluentPinyin.msi?x=quote%5C%22"
+) -JsonText $releaseJsonWithBom
+
+$releaseJsonWithoutMsi = @'
 {
-  "tag_name": "v00.00.04",
+  "tag_name": "v__EXPECTED_VERSION__",
   "assets": [
     {
       "name": "FluentPinyin.zip",
@@ -162,5 +168,8 @@ Invoke-ReleaseJsonParser -Updater $updater -ExpectedExitCode 2 -JsonText @'
   ]
 }
 '@
+$releaseJsonWithoutMsi = $releaseJsonWithoutMsi.Replace("__EXPECTED_VERSION__", $ExpectedVersion)
+
+Invoke-ReleaseJsonParser -Updater $updater -ExpectedExitCode 2 -JsonText $releaseJsonWithoutMsi
 
 Write-Host "Smoke test passed for FluentPinyin $ExpectedVersion"

@@ -1,6 +1,6 @@
 ﻿cmake_minimum_required(VERSION 3.24)
 
-project(FluentPinyin VERSION 00.00.04 LANGUAGES CXX)
+project(FluentPinyin VERSION 00.00.05 LANGUAGES CXX)
 
 include(CTest)
 
@@ -126,6 +126,10 @@ target_compile_definitions(fluent_pinyin_common PUBLIC
   _WIN32_WINNT=0x0A00
 )
 
+if(MSVC)
+  target_precompile_headers(fluent_pinyin_common PRIVATE src/common/pch.h)
+endif()
+
 add_library(fluent_pinyin_core SHARED
   src/core/rime_engine.cpp
   src/core/fluent_pinyin_core.cpp
@@ -147,11 +151,15 @@ if(FP_WITH_OPENCC)
   )
 endif()
 set_target_properties(fluent_pinyin_core PROPERTIES OUTPUT_NAME "fluent-pinyin-core")
+if(MSVC)
+  target_precompile_headers(fluent_pinyin_core REUSE_FROM fluent_pinyin_common)
+endif()
 
 add_library(fluent_pinyin_tsf SHARED
   src/tsf/class_factory.cpp
   src/tsf/dllmain.cpp
   src/tsf/registration.cpp
+  src/tsf/tsf_settings_adapter.cpp
   src/tsf/tsf_text_service.cpp
   src/tsf/fluent-pinyin-tsf.rc
   src/tsf/fluent-pinyin-tsf.def
@@ -194,6 +202,9 @@ set_target_properties(fluent_pinyin_tsf PROPERTIES
   OUTPUT_NAME "fluent-pinyin-tsf"
   PREFIX ""
 )
+if(MSVC)
+  target_precompile_headers(fluent_pinyin_tsf PRIVATE src/tsf/pch.h)
+endif()
 
 fp_copy_app_assets(fluent_pinyin_tsf)
 
@@ -215,6 +226,9 @@ target_link_libraries(fluent_pinyin_ui PRIVATE
 )
 
 set_target_properties(fluent_pinyin_ui PROPERTIES OUTPUT_NAME "fluent-pinyin-ui")
+if(MSVC)
+  target_precompile_headers(fluent_pinyin_ui REUSE_FROM fluent_pinyin_common)
+endif()
 
 set(FP_WINUI_PACKAGE_ROOT "${CMAKE_SOURCE_DIR}/packages/winui" CACHE PATH
     "Directory containing FluentPinyin WinUI NuGet packages")
@@ -334,6 +348,9 @@ target_link_libraries(fluent_pinyin_settings PRIVATE
   windowsapp
 )
 set_target_properties(fluent_pinyin_settings PROPERTIES OUTPUT_NAME "fluent-pinyin-settings")
+if(MSVC)
+  target_precompile_headers(fluent_pinyin_settings PRIVATE src/config_winui/pch.h)
+endif()
 
 fp_copy_app_assets(fluent_pinyin_settings)
 add_custom_command(TARGET fluent_pinyin_settings POST_BUILD
@@ -351,10 +368,14 @@ add_custom_command(TARGET fluent_pinyin_settings POST_BUILD
 
 add_executable(fluent_pinyin_updater WIN32
   src/updater/main.cpp
+  src/updater/release_json.cpp
 )
 
 target_link_libraries(fluent_pinyin_updater PRIVATE fluent_pinyin_common wininet wintrust crypt32)
 set_target_properties(fluent_pinyin_updater PROPERTIES OUTPUT_NAME "fluent-pinyin-updater")
+if(MSVC)
+  target_precompile_headers(fluent_pinyin_updater PRIVATE src/updater/pch.h)
+endif()
 
 add_executable(fluent_pinyin_devtools WIN32
   src/devtools/main.cpp
@@ -372,6 +393,9 @@ target_link_libraries(fluent_pinyin_devtools PRIVATE
 )
 
 set_target_properties(fluent_pinyin_devtools PROPERTIES OUTPUT_NAME "fluent-pinyin-devtools")
+if(MSVC)
+  target_precompile_headers(fluent_pinyin_devtools REUSE_FROM fluent_pinyin_common)
+endif()
 
 if(BUILD_TESTING)
   add_executable(common_unit
@@ -398,6 +422,9 @@ if(BUILD_TESTING)
     ole32
     user32
   )
+  if(MSVC)
+    target_precompile_headers(sync_package_integrity PRIVATE src/sync/pch.h)
+  endif()
 
   add_executable(sync_settings
     tests/sync_settings.cpp
@@ -413,6 +440,9 @@ if(BUILD_TESTING)
     ole32
     user32
   )
+  if(MSVC)
+    target_precompile_headers(sync_settings PRIVATE src/sync/pch.h)
+  endif()
 
   add_test(
     NAME smoke_release
@@ -423,6 +453,15 @@ if(BUILD_TESTING)
             -BinDir "$<TARGET_FILE_DIR:fluent_pinyin_devtools>"
             -GeneratedDir "${CMAKE_BINARY_DIR}/generated"
             -ExpectedVersion "${PROJECT_VERSION}"
+  )
+  add_executable(updater_json_unit
+    tests/updater_json_unit.cpp
+    src/updater/release_json.cpp
+  )
+  target_include_directories(updater_json_unit PRIVATE src)
+  add_test(
+    NAME updater_json_unit
+    COMMAND updater_json_unit
   )
   add_test(
     NAME common_unit
@@ -439,5 +478,14 @@ if(BUILD_TESTING)
   add_test(
     NAME sync_settings
     COMMAND sync_settings "${CMAKE_BINARY_DIR}/sync-settings"
+  )
+  add_test(
+    NAME package_dependency_verify
+    COMMAND powershell
+            -NoProfile
+            -ExecutionPolicy Bypass
+            -File "${CMAKE_SOURCE_DIR}/tests/package_dependency_verify.ps1"
+            -ManifestPath "${CMAKE_SOURCE_DIR}/scripts/package_dependencies.json"
+            -DownloadsDir "${CMAKE_SOURCE_DIR}/packages/downloads"
   )
 endif()

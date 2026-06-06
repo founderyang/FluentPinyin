@@ -100,8 +100,17 @@ void TestSettingsStoreReadWrite() {
          "SettingsStore writes sanitized strings");
   Expect(store.WriteBool(L"beta", false),
          "SettingsStore writes bool values");
+  const fp::SettingUpdate batch[] = {
+      {L"delta", L"four"},
+      {L"epsilon", L"five\nsix"},
+  };
+  Expect(store.WriteStrings(batch), "SettingsStore writes batched updates atomically");
   Expect(store.ReadString(L"gamma", L"") == L"line1,,line2",
          "SettingsStore sanitizes CR/LF on write");
+  Expect(store.ReadString(L"delta", L"") == L"four",
+         "SettingsStore reads values written in a batch");
+  Expect(store.ReadString(L"epsilon", L"") == L"five,six",
+         "SettingsStore sanitizes batched values");
   Expect(!store.ReadBool(L"beta", true),
          "SettingsStore reads updated bool values from cache");
 

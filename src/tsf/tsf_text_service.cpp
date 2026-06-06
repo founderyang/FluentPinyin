@@ -3,11 +3,11 @@
 #include "common/constants.h"
 #include "common/logging.h"
 #include "common/path_utils.h"
-#include "common/settings_store.h"
 #include "common/theme.h"
 #include "tsf/guids.h"
 #include "tsf/module.h"
 #include "tsf/resource.h"
+#include "tsf/tsf_settings_adapter.h"
 
 #include <ctffunc.h>
 #include <dwmapi.h>
@@ -873,49 +873,6 @@ std::wstring NarrowPath(const std::filesystem::path& path) {
   return path.wstring();
 }
 
-fp::SettingsStore& RuntimeSettingsStore() {
-  static fp::SettingsStore store;
-  return store;
-}
-
-std::optional<std::wstring> FindSettingValue(std::wstring_view key) {
-  return RuntimeSettingsStore().FindString(key);
-}
-
-void WriteSettingLine(std::wstring_view key, std::wstring_view value) {
-  RuntimeSettingsStore().WriteString(key, value);
-}
-
-void WriteStringSetting(std::wstring_view key, std::wstring_view value) {
-  WriteSettingLine(key, value);
-}
-
-void WriteBoolSetting(std::wstring_view key, bool value) {
-  WriteSettingLine(key, value ? L"1" : L"0");
-}
-
-void WritePointSetting(std::wstring_view key, POINT point) {
-  WriteSettingLine(key, std::to_wstring(point.x) + L"," + std::to_wstring(point.y));
-}
-
-std::wstring ReadStringSetting(std::wstring_view key, std::wstring_view default_value = L"") {
-  const std::optional<std::wstring> value = FindSettingValue(key);
-  return value.has_value() ? *value : std::wstring(default_value);
-}
-
-std::optional<bool> ReadOptionalBoolSetting(std::wstring_view key) {
-  const std::optional<std::wstring> value = FindSettingValue(key);
-  if (!value.has_value()) {
-    return std::nullopt;
-  }
-  return fp::IsTruthySettingValue(*value);
-}
-
-bool ReadBoolSetting(std::wstring_view key, bool default_value) {
-  const std::optional<bool> value = ReadOptionalBoolSetting(key);
-  return value.has_value() ? *value : default_value;
-}
-
 std::wstring TrimShortcutDisplay(std::wstring value) {
   size_t first = 0;
   while (first < value.size() && std::iswspace(value[first])) {
@@ -943,66 +900,6 @@ std::wstring TextWithShortcut(std::wstring_view label,
     text += L")";
   }
   return text;
-}
-
-bool IsReasonableStoredScreenPoint(POINT point) {
-  const int virtual_left = GetSystemMetrics(SM_XVIRTUALSCREEN);
-  const int virtual_top = GetSystemMetrics(SM_YVIRTUALSCREEN);
-  const int virtual_width = GetSystemMetrics(SM_CXVIRTUALSCREEN);
-  const int virtual_height = GetSystemMetrics(SM_CYVIRTUALSCREEN);
-  const int virtual_right = virtual_left + virtual_width;
-  const int virtual_bottom = virtual_top + virtual_height;
-  const int padding = std::max({4096, virtual_width, virtual_height});
-  return point.x >= virtual_left - padding && point.x <= virtual_right + padding &&
-         point.y >= virtual_top - padding && point.y <= virtual_bottom + padding;
-}
-
-std::optional<POINT> ReadPointSetting(std::wstring_view key) {
-  const std::wstring value = ReadStringSetting(key);
-  const size_t separator = value.find(L',');
-  if (separator == std::wstring::npos) {
-    return std::nullopt;
-  }
-  try {
-    POINT point{std::stoi(value.substr(0, separator)),
-                std::stoi(value.substr(separator + 1))};
-    return IsReasonableStoredScreenPoint(point) ? std::optional<POINT>(point) : std::nullopt;
-  } catch (...) {
-    return std::nullopt;
-  }
-}
-
-int ReadIntSetting(std::wstring_view key, int default_value, int min_value, int max_value) {
-  const std::optional<std::wstring> value = FindSettingValue(key);
-  if (!value.has_value()) {
-    return default_value;
-  }
-  try {
-    return std::clamp(std::stoi(*value), min_value, max_value);
-  } catch (...) {
-    return default_value;
-  }
-}
-
-bool ReadBoolSettingMigrated(std::wstring_view key,
-                             bool default_value,
-                             std::wstring_view legacy_key) {
-  if (const std::optional<bool> value = ReadOptionalBoolSetting(key)) {
-    return *value;
-  }
-  return ReadBoolSetting(legacy_key, default_value);
-}
-
-bool ReadToolbarVisibleSetting(bool default_value) {
-  if (const std::optional<bool> value = ReadOptionalBoolSetting(kToolbarVisibleSetting)) {
-    return *value;
-  }
-  const std::optional<bool> legacy_value = ReadOptionalBoolSetting(L"toolbar_visible");
-  return legacy_value.has_value() && *legacy_value ? true : default_value;
-}
-
-void WriteIntSetting(std::wstring_view key, int value) {
-  WriteSettingLine(key, std::to_wstring(value));
 }
 
 SIZE MeasureText(HDC dc, const std::wstring& text) {
@@ -8087,7 +7984,7 @@ void TsfTextService::LoadUserSettings(bool force, bool allow_candidate_changes_d
   } else {
     horizontal_candidate_layout_ = ReadBoolSetting(L"candidate_horizontal", true);
   }
-  toolbar_visible_ = ReadToolbarVisibleSetting(toolbar_visible_);
+  toolbar_visible_ = ReadToolbarVisibleSetting(kToolbarVisibleSetting, toolbar_visible_);
   toolbar_vertical_layout_ = ReadStringSetting(kToolbarLayoutSetting, L"horizontal") == L"vertical";
   toolbar_visible_items_ = ParseToolbarVisibleItems(ReadStringSetting(kToolbarItemsSetting));
   super_abbrev_enabled_ = ReadBoolSetting(L"super_abbrev", true);
@@ -8384,7 +8281,7 @@ void TsfTextService::SaveToolbarSetting() const {
                        std::to_wstring(save_position.x) + L"," +
                            std::to_wstring(save_position.y)});
   }
-  RuntimeSettingsStore().WriteStrings(updates);
+  WriteSettings(updates);
 }
 
 void TsfTextService::SaveToolbarItemsSetting() const {
@@ -10970,11 +10867,11 @@ void TsfTextService::OpenFluentPinyinWebsite() {
 }
 
 bool TsfTextService::toolbar_visible() const {
-  return ReadToolbarVisibleSetting(toolbar_visible_);
+  return ReadToolbarVisibleSetting(kToolbarVisibleSetting, toolbar_visible_);
 }
 
 void TsfTextService::ToggleToolbarWindow() {
-  toolbar_visible_ = !ReadToolbarVisibleSetting(toolbar_visible_);
+  toolbar_visible_ = !ReadToolbarVisibleSetting(kToolbarVisibleSetting, toolbar_visible_);
   SaveToolbarSetting();
   RequestInputStateRefresh();
   if (toolbar_visible_) {
@@ -11054,7 +10951,7 @@ void TsfTextService::ShowToolbarWindow() {
 }
 
 void TsfTextService::RefreshToolbarFromSettings() {
-  const bool visible = ReadToolbarVisibleSetting(toolbar_visible_);
+  const bool visible = ReadToolbarVisibleSetting(kToolbarVisibleSetting, toolbar_visible_);
   const std::wstring legacy_theme =
       ReadStringSetting(fp::kLegacyThemeSetting, fp::kThemeModeDark);
   theme_mode_ =
@@ -11928,7 +11825,7 @@ LRESULT TsfTextService::ToolbarWindowProc(HWND window,
         }
         return 0;
       }
-      toolbar_visible_ = ReadToolbarVisibleSetting(toolbar_visible_);
+      toolbar_visible_ = ReadToolbarVisibleSetting(kToolbarVisibleSetting, toolbar_visible_);
       if (!toolbar_visible_) {
         DestroyToolbarWindow();
       } else {

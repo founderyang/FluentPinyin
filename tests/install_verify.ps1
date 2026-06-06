@@ -1,6 +1,6 @@
 param(
   [string]$InstallDir = "C:\Program Files\FluentPinyin",
-  [string]$ExpectedVersion = "00.00.04",
+  [string]$ExpectedVersion = "00.00.05",
   [string]$ExpectedProductCode = "",
   [switch]$RequireWanxiangPatch
 )

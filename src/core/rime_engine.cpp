@@ -1,6 +1,7 @@
 #include "core/rime_engine.h"
 
 #include "common/constants.h"
+#include "common/encoding.h"
 #include "common/logging.h"
 #include "common/path_utils.h"
 #include "common/settings_store.h"
@@ -64,54 +65,8 @@ std::filesystem::path DefaultSharedDataDir() {
   return std::filesystem::current_path() / L"schemas" / L"wanxiang" / L"current";
 }
 
-std::string WideToUtf8(const std::wstring& value) {
-  if (value.empty()) {
-    return {};
-  }
-
-  const int required = WideCharToMultiByte(CP_UTF8,
-                                           0,
-                                           value.data(),
-                                           static_cast<int>(value.size()),
-                                           nullptr,
-                                           0,
-                                           nullptr,
-                                           nullptr);
-  if (required <= 0) {
-    return {};
-  }
-
-  std::string result(static_cast<size_t>(required), '\0');
-  WideCharToMultiByte(CP_UTF8,
-                      0,
-                      value.data(),
-                      static_cast<int>(value.size()),
-                      result.data(),
-                      required,
-                      nullptr,
-                      nullptr);
-  return result;
-}
-
 std::string Utf8Literal(const char8_t* value) {
   return value == nullptr ? std::string() : std::string(reinterpret_cast<const char*>(value));
-}
-
-std::wstring Utf8ToWide(const char* value) {
-  if (value == nullptr || value[0] == '\0') {
-    return {};
-  }
-
-  const int source_length = static_cast<int>(std::strlen(value));
-  const int required =
-      MultiByteToWideChar(CP_UTF8, 0, value, source_length, nullptr, 0);
-  if (required <= 0) {
-    return {};
-  }
-
-  std::wstring result(static_cast<size_t>(required), L'\0');
-  MultiByteToWideChar(CP_UTF8, 0, value, source_length, result.data(), required);
-  return result;
 }
 
 std::wstring PathMessage(const wchar_t* prefix, const std::filesystem::path& path) {
