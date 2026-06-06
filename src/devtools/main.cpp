@@ -779,6 +779,8 @@ int CleanupInstall(const std::filesystem::path& install_dir,
                      (std::wstring(L"Software\\Classes\\CLSID\\") + kClsid).c_str());
   DeleteRegistryTree(HKEY_LOCAL_MACHINE,
                      (std::wstring(L"Software\\Classes\\CLSID\\") + kClsid).c_str());
+  DeleteRegistryTree(HKEY_USERS,
+                     (std::wstring(L"S-1-5-18\\Software\\Classes\\CLSID\\") + kClsid).c_str());
   DeleteRegistryTree(HKEY_CLASSES_ROOT, (std::wstring(L"CLSID\\") + kClsid).c_str());
   DeleteRegistryTree(HKEY_LOCAL_MACHINE,
                      (std::wstring(L"SYSTEM\\CurrentControlSet\\Control\\Keyboard Layouts\\") +

@@ -212,9 +212,10 @@ HRESULT RegisterComServer() {
   const std::wstring clsid = GuidToString(kTextServiceClsid);
   const std::wstring clsid_key = L"Software\\Classes\\CLSID\\" + clsid;
   const std::wstring server_key = clsid_key + L"\\InprocServer32";
+  DeleteRegistryTree(HKEY_CURRENT_USER, clsid_key);
 
   HRESULT result =
-      SetRegistryString(HKEY_CURRENT_USER,
+      SetRegistryString(HKEY_LOCAL_MACHINE,
                         clsid_key,
                         nullptr,
                         std::wstring(fp::kProductName) + L" Text Service");
@@ -222,17 +223,23 @@ HRESULT RegisterComServer() {
     return result;
   }
 
-  result = SetRegistryString(HKEY_CURRENT_USER, server_key, nullptr, module_path);
+  result = SetRegistryString(HKEY_LOCAL_MACHINE, server_key, nullptr, module_path);
   if (FAILED(result)) {
     return result;
   }
 
-  return SetRegistryString(HKEY_CURRENT_USER, server_key, L"ThreadingModel", L"Apartment");
+  return SetRegistryString(HKEY_LOCAL_MACHINE, server_key, L"ThreadingModel", L"Apartment");
 }
 
 HRESULT UnregisterComServer() {
   const std::wstring clsid = GuidToString(kTextServiceClsid);
-  return DeleteRegistryTree(HKEY_CURRENT_USER, L"Software\\Classes\\CLSID\\" + clsid);
+  const std::wstring clsid_key = L"Software\\Classes\\CLSID\\" + clsid;
+  HRESULT result = DeleteRegistryTree(HKEY_LOCAL_MACHINE, clsid_key);
+  const HRESULT user_result = DeleteRegistryTree(HKEY_CURRENT_USER, clsid_key);
+  if (FAILED(result)) {
+    return result;
+  }
+  return user_result;
 }
 
 HRESULT RegisterTsfProfile() {
