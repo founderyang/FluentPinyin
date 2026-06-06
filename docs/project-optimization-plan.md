@@ -165,7 +165,7 @@ Acceptance:
 
 ## Phase 3: Maintainability Refactor
 
-Status: continued in `codex/phase6-common-encoding`.
+Status: continued in `codex/phase13-cmake-maintainability`.
 
 Work:
 
@@ -187,12 +187,18 @@ Work:
   `constants.h.in` with CMake.
 - Replace local COM helper duplication with a shared helper or a small
   project-owned `ComPtr`.
+- Reduce CMake package and asset-copy duplication. Phase 13 resolves local
+  WinUI/WebView2/C++/WinRT NuGet package roots by package id, makes Windows SDK
+  paths configurable with fallback discovery, validates required WinUI build
+  dependencies, and reuses target asset-copy helpers for icons/private fonts.
 
 Acceptance:
 
 - No behavior change in TSF smoke tests after each split.
 - Smaller files have clear ownership and no circular include churn.
 - Release version cannot drift between CMake and C++ constants.
+- Upgrading a local WinUI NuGet package or Windows SDK does not require editing
+  hard-coded version paths in multiple places.
 
 ## Phase 4: Tests and CI
 

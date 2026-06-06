@@ -21,6 +21,63 @@ if(MSVC)
   add_compile_options(/utf-8)
 endif()
 
+set(FP_ICON_FILES
+  fluent-pinyin.ico
+  fluent-pinyin-dark.ico
+  fluent-pinyin-light.ico
+)
+
+function(fp_copy_app_icons target_name)
+  foreach(icon_file IN LISTS FP_ICON_FILES)
+    add_custom_command(TARGET ${target_name} POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+              "${CMAKE_SOURCE_DIR}/assets/icons/${icon_file}"
+              "$<TARGET_FILE_DIR:${target_name}>/${icon_file}"
+      VERBATIM
+    )
+  endforeach()
+endfunction()
+
+function(fp_copy_private_fonts target_name)
+  add_custom_command(TARGET ${target_name} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_SOURCE_DIR}/assets/fonts"
+            "$<TARGET_FILE_DIR:${target_name}>/fonts"
+    VERBATIM
+  )
+endfunction()
+
+function(fp_copy_app_assets target_name)
+  fp_copy_app_icons(${target_name})
+  fp_copy_private_fonts(${target_name})
+endfunction()
+
+function(fp_resolve_nuget_package out_var package_id)
+  set(current_value "${${out_var}}")
+  if(NOT current_value STREQUAL "")
+    if(EXISTS "${current_value}")
+      set(${out_var} "${current_value}" PARENT_SCOPE)
+      return()
+    endif()
+    message(FATAL_ERROR "${out_var} points to a missing package directory: ${current_value}")
+  endif()
+
+  file(GLOB package_candidates LIST_DIRECTORIES true
+       "${FP_WINUI_PACKAGE_ROOT}/${package_id}.*")
+  list(SORT package_candidates COMPARE NATURAL ORDER DESCENDING)
+  list(LENGTH package_candidates package_count)
+  if(package_count EQUAL 0)
+    message(FATAL_ERROR
+            "Missing NuGet package '${package_id}' under ${FP_WINUI_PACKAGE_ROOT}. "
+            "Run scripts/prepare_packages.py or set ${out_var}.")
+  endif()
+
+  list(GET package_candidates 0 resolved_package)
+  set(${out_var} "${resolved_package}" CACHE PATH
+      "Resolved package root for ${package_id}" FORCE)
+  set(${out_var} "${resolved_package}" PARENT_SCOPE)
+endfunction()
+
 set(FP_LIBRIME_ROOT "${CMAKE_SOURCE_DIR}/third_party/librime/rime/dist")
 set(FP_OPENCC_ROOT "${CMAKE_SOURCE_DIR}/third_party/librime/deps")
 set(FP_OPENCC_DATA_DIR "${CMAKE_SOURCE_DIR}/third_party/librime/deps/share/opencc")
@@ -137,21 +194,7 @@ set_target_properties(fluent_pinyin_tsf PROPERTIES
   PREFIX ""
 )
 
-add_custom_command(TARGET fluent_pinyin_tsf POST_BUILD
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different
-          "${CMAKE_SOURCE_DIR}/assets/icons/fluent-pinyin.ico"
-          "$<TARGET_FILE_DIR:fluent_pinyin_tsf>/fluent-pinyin.ico"
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different
-          "${CMAKE_SOURCE_DIR}/assets/icons/fluent-pinyin-dark.ico"
-          "$<TARGET_FILE_DIR:fluent_pinyin_tsf>/fluent-pinyin-dark.ico"
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different
-          "${CMAKE_SOURCE_DIR}/assets/icons/fluent-pinyin-light.ico"
-          "$<TARGET_FILE_DIR:fluent_pinyin_tsf>/fluent-pinyin-light.ico"
-  COMMAND ${CMAKE_COMMAND} -E copy_directory
-          "${CMAKE_SOURCE_DIR}/assets/fonts"
-          "$<TARGET_FILE_DIR:fluent_pinyin_tsf>/fonts"
-  VERBATIM
-)
+fp_copy_app_assets(fluent_pinyin_tsf)
 
 add_executable(fluent_pinyin_ui WIN32
   src/ui/main.cpp
@@ -172,26 +215,69 @@ target_link_libraries(fluent_pinyin_ui PRIVATE
 
 set_target_properties(fluent_pinyin_ui PROPERTIES OUTPUT_NAME "fluent-pinyin-ui")
 
-set(FP_WINUI_PACKAGE_ROOT "${CMAKE_SOURCE_DIR}/packages/winui")
-set(FP_WINAPPSDK_FOUNDATION_ROOT
-    "${FP_WINUI_PACKAGE_ROOT}/microsoft.windowsappsdk.foundation.1.8.260505001")
-set(FP_WINAPPSDK_WINUI_ROOT
-    "${FP_WINUI_PACKAGE_ROOT}/microsoft.windowsappsdk.winui.1.8.260505002")
-set(FP_WINAPPSDK_INTERACTIVE_ROOT
-    "${FP_WINUI_PACKAGE_ROOT}/microsoft.windowsappsdk.interactiveexperiences.1.8.260430001")
-set(FP_WEBVIEW2_ROOT
-    "${FP_WINUI_PACKAGE_ROOT}/microsoft.web.webview2.1.0.3179.45")
-set(FP_CPPWINRT_ROOT
-    "${FP_WINUI_PACKAGE_ROOT}/microsoft.windows.cppwinrt.3.0.260520.1")
-set(FP_CPPWINRT_EXE "${FP_CPPWINRT_ROOT}/bin/cppwinrt.exe")
+set(FP_WINUI_PACKAGE_ROOT "${CMAKE_SOURCE_DIR}/packages/winui" CACHE PATH
+    "Directory containing FluentPinyin WinUI NuGet packages")
+set(FP_WINAPPSDK_FOUNDATION_ROOT "" CACHE PATH
+    "Windows App SDK Foundation NuGet package root")
+set(FP_WINAPPSDK_WINUI_ROOT "" CACHE PATH
+    "Windows App SDK WinUI NuGet package root")
+set(FP_WINAPPSDK_INTERACTIVE_ROOT "" CACHE PATH
+    "Windows App SDK Interactive Experiences NuGet package root")
+set(FP_WEBVIEW2_ROOT "" CACHE PATH
+    "Microsoft WebView2 NuGet package root")
+set(FP_CPPWINRT_ROOT "" CACHE PATH
+    "Microsoft C++/WinRT NuGet package root")
+
+fp_resolve_nuget_package(FP_WINAPPSDK_FOUNDATION_ROOT
+                         "microsoft.windowsappsdk.foundation")
+fp_resolve_nuget_package(FP_WINAPPSDK_WINUI_ROOT
+                         "microsoft.windowsappsdk.winui")
+fp_resolve_nuget_package(FP_WINAPPSDK_INTERACTIVE_ROOT
+                         "microsoft.windowsappsdk.interactiveexperiences")
+fp_resolve_nuget_package(FP_WEBVIEW2_ROOT
+                         "microsoft.web.webview2")
+fp_resolve_nuget_package(FP_CPPWINRT_ROOT
+                         "microsoft.windows.cppwinrt")
+
+set(FP_WINDOWS_KITS_ROOT "C:/Program Files (x86)/Windows Kits/10" CACHE PATH
+    "Windows 10/11 SDK root")
+set(FP_WINDOWS_SDK_VERSION "${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION}" CACHE STRING
+    "Windows SDK version used for WinUI metadata and C++/WinRT projection")
+if(FP_WINDOWS_SDK_VERSION STREQUAL "" OR
+   NOT EXISTS "${FP_WINDOWS_KITS_ROOT}/UnionMetadata/${FP_WINDOWS_SDK_VERSION}/Windows.winmd")
+  file(GLOB FP_WINDOWS_SDK_UNION_DIRS LIST_DIRECTORIES true
+       "${FP_WINDOWS_KITS_ROOT}/UnionMetadata/10.*")
+  list(SORT FP_WINDOWS_SDK_UNION_DIRS COMPARE NATURAL ORDER DESCENDING)
+  list(LENGTH FP_WINDOWS_SDK_UNION_DIRS FP_WINDOWS_SDK_UNION_DIR_COUNT)
+  if(FP_WINDOWS_SDK_UNION_DIR_COUNT GREATER 0)
+    list(GET FP_WINDOWS_SDK_UNION_DIRS 0 FP_WINDOWS_SDK_UNION_DIR)
+    get_filename_component(FP_WINDOWS_SDK_VERSION
+                           "${FP_WINDOWS_SDK_UNION_DIR}" NAME)
+    set(FP_WINDOWS_SDK_VERSION "${FP_WINDOWS_SDK_VERSION}" CACHE STRING
+        "Windows SDK version used for WinUI metadata and C++/WinRT projection" FORCE)
+  endif()
+endif()
+
+set(FP_CPPWINRT_EXE "" CACHE FILEPATH "Path to cppwinrt.exe")
+if(FP_CPPWINRT_EXE STREQUAL "")
+  set(FP_CPPWINRT_EXE "${FP_CPPWINRT_ROOT}/bin/cppwinrt.exe")
+endif()
 if(NOT EXISTS "${FP_CPPWINRT_EXE}")
   set(FP_CPPWINRT_EXE
-      "C:/Program Files (x86)/Windows Kits/10/bin/${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION}/x64/cppwinrt.exe")
+      "${FP_WINDOWS_KITS_ROOT}/bin/${FP_WINDOWS_SDK_VERSION}/x64/cppwinrt.exe")
 endif()
 set(FP_WINDOWS_SDK_UNION_METADATA
-    "C:/Program Files (x86)/Windows Kits/10/UnionMetadata/${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION}/Windows.winmd")
+    "${FP_WINDOWS_KITS_ROOT}/UnionMetadata/${FP_WINDOWS_SDK_VERSION}/Windows.winmd")
 set(FP_WINDOWS_SDK_CPPWINRT_INCLUDE
-    "C:/Program Files (x86)/Windows Kits/10/Include/${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION}/cppwinrt")
+    "${FP_WINDOWS_KITS_ROOT}/Include/${FP_WINDOWS_SDK_VERSION}/cppwinrt")
+foreach(required_path IN ITEMS
+    "${FP_CPPWINRT_EXE}"
+    "${FP_WINDOWS_SDK_UNION_METADATA}"
+    "${FP_WINDOWS_SDK_CPPWINRT_INCLUDE}")
+  if(NOT EXISTS "${required_path}")
+    message(FATAL_ERROR "Missing WinUI build dependency: ${required_path}")
+  endif()
+endforeach()
 file(GLOB FP_WINAPPSDK_FOUNDATION_WINMDS
   "${FP_WINAPPSDK_FOUNDATION_ROOT}/metadata/*.winmd"
 )
@@ -248,16 +334,8 @@ target_link_libraries(fluent_pinyin_settings PRIVATE
 )
 set_target_properties(fluent_pinyin_settings PROPERTIES OUTPUT_NAME "fluent-pinyin-settings")
 
+fp_copy_app_assets(fluent_pinyin_settings)
 add_custom_command(TARGET fluent_pinyin_settings POST_BUILD
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different
-          "${CMAKE_SOURCE_DIR}/assets/icons/fluent-pinyin.ico"
-          "$<TARGET_FILE_DIR:fluent_pinyin_settings>/fluent-pinyin.ico"
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different
-          "${CMAKE_SOURCE_DIR}/assets/icons/fluent-pinyin-dark.ico"
-          "$<TARGET_FILE_DIR:fluent_pinyin_settings>/fluent-pinyin-dark.ico"
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different
-          "${CMAKE_SOURCE_DIR}/assets/icons/fluent-pinyin-light.ico"
-          "$<TARGET_FILE_DIR:fluent_pinyin_settings>/fluent-pinyin-light.ico"
   COMMAND ${CMAKE_COMMAND} -E copy_if_different
           "${FP_WINAPPSDK_FOUNDATION_ROOT}/runtimes/win-x64/native/Microsoft.WindowsAppRuntime.Bootstrap.dll"
           "$<TARGET_FILE_DIR:fluent_pinyin_settings>/Microsoft.WindowsAppRuntime.Bootstrap.dll"
@@ -267,9 +345,6 @@ add_custom_command(TARGET fluent_pinyin_settings POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_directory
           "${FP_WINAPPSDK_WINUI_ROOT}/runtimes-framework/win-x64/native/Microsoft.UI.Xaml"
           "$<TARGET_FILE_DIR:fluent_pinyin_settings>/Microsoft.UI.Xaml"
-  COMMAND ${CMAKE_COMMAND} -E copy_directory
-          "${CMAKE_SOURCE_DIR}/assets/fonts"
-          "$<TARGET_FILE_DIR:fluent_pinyin_settings>/fonts"
   VERBATIM
 )
 
