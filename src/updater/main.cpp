@@ -6,6 +6,7 @@
 #include <shellapi.h>
 #include <wininet.h>
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -13,6 +14,7 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <vector>
 
 namespace {
 
@@ -237,9 +239,53 @@ std::optional<ReleaseInfo> QueryAppRelease() {
 }
 
 bool LaunchInstaller(const std::filesystem::path& installer_path, std::string_view) {
-  const std::wstring params = L"/i \"" + installer_path.wstring() + L"\" /qn";
+  const std::wstring params = L"/i \"" + installer_path.wstring() + L"\" /passive /norestart";
   return reinterpret_cast<intptr_t>(
              ShellExecuteW(nullptr, L"runas", L"msiexec.exe", params.c_str(), nullptr, SW_SHOWNORMAL)) > 32;
+}
+
+std::wstring NormalizeVersionTag(std::string_view tag) {
+  std::wstring value = Utf8ToWide(tag);
+  if (!value.empty() && (value.front() == L'v' || value.front() == L'V')) {
+    value.erase(value.begin());
+  }
+  return value;
+}
+
+std::vector<int> ParseVersionParts(std::wstring_view value) {
+  std::vector<int> parts;
+  std::wstring current;
+  for (const wchar_t ch : value) {
+    if (ch >= L'0' && ch <= L'9') {
+      current.push_back(ch);
+      continue;
+    }
+    if (!current.empty()) {
+      parts.push_back(std::stoi(current));
+      current.clear();
+    }
+  }
+  if (!current.empty()) {
+    parts.push_back(std::stoi(current));
+  }
+  return parts;
+}
+
+int CompareVersions(std::wstring_view left, std::wstring_view right) {
+  const auto left_parts = ParseVersionParts(left);
+  const auto right_parts = ParseVersionParts(right);
+  const size_t count = std::max(left_parts.size(), right_parts.size());
+  for (size_t index = 0; index < count; ++index) {
+    const int left_value = index < left_parts.size() ? left_parts[index] : 0;
+    const int right_value = index < right_parts.size() ? right_parts[index] : 0;
+    if (left_value < right_value) {
+      return -1;
+    }
+    if (left_value > right_value) {
+      return 1;
+    }
+  }
+  return 0;
 }
 
 int CheckUpdates() {
@@ -250,9 +296,9 @@ int CheckUpdates() {
   }
 
   std::wcout << L"FluentPinyin current: " << fp::kProductVersion << L"\n";
-  std::wcout << L"FluentPinyin latest: " << Utf8ToWide(app->tag) << L"\n";
+  std::wcout << L"FluentPinyin latest: " << NormalizeVersionTag(app->tag) << L"\n";
   std::wcout << L"Installer asset: " << Utf8ToWide(app->asset_url) << L"\n";
-  return 0;
+  return CompareVersions(fp::kProductVersion, NormalizeVersionTag(app->tag)) < 0 ? 2 : 0;
 }
 
 int UpdateApp() {
@@ -264,6 +310,25 @@ int UpdateApp() {
                 L"流畅拼音 更新",
                 MB_OK | MB_ICONWARNING);
     return 1;
+  }
+
+  const std::wstring latest_version = NormalizeVersionTag(release->tag);
+  if (CompareVersions(fp::kProductVersion, latest_version) >= 0) {
+    MessageBoxW(nullptr,
+                L"当前已是最新版本。",
+                L"流畅拼音 更新",
+                MB_OK | MB_ICONINFORMATION);
+    return 0;
+  }
+
+  const std::wstring confirm_message =
+      L"发现新版本 " + latest_version + L"，是否下载安装？";
+  const int confirm = MessageBoxW(nullptr,
+                                  confirm_message.c_str(),
+                                  L"流畅拼音 更新",
+                                  MB_YESNO | MB_ICONQUESTION);
+  if (confirm != IDYES) {
+    return 0;
   }
 
   const auto update_dir = fp::GetFpLocalDataPath() / L"Updates";
@@ -289,7 +354,7 @@ int UpdateApp() {
 
   std::wcout << L"Installer launched: " << target.wstring() << L"\n";
   MessageBoxW(nullptr,
-              L"最新安装包已启动。",
+              L"安装程序已启动。",
               L"流畅拼音 更新",
               MB_OK | MB_ICONINFORMATION);
   return 0;
@@ -312,4 +377,15 @@ int wmain(int argc, wchar_t** argv) {
   }
   PrintUsage();
   return argc == 1 ? 0 : 1;
+}
+
+int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
+  int argc = 0;
+  wchar_t** argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+  if (argv == nullptr) {
+    return wmain(0, nullptr);
+  }
+  const int result = wmain(argc, argv);
+  LocalFree(argv);
+  return result;
 }

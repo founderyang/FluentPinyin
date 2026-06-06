@@ -18,28 +18,28 @@ Requirements:
 
 If WiX asks for an EULA acknowledgement on first use, run:
 
-```powershell
+```text
 wix eula accept wix7
 ```
 
 Prepare local dependencies:
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\prepare-packages.ps1
+```text
+python .\scripts\prepare_packages.py
 python .\scripts\generate-icons.py
 ```
 
 Build locally:
 
-```powershell
+```text
 cmake -S . -B .\build-release -G "Visual Studio 17 2022" -A x64
 cmake --build .\build-release --config Release --parallel
 ```
 
 Create release package:
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-release.ps1
+```text
+python .\scripts\package_release.py
 ```
 
 Generated files are written to `dist\release`:
@@ -55,5 +55,7 @@ The About page update button downloads the latest GitHub Release asset named
 
 ## Third-Party Components
 
-See `third_party/README.md` for bundled component, font, icon, and source
-information.
+FluentPinyin source code is released under the MIT License. See `LICENSE`.
+
+Bundled components, input data, fonts, and icons keep their original licenses.
+See `THIRD_PARTY_NOTICES.md` and `third_party/README.md` before redistribution.

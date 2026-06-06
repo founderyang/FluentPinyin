@@ -5,8 +5,6 @@ dist/
 artifacts/
 out/
 docs/
-install.bat
-uninstall.bat
 .vs/
 .vscode/
 *.user
@@ -34,4 +32,3 @@ schemas/frost/
 schemas/frost/current/
 schemas/frost/staging/
 scripts/capture-candidate.py
-scripts/reinstall-dev.ps1

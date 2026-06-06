@@ -1,6 +1,6 @@
 ﻿cmake_minimum_required(VERSION 3.24)
 
-project(FluentPinyin VERSION 00.00.02 LANGUAGES CXX)
+project(FluentPinyin VERSION 00.00.03 LANGUAGES CXX)
 
 if(NOT WIN32)
   message(FATAL_ERROR "FluentPinyin targets Windows 11 x64 only.")
@@ -263,14 +263,14 @@ add_custom_command(TARGET fluent_pinyin_settings POST_BUILD
   VERBATIM
 )
 
-add_executable(fluent_pinyin_updater
+add_executable(fluent_pinyin_updater WIN32
   src/updater/main.cpp
 )
 
 target_link_libraries(fluent_pinyin_updater PRIVATE fluent_pinyin_common wininet)
 set_target_properties(fluent_pinyin_updater PROPERTIES OUTPUT_NAME "fluent-pinyin-updater")
 
-add_executable(fluent_pinyin_devtools
+add_executable(fluent_pinyin_devtools WIN32
   src/devtools/main.cpp
 )
 

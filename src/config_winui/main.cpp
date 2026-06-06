@@ -348,6 +348,36 @@ std::wstring WindowIconPath() {
   return {};
 }
 
+void EnsureUiFontsLoaded() {
+  static std::atomic_bool loaded = false;
+  bool expected = false;
+  if (!loaded.compare_exchange_strong(expected, true)) {
+    return;
+  }
+
+  const auto font_dir = ModuleDirectory() / L"fonts";
+  constexpr std::array<std::wstring_view, 11> font_files{
+      L"MiSans-Regular.ttf",
+      L"MiSans-Medium.ttf",
+      L"MiSans-Semibold.ttf",
+      L"MiSansTC-Regular.ttf",
+      L"MiSansTC-Medium.ttf",
+      L"MiSansTC-Semibold.ttf",
+      L"MiSansL3-Regular.ttf",
+      L"SourceHanSansSC-Regular.otf",
+      L"SourceHanSansTC-Regular.otf",
+      L"PlangothicP1-Regular.ttf",
+      L"PlangothicP2-Regular.ttf",
+  };
+  for (const auto file : font_files) {
+    const auto path = font_dir / std::wstring(file);
+    std::error_code error;
+    if (std::filesystem::exists(path, error)) {
+      AddFontResourceExW(path.c_str(), FR_PRIVATE, nullptr);
+    }
+  }
+}
+
 std::wstring ReadStringSetting(std::wstring_view key, std::wstring_view default_value = L"") {
   EnsureSettingsCacheLoaded();
   auto& cache = MutableSettingsCache();
@@ -6984,6 +7014,7 @@ int RunWinUiApp() {
 
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+  EnsureUiFontsLoaded();
   if (HasCommandLineSwitch(L"--auto-sync")) {
     return RunAutoSyncCommand();
   }

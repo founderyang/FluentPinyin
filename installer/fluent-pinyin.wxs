@@ -3,11 +3,12 @@
     Name="FluentPinyin"
     Manufacturer="FluentPinyin"
     Version="$(var.ProductVersion)"
+    ProductCode="$(var.ProductCode)"
     UpgradeCode="{9C0DE7C8-10B5-4C23-9DF7-2C23D6B8683D}"
     Scope="perMachine">
     <MajorUpgrade
       AllowSameVersionUpgrades="yes"
-      Schedule="afterInstallInitialize"
+      Schedule="afterInstallValidate"
       DowngradeErrorMessage="A newer version of FluentPinyin is already installed." />
     <MediaTemplate EmbedCab="yes" />
     <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
@@ -28,14 +29,14 @@
       <ComponentGroupRef Id="PayloadComponents" />
     </Feature>
     <CustomAction
-      Id="InstallFonts"
+      Id="PrepareInstall"
       FileRef="DevtoolsExe"
       Execute="deferred"
       Impersonate="yes"
-      ExeCommand='install-fonts "[INSTALLFOLDER]fonts"' />
+      ExeCommand='prepare-install' />
     <CustomAction
       Id="RegisterTsf"
-      Directory="INSTALLFOLDER"
+      Directory="System64Folder"
       Execute="deferred"
       Impersonate="no"
       ExeCommand='[System64Folder]regsvr32.exe /s "[INSTALLFOLDER]fluent-pinyin-tsf.dll"' />
@@ -46,6 +47,13 @@
       Impersonate="yes"
       Return="ignore"
       ExeCommand='activate-session' />
+    <CustomAction
+      Id="FinalizeInstall"
+      FileRef="DevtoolsExe"
+      Execute="deferred"
+      Impersonate="no"
+      Return="ignore"
+      ExeCommand='finalize-install' />
     <CustomAction
       Id="ActivateFallbackInput"
       FileRef="DevtoolsExe"
@@ -66,26 +74,35 @@
       Impersonate="yes"
       ExeCommand='shutdown-core' />
     <CustomAction
+      Id="RestartTextServices"
+      FileRef="DevtoolsExe"
+      Execute="deferred"
+      Impersonate="yes"
+      Return="ignore"
+      ExeCommand='restart-text-services' />
+    <CustomAction
       Id="CleanupInstall"
       FileRef="DevtoolsExe"
       Execute="deferred"
       Impersonate="yes"
-      ExeCommand='cleanup-install --skip-install-dir' />
+      ExeCommand='cleanup-install --skip-install-dir --no-restart-text-services' />
     <CustomAction
       Id="UnregisterTsf"
-      Directory="INSTALLFOLDER"
+      Directory="System64Folder"
       Execute="deferred"
       Impersonate="no"
       ExeCommand='[System64Folder]regsvr32.exe /u /s "[INSTALLFOLDER]fluent-pinyin-tsf.dll"' />
     <InstallExecuteSequence>
-      <Custom Action="CloseSettings" Before="ActivateFallbackInput" Condition="REMOVE=&quot;ALL&quot;" />
-      <Custom Action="ActivateFallbackInput" Before="ShutdownInputCore" Condition="REMOVE=&quot;ALL&quot;" />
-      <Custom Action="ShutdownInputCore" Before="UnregisterTsf" Condition="REMOVE=&quot;ALL&quot;" />
-      <Custom Action="UnregisterTsf" Before="RemoveFiles" Condition="REMOVE=&quot;ALL&quot;" />
-      <Custom Action="CleanupInstall" After="UnregisterTsf" Condition="REMOVE=&quot;ALL&quot;" />
-      <Custom Action="InstallFonts" After="InstallFiles" Condition="NOT REMOVE" />
-      <Custom Action="RegisterTsf" After="InstallFonts" Condition="NOT REMOVE" />
+      <Custom Action="CloseSettings" Before="ActivateFallbackInput" Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+      <Custom Action="ActivateFallbackInput" Before="ShutdownInputCore" Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+      <Custom Action="ShutdownInputCore" Before="UnregisterTsf" Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+      <Custom Action="UnregisterTsf" Before="RestartTextServices" Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+      <Custom Action="RestartTextServices" Before="CleanupInstall" Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+      <Custom Action="CleanupInstall" Before="RemoveFiles" Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+      <Custom Action="PrepareInstall" After="InstallFiles" Condition="NOT REMOVE" />
+      <Custom Action="RegisterTsf" After="PrepareInstall" Condition="NOT REMOVE" />
       <Custom Action="ActivateTsf" After="RegisterTsf" Condition="NOT REMOVE" />
+      <Custom Action="FinalizeInstall" After="PublishProduct" Condition="NOT REMOVE" />
     </InstallExecuteSequence>
   </Package>
 </Wix>

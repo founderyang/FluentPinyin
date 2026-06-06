@@ -1539,8 +1539,7 @@ std::wstring TipLanguageProfileKey() {
 }
 
 std::filesystem::path ProfileIconPathForSystemTheme() {
-  const auto icon = ModuleDirectory() / (SystemUsesLightTheme() ? L"fluent-pinyin-light.ico"
-                                                               : L"fluent-pinyin-dark.ico");
+  const auto icon = ModuleDirectory() / L"fluent-pinyin.ico";
   if (GetFileAttributesW(icon.c_str()) != INVALID_FILE_ATTRIBUTES) {
     return icon;
   }
@@ -5041,6 +5040,65 @@ RECT TrayIconTargetRectHr(int units_width,
               std::min(render_height, target_top + target_height)};
 }
 
+bool IsSongtiFace(std::wstring_view face) {
+  return TextFaceMatchesFamilyName(face, L"SimSun") ||
+         TextFaceMatchesFamilyName(face, L"NSimSun") ||
+         TextFaceMatchesFamilyName(face, L"宋体") ||
+         TextFaceMatchesFamilyName(face, L"新宋体");
+}
+
+HFONT CreateTrayStatusFontForPixels(int pixel_height, const wchar_t* family) {
+  return CreateFontW(pixel_height,
+                     0,
+                     0,
+                     0,
+                     FW_NORMAL,
+                     FALSE,
+                     FALSE,
+                     FALSE,
+                     DEFAULT_CHARSET,
+                     OUT_DEFAULT_PRECIS,
+                     CLIP_DEFAULT_PRECIS,
+                     ANTIALIASED_QUALITY,
+                     DEFAULT_PITCH | FF_DONTCARE,
+                     family);
+}
+
+HFONT SelectTrayStatusFont(HDC dc, int pixel_height, const wchar_t* text, HGDIOBJ* old_font) {
+  if (old_font == nullptr) {
+    return nullptr;
+  }
+  *old_font = nullptr;
+  EnsureUiFontsLoaded();
+
+  constexpr std::array<const wchar_t*, 3> kFamilies{
+      L"MiSans",
+      L"Microsoft YaHei UI",
+      L"Microsoft YaHei",
+  };
+  for (const wchar_t* family : kFamilies) {
+    HFONT font = CreateTrayStatusFontForPixels(pixel_height, family);
+    if (font == nullptr) {
+      continue;
+    }
+    HGDIOBJ selected_old_font = SelectObject(dc, font);
+    const std::wstring face = CurrentTextFace(dc);
+    const bool accepted =
+        !IsSongtiFace(face) && FontHasText(dc, text) &&
+        (TextFaceMatchesFamily(face, family) || TextFaceMatchesFamilyName(face, family));
+    if (accepted) {
+      *old_font = selected_old_font;
+      return font;
+    }
+    if (selected_old_font != nullptr) {
+      SelectObject(dc, selected_old_font);
+    }
+    DeleteObject(font);
+  }
+
+  return nullptr;
+}
+
 HICON CreateTrayInputIcon(TrayInputIconMode mode) {
   constexpr int kFallbackSize = 16;
   const int width =
@@ -5225,25 +5283,18 @@ HICON CreateTrayInputIcon(TrayInputIconMode mode) {
     }
   } else {
     const int font_pixel_height = -render_height;
-    font = CreateFontW(font_pixel_height,
-                       0,
-                       0,
-                       0,
-                       FW_NORMAL,
-                       FALSE,
-                       FALSE,
-                       FALSE,
-                       DEFAULT_CHARSET,
-                       OUT_DEFAULT_PRECIS,
-                       CLIP_DEFAULT_PRECIS,
-                       ANTIALIASED_QUALITY,
-                       DEFAULT_PITCH | FF_DONTCARE,
-                       UiFontFamily(false));
-    if (font != nullptr) {
-      old_font = SelectObject(memory_dc, font);
+    const wchar_t* text = mode == TrayInputIconMode::kEnglish ? L"\u82F1" : L"\u4E2D";
+    font = SelectTrayStatusFont(memory_dc, font_pixel_height, text, &old_font);
+    if (font == nullptr) {
+      if (old_bitmap != nullptr) {
+        SelectObject(memory_dc, old_bitmap);
+      }
+      DeleteObject(color_bitmap);
+      DeleteDC(memory_dc);
+      ReleaseDC(nullptr, screen_dc);
+      return nullptr;
     }
 
-    const wchar_t* text = mode == TrayInputIconMode::kEnglish ? L"\u82F1" : L"\u4E2D";
     SetBkMode(memory_dc, TRANSPARENT);
     SetTextColor(memory_dc, RGB(255, 255, 255));
     RECT text_rect{-render_width,

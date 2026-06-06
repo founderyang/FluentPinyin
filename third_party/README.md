@@ -1,7 +1,7 @@
 # Third-Party Components and Resources
 
 This repository does not commit downloaded binary packages, fonts, bundled
-input data, or release artifacts. Run `scripts/prepare-packages.ps1` locally to
+input data, or release artifacts. Run `scripts/prepare_packages.py` locally to
 download the resources required for building an installer.
 
 ## Open-Source Components
@@ -15,6 +15,9 @@ download the resources required for building an installer.
 - Plangothic Project: https://github.com/Fitzgerald-Porthmouth-Koenigsegg/Plangothic_Project
 - Wanxiang Pinyin 15.11.1: https://github.com/amzxyz/rime-wanxiang
 - RIME-LMDG LTS: https://github.com/amzxyz/RIME-LMDG
+
+See `../THIRD_PARTY_NOTICES.md` for license identifiers, attribution, and
+redistribution notes.
 
 ## Bundled Resources
 

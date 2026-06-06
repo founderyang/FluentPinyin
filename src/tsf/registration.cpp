@@ -85,9 +85,7 @@ bool SystemUsesLightTheme() {
 
 std::wstring ProfileIconPath(const std::wstring& module_path) {
   const auto module = std::filesystem::path(module_path);
-  const auto icon = module.parent_path() /
-                    (SystemUsesLightTheme() ? L"fluent-pinyin-light.ico"
-                                            : L"fluent-pinyin-dark.ico");
+  const auto icon = module.parent_path() / L"fluent-pinyin.ico";
   if (GetFileAttributesW(icon.c_str()) != INVALID_FILE_ATTRIBUTES) {
     return icon.wstring();
   }
