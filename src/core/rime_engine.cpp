@@ -609,13 +609,17 @@ struct InputSchemaSelection {
   bool pro = false;
 };
 
+bool MainTranslatorUserDictEnabled(const InputSchemaSelection& selection) noexcept {
+  return !selection.pro;
+}
+
 void AppendMainTranslatorUserDictFingerprint(InputSchemaSelection* selection) {
   if (selection == nullptr) {
     return;
   }
   selection->setting_fingerprint +=
       "\nmain_translator_user_dict_enabled=" +
-      std::string(selection->main_translator_user_dict_enabled ? "1" : "0") + "\n";
+      std::string(MainTranslatorUserDictEnabled(*selection) ? "1" : "0") + "\n";
 }
 
 InputSchemaSelection CurrentInputSchemaSelection() {
@@ -1092,7 +1096,7 @@ std::string FluentPinyinWanxiangCustomPatch(const InputSchemaSelection& selectio
   }
   patch +=
       "  translator/enable_user_dict: " +
-      std::string(selection.main_translator_user_dict_enabled ? "true" : "false") + "\n"
+      std::string(MainTranslatorUserDictEnabled(selection) ? "true" : "false") + "\n"
       "  translator/enable_correction: " +
       std::string(selection.auto_pinyin_correction ? "true" : "false") + "\n"
       "  wanxiang_english/enable_user_dict: false\n"
