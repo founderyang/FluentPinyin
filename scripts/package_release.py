@@ -102,6 +102,7 @@ RIME_DATA_EXCLUDED_NAMES = {
     "CHANGELOG.md",
     "release-please-config.json",
 }
+WINDOWS_APP_RUNTIME_INSTALLER = "windowsappruntimeinstall-x64.exe"
 
 
 def resolve_tool(name, fallbacks):
@@ -189,6 +190,16 @@ def copy_directory_clean(source, destination):
     if destination.exists():
         shutil.rmtree(destination)
     shutil.copytree(source, destination)
+
+
+def copy_windows_app_runtime_installer(payload_dir):
+    source = ROOT / "packages" / "downloads" / WINDOWS_APP_RUNTIME_INSTALLER
+    if not source.exists():
+        raise RuntimeError(
+            f"Missing Windows App Runtime installer: {source}. "
+            "Run scripts/prepare_packages.py before packaging."
+        )
+    shutil.copy2(source, payload_dir / WINDOWS_APP_RUNTIME_INSTALLER)
 
 
 def should_copy_rime_data(path):
@@ -394,6 +405,8 @@ def main():
     winui_runtime = bin_dir / "Microsoft.UI.Xaml"
     if winui_runtime.exists():
         copy_directory_clean(winui_runtime, payload_dir / "Microsoft.UI.Xaml")
+
+    copy_windows_app_runtime_installer(payload_dir)
 
     (payload_dir / "README.txt").write_text(
         f"FluentPinyin {product_version}\n\n"

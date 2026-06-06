@@ -109,10 +109,15 @@ constexpr double kSettingsDialogListHeight = 160.0;
 constexpr double kSyncProviderDialogFormViewportHeight = 220.0;
 constexpr std::wstring_view kToolbarVisibleSetting = L"toolbar_visible_v2";
 constexpr std::wstring_view kLegacyToolbarVisibleSetting = L"toolbar_visible";
+constexpr std::wstring_view kWindowsAppRuntimeInstallerName =
+    L"windowsappruntimeinstall-x64.exe";
+constexpr int kMinSettingsWindowWidthDips = 860;
+constexpr int kMinSettingsWindowHeightDips = 480;
 
 WNDPROC g_settings_window_proc = nullptr;
 HWND g_settings_window_hwnd = nullptr;
-SizeInt32 g_min_settings_window_size{860, 480};
+SizeInt32 g_min_settings_window_size_dips{kMinSettingsWindowWidthDips,
+                                          kMinSettingsWindowHeightDips};
 std::vector<ToggleSwitch> g_toolbar_visible_switches;
 bool g_syncing_toolbar_visible_switches = false;
 
@@ -1755,6 +1760,21 @@ void RunTool(std::wstring_view exe_name, std::wstring_view parameters = L"") {
                 SW_SHOWNORMAL);
 }
 
+void ShowWindowsAppRuntimeMissingMessage(HRESULT result) {
+  const auto installer = ModuleDirectory() / std::wstring(kWindowsAppRuntimeInstallerName);
+  std::wstring message =
+      L"无法启动设置面板，因为系统缺少 Windows App Runtime 1.8。\n\n"
+      L"请重新运行 FluentPinyin 安装包修复运行时依赖。";
+  std::error_code error;
+  if (std::filesystem::exists(installer, error)) {
+    message += L"\n\n也可以运行安装目录中的 windowsappruntimeinstall-x64.exe 后再打开设置。";
+  }
+  wchar_t code[32]{};
+  swprintf_s(code, L"\n\n错误代码：0x%08lX", static_cast<unsigned long>(result));
+  message += code;
+  MessageBoxW(nullptr, message.c_str(), L"流畅拼音 设置", MB_ICONERROR);
+}
+
 void RequestToolbarHostRefresh() {
   const UINT message = RegisterWindowMessageW(std::wstring(fp::kToolbarRefreshMessageName).c_str());
   if (message != 0) {
@@ -1889,6 +1909,22 @@ SizeInt32 DefaultWindowSize(Window const& window) {
   return SizeInt32{width, height};
 }
 
+SizeInt32 ScaleSizeForDpi(SizeInt32 const& size, UINT dpi) {
+  if (dpi == 0) {
+    dpi = GetDpiForSystem();
+  }
+  if (dpi == 0) {
+    dpi = 96;
+  }
+  return SizeInt32{MulDiv(size.Width, static_cast<int>(dpi), 96),
+                   MulDiv(size.Height, static_cast<int>(dpi), 96)};
+}
+
+SizeInt32 SettingsMinimumWindowSize(HWND hwnd) {
+  const UINT dpi = hwnd != nullptr ? GetDpiForWindow(hwnd) : GetDpiForSystem();
+  return ScaleSizeForDpi(g_min_settings_window_size_dips, dpi);
+}
+
 LRESULT CALLBACK SettingsWindowProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
   const UINT toolbar_refresh_message =
       RegisterWindowMessageW(std::wstring(fp::kToolbarRefreshMessageName).c_str());
@@ -1910,9 +1946,23 @@ LRESULT CALLBACK SettingsWindowProc(HWND hwnd, UINT message, WPARAM wparam, LPAR
   if (message == WM_GETMINMAXINFO) {
     auto info = reinterpret_cast<MINMAXINFO*>(lparam);
     if (info != nullptr) {
-      info->ptMinTrackSize.x = g_min_settings_window_size.Width;
-      info->ptMinTrackSize.y = g_min_settings_window_size.Height;
+      const SizeInt32 min_size = SettingsMinimumWindowSize(hwnd);
+      info->ptMinTrackSize.x = min_size.Width;
+      info->ptMinTrackSize.y = min_size.Height;
     }
+  }
+  if (message == WM_DPICHANGED) {
+    const auto* suggested = reinterpret_cast<const RECT*>(lparam);
+    if (suggested != nullptr) {
+      SetWindowPos(hwnd,
+                   nullptr,
+                   suggested->left,
+                   suggested->top,
+                   suggested->right - suggested->left,
+                   suggested->bottom - suggested->top,
+                   SWP_NOACTIVATE | SWP_NOZORDER);
+    }
+    return 0;
   }
   if (g_settings_window_proc != nullptr) {
     return CallWindowProcW(g_settings_window_proc, hwnd, message, wparam, lparam);
@@ -1922,7 +1972,7 @@ LRESULT CALLBACK SettingsWindowProc(HWND hwnd, UINT message, WPARAM wparam, LPAR
 
 void ApplyMinimumWindowSize(Window const& window, SizeInt32 const& min_size) {
   const HWND hwnd = GetWindowHandle(window);
-  g_min_settings_window_size = min_size;
+  g_min_settings_window_size_dips = min_size;
   if (hwnd == nullptr || g_settings_window_proc != nullptr) {
     return;
   }
@@ -4205,7 +4255,8 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
     ApplyTitleBarColors(window_);
     ApplyDwmWindowFrame(window_);
     const auto default_window_size = DefaultWindowSize(window_);
-    ApplyMinimumWindowSize(window_, default_window_size);
+    ApplyMinimumWindowSize(
+        window_, SizeInt32{kMinSettingsWindowWidthDips, kMinSettingsWindowHeightDips});
     window_.AppWindow().Resize(default_window_size);
     CenterWindowOnMonitor(window_);
   }
@@ -6374,7 +6425,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
     page.Children().Append(SectionHeader(L"进阶输入", true));
     page.Children().Append(SettingRowWithIcon(L"人名输入",
                                               L"启用人名候选偏好。",
-                                              SettingSwitch(L"name_input", true),
+                                              RimeConfigSwitch(L"name_input", true),
                                               TextIcon(L"名"),
                                               L"已保存"));
     page.Children().Append(SectionHeader(L"基础模式"));
@@ -6928,12 +6979,9 @@ int RunWinUiApp() {
     min_version.Build = 2252;
     min_version.Revision = 0;
     const HRESULT bootstrap_result =
-        MddBootstrapInitialize2(0x00010008, nullptr, min_version, MddBootstrapInitializeOptions_OnNoMatch_ShowUI);
+        MddBootstrapInitialize2(0x00010008, nullptr, min_version, MddBootstrapInitializeOptions_None);
     if (FAILED(bootstrap_result)) {
-      MessageBoxW(nullptr,
-                  L"无法初始化 Windows App Runtime 1.8，设置面板无法启动。",
-                  L"流畅拼音 设置",
-                  MB_ICONERROR);
+      ShowWindowsAppRuntimeMissingMessage(bootstrap_result);
       return static_cast<int>(bootstrap_result);
     }
 

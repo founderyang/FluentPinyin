@@ -35,6 +35,12 @@
       Impersonate="yes"
       ExeCommand='prepare-install' />
     <CustomAction
+      Id="EnsureWinAppRuntime"
+      FileRef="DevtoolsExe"
+      Execute="deferred"
+      Impersonate="no"
+      ExeCommand='ensure-winapp-runtime' />
+    <CustomAction
       Id="RegisterTsf"
       Directory="System64Folder"
       Execute="deferred"
@@ -107,7 +113,8 @@
       <Custom Action="RestartTextServices" Before="CleanupInstall" Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
       <Custom Action="CleanupInstall" Before="RemoveFiles" Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
       <Custom Action="PrepareInstall" After="InstallFiles" Condition="NOT REMOVE" />
-      <Custom Action="RegisterTsf" After="PrepareInstall" Condition="NOT REMOVE" />
+      <Custom Action="EnsureWinAppRuntime" After="PrepareInstall" Condition="NOT REMOVE" />
+      <Custom Action="RegisterTsf" After="EnsureWinAppRuntime" Condition="NOT REMOVE" />
       <Custom Action="ActivateTsf" After="RegisterTsf" Condition="NOT REMOVE" />
       <Custom Action="FinalizeInstall" After="PublishProduct" Condition="NOT REMOVE" />
       <Custom Action="StartRimeWarmup" After="FinalizeInstall" Condition="NOT REMOVE" />

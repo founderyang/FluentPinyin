@@ -381,7 +381,7 @@ if(BUILD_TESTING)
   add_executable(core_unit
     tests/core_unit.cpp
   )
-  target_link_libraries(core_unit PRIVATE fluent_pinyin_common)
+  target_link_libraries(core_unit PRIVATE fluent_pinyin_common fluent_pinyin_core)
 
   add_executable(sync_package_integrity
     tests/sync_package_integrity.cpp

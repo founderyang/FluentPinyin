@@ -676,19 +676,27 @@ void EnsureUiFontsLoaded(UiFontLoadSet load_set = UiFontLoadSet::kBase) {
 }
 
 UINT DpiForWindow(HWND window) {
-  UINT dpi = 0;
-  if (window != nullptr) {
-    dpi = std::max(dpi, GetDpiForWindow(window));
+  if (window != nullptr && IsWindow(window)) {
+    const UINT dpi = GetDpiForWindow(window);
+    if (dpi != 0) {
+      return dpi;
+    }
   }
 
   HWND foreground = GetForegroundWindow();
-  if (foreground != nullptr) {
-    dpi = std::max(dpi, GetDpiForWindow(foreground));
+  if (foreground != nullptr && IsWindow(foreground)) {
+    const UINT dpi = GetDpiForWindow(foreground);
+    if (dpi != 0) {
+      return dpi;
+    }
   }
 
   HWND desktop = GetDesktopWindow();
   if (desktop != nullptr) {
-    dpi = std::max(dpi, GetDpiForWindow(desktop));
+    const UINT dpi = GetDpiForWindow(desktop);
+    if (dpi != 0) {
+      return dpi;
+    }
   }
 
   DWORD applied_dpi = 0;
@@ -701,11 +709,11 @@ UINT DpiForWindow(HWND window) {
                    &applied_dpi,
                    &applied_dpi_size) == ERROR_SUCCESS &&
       applied_dpi != 0) {
-    dpi = std::max(dpi, static_cast<UINT>(applied_dpi));
+    return static_cast<UINT>(applied_dpi);
   }
 
-  dpi = std::max(dpi, GetDpiForSystem());
-  return dpi != 0 ? dpi : 96;
+  const UINT system_dpi = GetDpiForSystem();
+  return system_dpi != 0 ? system_dpi : 96;
 }
 
 int ScaleForDpi(int value, UINT dpi) {
@@ -719,6 +727,20 @@ int ScaleHalfDipForDpi(int half_dips, UINT dpi) {
 int HairlineForDpi(UINT dpi) {
   (void)dpi;
   return 1;
+}
+
+void ApplySuggestedDpiRect(HWND window, LPARAM lparam, UINT flags = 0) {
+  const auto* suggested = reinterpret_cast<const RECT*>(lparam);
+  if (window == nullptr || suggested == nullptr) {
+    return;
+  }
+  SetWindowPos(window,
+               nullptr,
+               suggested->left,
+               suggested->top,
+               suggested->right - suggested->left,
+               suggested->bottom - suggested->top,
+               SWP_NOACTIVATE | SWP_NOZORDER | flags);
 }
 
 int StatusTipDetailIconSize(UINT dpi) {
@@ -737,6 +759,56 @@ UINT ReadableDpiForWindow(HWND window) {
     dpi = 240;
   }
   return dpi;
+}
+
+UINT EffectiveDpiForMonitor(HMONITOR monitor) {
+  if (monitor != nullptr) {
+    using GetDpiForMonitorFn = HRESULT(WINAPI*)(HMONITOR, int, UINT*, UINT*);
+    HMODULE shcore = LoadLibraryW(L"shcore.dll");
+    if (shcore != nullptr) {
+      auto get_dpi_for_monitor = reinterpret_cast<GetDpiForMonitorFn>(
+          GetProcAddress(shcore, "GetDpiForMonitor"));
+      if (get_dpi_for_monitor != nullptr) {
+        UINT dpi_x = 0;
+        UINT dpi_y = 0;
+        constexpr int kMdtEffectiveDpi = 0;
+        if (SUCCEEDED(get_dpi_for_monitor(monitor, kMdtEffectiveDpi, &dpi_x, &dpi_y)) &&
+            dpi_x != 0) {
+          FreeLibrary(shcore);
+          return dpi_x;
+        }
+      }
+      FreeLibrary(shcore);
+    }
+  }
+  return DpiForWindow(nullptr);
+}
+
+UINT ReadableDpi(UINT dpi) {
+  if (dpi < 96) {
+    dpi = 96;
+  }
+  if (dpi > 240) {
+    dpi = 240;
+  }
+  return dpi;
+}
+
+UINT ReadableDpiForPoint(POINT point) {
+  const HMONITOR monitor = MonitorFromPoint(point, MONITOR_DEFAULTTONEAREST);
+  return ReadableDpi(EffectiveDpiForMonitor(monitor));
+}
+
+RECT WorkAreaForPoint(POINT point) {
+  MONITORINFO monitor_info{};
+  monitor_info.cbSize = sizeof(monitor_info);
+  const HMONITOR monitor = MonitorFromPoint(point, MONITOR_DEFAULTTONEAREST);
+  if (GetMonitorInfoW(monitor, &monitor_info)) {
+    return monitor_info.rcWork;
+  }
+  RECT work_area{};
+  SystemParametersInfoW(SPI_GETWORKAREA, 0, &work_area, 0);
+  return work_area;
 }
 
 HFONT CreateUiFontForDpi(int point_size,
@@ -3923,6 +3995,7 @@ struct CandidateLayoutCacheEntry {
   bool traditional = false;
   size_t candidate_count = 0;
   size_t candidate_hash = 0;
+  RECT work_area{};
   CandidateLayoutMetrics layout;
 };
 
@@ -4149,7 +4222,8 @@ CandidateLayoutMetrics CalculateCandidateLayout(HWND window,
                                                 int compact_count,
                                                 int candidate_font_point_size,
                                                 bool traditional,
-                                                const std::vector<fp::core::RimeCandidateView>& candidates) {
+                                                const std::vector<fp::core::RimeCandidateView>& candidates,
+                                                const RECT* work_area_override = nullptr) {
   auto s = [dpi](int value) { return ScaleForDpi(value, dpi); };
   const int candidate_limit =
       expanded ? ExpandedCandidatePageSize(horizontal, compact_count)
@@ -4163,7 +4237,19 @@ CandidateLayoutMetrics CalculateCandidateLayout(HWND window,
   layout.candidate_top = horizontal ? s(2) : s(kVerticalCandidateTopDips);
 
   RECT work_area{};
-  SystemParametersInfoW(SPI_GETWORKAREA, 0, &work_area, 0);
+  if (work_area_override != nullptr) {
+    work_area = *work_area_override;
+  } else if (window != nullptr) {
+    RECT window_rect{};
+    if (GetWindowRect(window, &window_rect)) {
+      const POINT window_center{window_rect.left + (window_rect.right - window_rect.left) / 2,
+                                window_rect.top + (window_rect.bottom - window_rect.top) / 2};
+      work_area = WorkAreaForPoint(window_center);
+    }
+  }
+  if (work_area.right <= work_area.left || work_area.bottom <= work_area.top) {
+    SystemParametersInfoW(SPI_GETWORKAREA, 0, &work_area, 0);
+  }
   const int work_width = static_cast<int>(work_area.right - work_area.left);
   const int width_cap =
       expanded ? s(kCandidateWindowExpandedMaxWidth) : s(kCandidateWindowCompactMaxWidth);
@@ -5119,6 +5205,13 @@ CandidateLayoutMetrics CandidateLayoutForWindow(
     *dpi_out = dpi;
   }
   const size_t candidate_hash = HashCandidateLayoutInputs(candidates);
+  RECT cache_work_area = WorkAreaForPoint(POINT{0, 0});
+  RECT window_rect{};
+  if (GetWindowRect(window, &window_rect)) {
+    const POINT window_center{window_rect.left + (window_rect.right - window_rect.left) / 2,
+                              window_rect.top + (window_rect.bottom - window_rect.top) / 2};
+    cache_work_area = WorkAreaForPoint(window_center);
+  }
   if (g_candidate_layout_cache.valid &&
       g_candidate_layout_cache.window == window &&
       g_candidate_layout_cache.dpi == dpi &&
@@ -5129,7 +5222,8 @@ CandidateLayoutMetrics CandidateLayoutForWindow(
       g_candidate_layout_cache.candidate_font_family == candidate_font_family &&
       g_candidate_layout_cache.traditional == !simplified_charset &&
       g_candidate_layout_cache.candidate_count == candidates.size() &&
-      g_candidate_layout_cache.candidate_hash == candidate_hash) {
+      g_candidate_layout_cache.candidate_hash == candidate_hash &&
+      EqualRect(&g_candidate_layout_cache.work_area, &cache_work_area)) {
     return g_candidate_layout_cache.layout;
   }
 
@@ -5177,6 +5271,93 @@ CandidateLayoutMetrics CandidateLayoutForWindow(
   g_candidate_layout_cache.traditional = !simplified_charset;
   g_candidate_layout_cache.candidate_count = candidates.size();
   g_candidate_layout_cache.candidate_hash = candidate_hash;
+  g_candidate_layout_cache.work_area = cache_work_area;
+  g_candidate_layout_cache.layout = layout;
+  return layout;
+}
+
+CandidateLayoutMetrics CandidateLayoutForWindowAtDpi(
+    HWND window,
+    UINT dpi,
+    const RECT& work_area,
+    bool horizontal,
+    bool expanded,
+    int compact_count,
+    int candidate_font_point_size,
+    bool simplified_charset,
+    CandidateFontFamily candidate_font_family,
+    const std::vector<fp::core::RimeCandidateView>& candidates,
+    UINT* dpi_out = nullptr) {
+  dpi = ReadableDpi(dpi);
+  if (dpi_out != nullptr) {
+    *dpi_out = dpi;
+  }
+  if (window == nullptr) {
+    return {};
+  }
+
+  const size_t candidate_hash = HashCandidateLayoutInputs(candidates);
+  if (g_candidate_layout_cache.valid &&
+      g_candidate_layout_cache.window == window &&
+      g_candidate_layout_cache.dpi == dpi &&
+      g_candidate_layout_cache.horizontal == horizontal &&
+      g_candidate_layout_cache.expanded == expanded &&
+      g_candidate_layout_cache.compact_count == compact_count &&
+      g_candidate_layout_cache.candidate_font_point_size == candidate_font_point_size &&
+      g_candidate_layout_cache.candidate_font_family == candidate_font_family &&
+      g_candidate_layout_cache.traditional == !simplified_charset &&
+      g_candidate_layout_cache.candidate_count == candidates.size() &&
+      g_candidate_layout_cache.candidate_hash == candidate_hash &&
+      EqualRect(&g_candidate_layout_cache.work_area, &work_area)) {
+    return g_candidate_layout_cache.layout;
+  }
+
+  HWND dc_window = window;
+  HDC dc = GetDC(window);
+  if (dc == nullptr) {
+    dc_window = nullptr;
+    dc = GetDC(nullptr);
+  }
+  if (dc == nullptr) {
+    return {};
+  }
+
+  HFONT font = CreateUiFontForDpi(
+      candidate_font_point_size,
+      dpi,
+      FW_NORMAL,
+      CandidateUiFontFamily(candidate_font_family, !simplified_charset));
+  HGDIOBJ old_font = font != nullptr ? SelectObject(dc, font) : nullptr;
+  CandidateLayoutMetrics layout = CalculateCandidateLayout(window,
+                                                           dc,
+                                                           dpi,
+                                                           horizontal,
+                                                           expanded,
+                                                           compact_count,
+                                                           candidate_font_point_size,
+                                                           !simplified_charset,
+                                                           candidates,
+                                                           &work_area);
+  if (old_font != nullptr) {
+    SelectObject(dc, old_font);
+  }
+  if (font != nullptr) {
+    DeleteObject(font);
+  }
+  ReleaseDC(dc_window, dc);
+
+  g_candidate_layout_cache.valid = true;
+  g_candidate_layout_cache.window = window;
+  g_candidate_layout_cache.dpi = dpi;
+  g_candidate_layout_cache.horizontal = horizontal;
+  g_candidate_layout_cache.expanded = expanded;
+  g_candidate_layout_cache.compact_count = compact_count;
+  g_candidate_layout_cache.candidate_font_point_size = candidate_font_point_size;
+  g_candidate_layout_cache.candidate_font_family = candidate_font_family;
+  g_candidate_layout_cache.traditional = !simplified_charset;
+  g_candidate_layout_cache.candidate_count = candidates.size();
+  g_candidate_layout_cache.candidate_hash = candidate_hash;
+  g_candidate_layout_cache.work_area = work_area;
   g_candidate_layout_cache.layout = layout;
   return layout;
 }
@@ -5247,15 +5428,17 @@ size_t CalculateVisibleCandidateCountForWindow(
     bool simplified_charset,
     CandidateFontFamily candidate_font_family,
     const std::vector<fp::core::RimeCandidateView>& candidates) {
-  return SelectableCandidateIndicesForWindow(window,
-                                             horizontal,
-                                             expanded,
-                                             compact_count,
-                                             candidate_font_point_size,
-                                             simplified_charset,
-                                             candidate_font_family,
-                                             candidates)
-      .size();
+  CandidateLayoutMetrics layout;
+  const auto selectable_indices = SelectableCandidateIndicesForWindow(window,
+                                                                      horizontal,
+                                                                      expanded,
+                                                                      compact_count,
+                                                                      candidate_font_point_size,
+                                                                      simplified_charset,
+                                                                      candidate_font_family,
+                                                                      candidates,
+                                                                      &layout);
+  return selectable_indices.size();
 }
 
 enum class TrayInputIconMode {
@@ -10357,6 +10540,14 @@ LRESULT TsfTextService::ContextMenuWindowProc(HWND window,
   switch (message) {
     case WM_MOUSEACTIVATE:
       return MA_NOACTIVATE;
+    case WM_DPICHANGED:
+      ApplySuggestedDpiRect(window, lparam);
+      if (hovered_context_menu_row_ >= 0 &&
+          ContextMenuRowHasSubmenu(hovered_context_menu_row_, context_menu_toolbar_mode_)) {
+        ShowContextSubmenu(hovered_context_menu_row_);
+      }
+      RenderContextMenuLayeredWindow();
+      return 0;
     case WM_MOUSEMOVE: {
       const int x = static_cast<short>(LOWORD(lparam));
       const int y = static_cast<short>(HIWORD(lparam));
@@ -10567,6 +10758,10 @@ LRESULT TsfTextService::ContextSubmenuWindowProc(HWND window,
   switch (message) {
     case WM_MOUSEACTIVATE:
       return MA_NOACTIVATE;
+    case WM_DPICHANGED:
+      ApplySuggestedDpiRect(window, lparam);
+      RenderContextSubmenuLayeredWindow();
+      return 0;
     case WM_MOUSEMOVE: {
       const int x = static_cast<short>(LOWORD(lparam));
       const int y = static_cast<short>(HIWORD(lparam));
@@ -11524,6 +11719,13 @@ LRESULT TsfTextService::ToolbarTooltipWindowProc(HWND window,
   switch (message) {
     case WM_MOUSEACTIVATE:
       return MA_NOACTIVATE;
+    case WM_DPICHANGED:
+      ApplySuggestedDpiRect(window, lparam);
+      if (toolbar_tooltip_item_ != kToolbarItemNone) {
+        PositionToolbarTooltip(toolbar_tooltip_item_);
+      }
+      RenderToolbarTooltipLayeredWindow();
+      return 0;
     case WM_ERASEBKGND:
       return 1;
     case WM_PAINT: {
@@ -11590,15 +11792,17 @@ LRESULT TsfTextService::ToolbarWindowProc(HWND window,
     case WM_MOUSEACTIVATE:
       return MA_NOACTIVATE;
     case WM_DPICHANGED: {
-      const auto* suggested = reinterpret_cast<const RECT*>(lparam);
-      if (suggested != nullptr) {
-        SetWindowPos(window,
-                     nullptr,
-                     suggested->left,
-                     suggested->top,
-                     suggested->right - suggested->left,
-                     suggested->bottom - suggested->top,
-                     SWP_NOACTIVATE | SWP_NOZORDER);
+      ApplySuggestedDpiRect(window, lparam);
+      if (toolbar_window_ == window) {
+        RECT rect{};
+        if (GetWindowRect(window, &rect)) {
+          toolbar_position_ = {rect.left, rect.top};
+          has_toolbar_position_ = true;
+        }
+        PositionToolbarWindowKeepingCenter(IsWindowVisible(window) != FALSE);
+        if (toolbar_tooltip_item_ != kToolbarItemNone) {
+          PositionToolbarTooltip(toolbar_tooltip_item_);
+        }
       }
       RenderToolbarLayeredWindow();
       return 0;
@@ -11954,10 +12158,12 @@ void TsfTextService::ShowCandidateWindow(ITfContext* context) {
   const bool previous_horizontal_candidate_layout = horizontal_candidate_layout_;
   const int previous_compact_candidate_count = compact_candidate_count_;
   const int previous_candidate_font_size_level = candidate_font_size_level_;
+  const std::wstring previous_candidate_font_family = candidate_font_family_;
   ReloadCandidateWindowVisualSettings();
   if (previous_horizontal_candidate_layout != horizontal_candidate_layout_ ||
       previous_compact_candidate_count != compact_candidate_count_ ||
-      previous_candidate_font_size_level != candidate_font_size_level_) {
+      previous_candidate_font_size_level != candidate_font_size_level_ ||
+      previous_candidate_font_family != candidate_font_family_) {
     InvalidateCandidateLayoutCache();
     last_candidate_query_input_.clear();
     last_candidate_query_page_index_ = -1;
@@ -12025,17 +12231,22 @@ void TsfTextService::ShowCandidateWindow(ITfContext* context) {
     }
   }
 
-  UINT dpi = 96;
+  POINT caret = CandidateWindowAnchor(context);
+  const UINT anchor_dpi = ReadableDpiForPoint(caret);
+  const RECT work_area = WorkAreaForPoint(caret);
+  UINT dpi = anchor_dpi;
   CandidateLayoutMetrics layout =
-      CandidateLayoutForWindow(candidate_window_,
-                               horizontal_candidate_layout_,
-                               expanded_candidate_window_,
-                               compact_candidate_count_,
-                               CandidateFontPointSize(),
-                               simplified_charset_,
-                               CandidateFontFamilyFromSetting(candidate_font_family_),
-                               candidates_,
-                               &dpi);
+      CandidateLayoutForWindowAtDpi(candidate_window_,
+                                    anchor_dpi,
+                                    work_area,
+                                    horizontal_candidate_layout_,
+                                    expanded_candidate_window_,
+                                    compact_candidate_count_,
+                                    CandidateFontPointSize(),
+                                    simplified_charset_,
+                                    CandidateFontFamilyFromSetting(candidate_font_family_),
+                                    candidates_,
+                                    &dpi);
   if (layout.width <= 0 || layout.height <= 0) {
     layout.width = ScaleForDpi(300, dpi);
     layout.height = ScaleForDpi(72, dpi);
@@ -12043,9 +12254,6 @@ void TsfTextService::ShowCandidateWindow(ITfContext* context) {
 
   const int width = layout.width;
   const int height = layout.height;
-  POINT caret = CandidateWindowAnchor(context);
-  RECT work_area{};
-  SystemParametersInfoW(SPI_GETWORKAREA, 0, &work_area, 0);
   int x = caret.x;
   const int underline_clearance = ScaleHalfDipForDpi(kCandidateAnchorUnderlineClearanceHalfDips, dpi);
   const int y_offset = ScaleHalfDipForDpi(kCandidateAnchorTopOffsetHalfDips, dpi) +
@@ -12369,6 +12577,13 @@ LRESULT TsfTextService::CandidateTooltipWindowProc(HWND window,
   switch (message) {
     case WM_MOUSEACTIVATE:
       return MA_NOACTIVATE;
+    case WM_DPICHANGED:
+      ApplySuggestedDpiRect(window, lparam);
+      if (candidate_tooltip_tool_ != kCandidateToolNone) {
+        PositionCandidateTooltip(candidate_tooltip_tool_);
+      }
+      RenderCandidateTooltipLayeredWindow();
+      return 0;
     case WM_ERASEBKGND:
       return 1;
     case WM_PAINT: {
@@ -12721,6 +12936,11 @@ LRESULT TsfTextService::StatusTipWindowProc(HWND window,
   switch (message) {
     case WM_MOUSEACTIVATE:
       return MA_NOACTIVATE;
+    case WM_DPICHANGED:
+      ApplySuggestedDpiRect(window, lparam);
+      PositionStatusTip(active_context_);
+      RenderStatusTipLayeredWindow();
+      return 0;
     case WM_TIMER:
       if (wparam == kStatusTipHideTimer) {
         HideStatusTip();
@@ -13144,6 +13364,15 @@ LRESULT TsfTextService::CandidateWindowProc(HWND window,
   switch (message) {
     case WM_MOUSEACTIVATE:
       return MA_NOACTIVATE;
+    case WM_DPICHANGED:
+      InvalidateCandidateLayoutCache();
+      ApplySuggestedDpiRect(window, lparam);
+      if (candidate_window_ == window && IsWindowVisible(window) && IsComposing()) {
+        ShowCandidateWindow(active_context_);
+      } else {
+        RenderCandidateLayeredWindow();
+      }
+      return 0;
     case WM_LBUTTONDOWN: {
       const int y = static_cast<short>(HIWORD(lparam));
       const int x = static_cast<short>(LOWORD(lparam));

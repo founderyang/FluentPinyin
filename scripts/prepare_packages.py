@@ -27,6 +27,8 @@ DEFAULT_ASSETS = {
     "windowsAppSdkWinuiUrl": "https://www.nuget.org/api/v2/package/Microsoft.WindowsAppSDK.WinUI/1.8.260505002",
     "windowsAppSdkInteractive": "microsoft.windowsappsdk.interactiveexperiences.1.8.260430001.nupkg",
     "windowsAppSdkInteractiveUrl": "https://www.nuget.org/api/v2/package/Microsoft.WindowsAppSDK.InteractiveExperiences/1.8.260430001",
+    "windowsAppRuntimeInstaller": "windowsappruntimeinstall-x64.exe",
+    "windowsAppRuntimeInstallerUrl": "https://aka.ms/windowsappsdk/1.8/1.8.260508005/windowsappruntimeinstall-x64.exe",
     "librime": "rime-de4700e-Windows-msvc-x64.7z",
     "librimeUrl": "https://github.com/rime/librime/releases/download/1.16.1/rime-de4700e-Windows-msvc-x64.7z",
     "deps": "rime-deps-de4700e-Windows-msvc-x64.7z",
@@ -208,6 +210,12 @@ def main():
             expand_package(archive, destination, args.force)
         else:
             copy_file(archive, destination, args.force)
+
+    get_asset_file(
+        assets["windowsAppRuntimeInstaller"],
+        assets["windowsAppRuntimeInstallerUrl"],
+        args.force,
+    )
 
     handle_fonts(assets, args.force)
     print("Packages are ready.")

@@ -27,6 +27,11 @@ namespace detail {
          (allow_deploy && (!has_fresh_build_cache || user_config_changed));
 }
 
+[[nodiscard]] FP_CORE_API std::string BuildWanxiangCustomPatchForTesting(
+    bool pro,
+    bool use_imported_dictionary);
+[[nodiscard]] FP_CORE_API std::string BuildWanxiangSettingFingerprintForTesting(bool pro);
+
 }  // namespace detail
 
 struct RimeEngineOptions {

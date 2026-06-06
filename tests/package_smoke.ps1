@@ -22,6 +22,8 @@ foreach ($file in @(
   "fluent-pinyin-tsf.dll",
   "fluent-pinyin-devtools.exe",
   "fluent-pinyin-updater.exe",
+  "fluent-pinyin-settings.exe",
+  "windowsappruntimeinstall-x64.exe",
   "rime.dll",
   "README.txt",
   "LICENSE.txt"
@@ -69,6 +71,10 @@ foreach ($font in $fontFiles) {
   if ($payloadWxsText -notmatch [regex]::Escape($relativeFontPath)) {
     throw "Payload WiX manifest missing private font file path: $relativeFontPath"
   }
+}
+
+if ($payloadWxsText -notmatch [regex]::Escape("windowsappruntimeinstall-x64.exe")) {
+  throw "Payload WiX manifest missing Windows App Runtime installer"
 }
 
 if ($RequireMsi) {

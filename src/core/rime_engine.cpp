@@ -603,10 +603,20 @@ struct InputSchemaSelection {
   bool wanxiang_auto_phrase_enabled = false;
   bool wanxiang_user_phrase_enabled = false;
   bool wanxiang_schema_shortcuts_enabled = false;
+  bool main_translator_user_dict_enabled = true;
   std::vector<std::string> fuzzy_pinyin_rules = FuzzyPinyinRuleIds();
   std::vector<FuzzyPinyinCustomRule> fuzzy_pinyin_custom_rules;
   bool pro = false;
 };
+
+void AppendMainTranslatorUserDictFingerprint(InputSchemaSelection* selection) {
+  if (selection == nullptr) {
+    return;
+  }
+  selection->setting_fingerprint +=
+      "\nmain_translator_user_dict_enabled=" +
+      std::string(selection->main_translator_user_dict_enabled ? "1" : "0") + "\n";
+}
 
 InputSchemaSelection CurrentInputSchemaSelection() {
   InputSchemaSelection selection;
@@ -713,6 +723,7 @@ InputSchemaSelection CurrentInputSchemaSelection() {
                                   "\nfuzzy_pinyin_custom_rules=" +
                                   custom_rules_fingerprint + "\n";
   if (input_scheme != L"double_pinyin") {
+    AppendMainTranslatorUserDictFingerprint(&selection);
     return selection;
   }
 
@@ -721,6 +732,8 @@ InputSchemaSelection CurrentInputSchemaSelection() {
   selection.marker = "FluentPinyin managed pro schema customizations";
   selection.cache_key = "double_" + WideToUtf8(double_pinyin_scheme);
   selection.pro = true;
+  selection.main_translator_user_dict_enabled = false;
+  AppendMainTranslatorUserDictFingerprint(&selection);
 
   if (double_pinyin_scheme == L"flypy") {
     selection.algebra_path = Utf8Literal(u8"/pro/小鹤双拼");
@@ -1078,7 +1091,8 @@ std::string FluentPinyinWanxiangCustomPatch(const InputSchemaSelection& selectio
         "      - \"wanxiang_algebra:/pro/直接辅助\"\n";
   }
   patch +=
-      "  translator/enable_user_dict: false\n"
+      "  translator/enable_user_dict: " +
+      std::string(selection.main_translator_user_dict_enabled ? "true" : "false") + "\n"
       "  translator/enable_correction: " +
       std::string(selection.auto_pinyin_correction ? "true" : "false") + "\n"
       "  wanxiang_english/enable_user_dict: false\n"
@@ -1411,6 +1425,40 @@ bool DeployRimeWorkspace(RimeApi* api, RimeTraits* traits) {
 }
 
 }  // namespace
+
+namespace detail {
+
+std::string BuildWanxiangCustomPatchForTesting(bool pro, bool use_imported_dictionary) {
+  InputSchemaSelection selection;
+  selection.pro = pro;
+  selection.schema_id = pro ? "wanxiang_pro" : "wanxiang";
+  selection.custom_file = pro ? "wanxiang_pro.custom.yaml" : "wanxiang.custom.yaml";
+  selection.marker = pro ? "FluentPinyin managed pro schema customizations"
+                         : "FluentPinyin managed base schema customizations";
+  selection.main_translator_user_dict_enabled = !pro;
+  if (pro) {
+    selection.algebra_path = "/pro/test";
+    selection.support_algebra = "test";
+  }
+  return FluentPinyinWanxiangCustomPatch(selection, use_imported_dictionary);
+}
+
+std::string BuildWanxiangSettingFingerprintForTesting(bool pro) {
+  InputSchemaSelection selection;
+  selection.pro = pro;
+  selection.schema_id = pro ? "wanxiang_pro" : "wanxiang";
+  selection.custom_file = pro ? "wanxiang_pro.custom.yaml" : "wanxiang.custom.yaml";
+  selection.main_translator_user_dict_enabled = !pro;
+  selection.setting_fingerprint =
+      "input_scheme=" + std::string(pro ? "double_pinyin" : "pinyin") +
+      "\ndouble_pinyin_scheme=zrm"
+      "\nfuzzy_pinyin_rules="
+      "\nfuzzy_pinyin_custom_rules=\n";
+  AppendMainTranslatorUserDictFingerprint(&selection);
+  return selection.setting_fingerprint;
+}
+
+}  // namespace detail
 
 RimeEngine::~RimeEngine() {
   Shutdown();
