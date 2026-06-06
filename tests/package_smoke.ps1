@@ -5,6 +5,8 @@ param(
   [Parameter(Mandatory = $true)]
   [string]$ReleaseDir,
 
+  [double]$MaxPayloadMb = 0,
+
   [switch]$RequireMsi
 )
 
@@ -50,6 +52,14 @@ $reportText = Get-Content -LiteralPath $report -Raw
 foreach ($required in @("Payload size report:", "rime-data:", "fonts:", "Largest payload files:")) {
   if ($reportText -notmatch [regex]::Escape($required)) {
     throw "Payload report missing '$required'"
+  }
+}
+if ($MaxPayloadMb -gt 0) {
+  $totalSize = (Get-ChildItem -LiteralPath $PayloadDir -Recurse -File |
+      Measure-Object -Property Length -Sum).Sum
+  $totalMb = $totalSize / 1024 / 1024
+  if ($totalMb -gt $MaxPayloadMb) {
+    throw ("Payload size {0:N1} MB exceeds limit {1:N1} MB" -f $totalMb, $MaxPayloadMb)
   }
 }
 

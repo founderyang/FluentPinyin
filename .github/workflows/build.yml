@@ -37,4 +37,26 @@ jobs:
 
       - name: Verify package payload
         shell: pwsh
-        run: tests/package_smoke.ps1 -PayloadDir dist/FluentPinyin -ReleaseDir dist/release
+        run: tests/package_smoke.ps1 -PayloadDir dist/FluentPinyin -ReleaseDir dist/release -MaxPayloadMb 700
+
+  windows-debug:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check environment
+        run: python scripts/check_env.py
+
+      - name: Prepare packages
+        run: python scripts/prepare_packages.py
+
+      - name: Configure
+        run: cmake -S . -B build-debug -A x64 -DCMAKE_BUILD_TYPE=Debug
+
+      - name: Build
+        run: cmake --build build-debug --config Debug --parallel
+
+      - name: Test
+        run: ctest --test-dir build-debug -C Debug --output-on-failure
