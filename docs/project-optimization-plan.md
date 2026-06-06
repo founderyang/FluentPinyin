@@ -215,12 +215,15 @@ Acceptance:
 
 ## Phase 5: Security and Robustness
 
+Status: continued in `codex/phase7-updater-json`.
+
 Work:
 
 - Verify downloaded MSI files with `WinVerifyTrust` before launching updater
   installs. Implemented in `codex/phase3-version-security`.
 - Replace handwritten GitHub API JSON parsing with a JSON library or a stricter
-  parser.
+  parser. Implemented in updater with bounded object/array scanning, JSON string
+  unescaping, UTF-8 BOM tolerance, and an offline smoke test.
 - Add sync package integrity verification, such as an authenticated tag/HMAC
   over encrypted data.
 - Review PBKDF2 iteration policy and document migration behavior.
