@@ -1,61 +1,60 @@
-# FluentPinyin
+# 流畅拼音
 
-FluentPinyin is a Windows 11 x64 Chinese input method. The public repository
-contains source code, installer definitions, and local build scripts only.
-Downloaded dependencies, bundled input data, fonts, and release artifacts are
-kept out of Git and prepared locally before building.
+流畅拼音是面向 Windows 11 x64 的中文输入法。仓库包含源码、安装包定义和本地构建脚本；下载依赖、万象输入数据、字体和发行产物不直接提交到 Git，需要在本地构建前准备。
 
-## Build
+## 功能亮点
 
-Requirements:
+- 基于 TSF 的 Windows 输入法服务。
+- 集成 Rime 与万象拼音数据，支持全拼和双拼。
+- WinUI 3 设置面板，覆盖输入状态、候选框、外观、词库、热键和同步设置。
+- 候选框支持紧凑/展开、横排/竖排、字体大小和多显示器 DPI 适配。
+- 安装包内置 Windows App Runtime 依赖检查，字体使用私有加载，降低卸载残留风险。
+
+## 构建
+
+环境要求：
 
 - Windows 11 x64
-- Visual Studio 2022 Build Tools with MSVC x64
-- CMake 3.24 or newer
-- Python 3 with Pillow for icon generation
+- Visual Studio 2022 Build Tools，包含 MSVC x64
+- CMake 3.24 或更高版本
+- Python 3，生成图标时需要 Pillow
 - WiX Toolset 7
-- GitHub CLI for publishing releases
+- GitHub CLI，用于发布发行版
 
-If WiX asks for an EULA acknowledgement on first use, run:
+如果首次使用 WiX 时提示确认 EULA，先运行：
 
 ```text
 wix eula accept wix7
 ```
 
-Prepare local dependencies:
+准备本地依赖：
 
 ```text
 python .\scripts\prepare_packages.py
 python .\scripts\generate-icons.py
 ```
 
-Build locally:
+本地构建：
 
 ```text
 cmake -S . -B .\build-release -G "Visual Studio 17 2022" -A x64
 cmake --build .\build-release --config Release --parallel
 ```
 
-Create release package:
+生成发行安装包：
 
 ```text
 python .\scripts\package_release.py
 ```
 
-Generated files are written to `dist\release`:
+生成的文件位于 `dist\release`，其中 `FluentPinyin.msi` 是最终安装包。默认安装路径为 `C:\Program Files\FluentPinyin`。
 
-- `FluentPinyin.msi`
+## 更新
 
-The installer uses `C:\Program Files\FluentPinyin`.
+设置面板“关于”页面的更新按钮会从 GitHub 最新发行版下载名为 `FluentPinyin.msi` 的安装包。
 
-## Update
+## 第三方组件
 
-The About page update button downloads the latest GitHub Release asset named
-`FluentPinyin.msi`.
+流畅拼音源码使用 MIT License。详见 `LICENSE`。
 
-## Third-Party Components
-
-FluentPinyin source code is released under the MIT License. See `LICENSE`.
-
-Bundled components, input data, fonts, and icons keep their original licenses.
-See `THIRD_PARTY_NOTICES.md` and `third_party/README.md` before redistribution.
+打包的依赖、输入数据、字体和图标保留各自原始许可。重新分发前请阅读 `THIRD_PARTY_NOTICES.md` 和 `third_party/README.md`。

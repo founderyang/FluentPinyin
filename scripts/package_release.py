@@ -409,9 +409,10 @@ def main():
     copy_windows_app_runtime_installer(payload_dir)
 
     (payload_dir / "README.txt").write_text(
-        f"FluentPinyin {product_version}\n\n"
-        "Install path: C:\\Program Files\\FluentPinyin\n\n"
-        "Use FluentPinyin.msi to install or remove the app.\n",
+        f"流畅拼音 {product_version}\n\n"
+        "默认安装路径：C:\\Program Files\\FluentPinyin\n\n"
+        "请使用 FluentPinyin.msi 安装、升级或卸载。\n"
+        "设置面板的“关于”页面会从 GitHub 最新发行版下载同名 MSI 进行更新。\n",
         encoding="utf-8",
     )
     for source_name, output_name in (

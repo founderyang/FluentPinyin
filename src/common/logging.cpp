@@ -5,6 +5,7 @@
 #include <windows.h>
 
 #include <cstdio>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <mutex>
@@ -16,7 +17,15 @@ namespace {
 
 std::mutex g_log_mutex;
 bool g_log_directory_ready = false;
-std::unordered_map<std::wstring, std::wofstream> g_log_files;
+constexpr std::uint64_t kLogFlushIntervalMs = 1500;
+
+struct LogFileState {
+  std::wofstream file;
+  std::uint64_t last_flush_ms = 0;
+  bool dirty = false;
+};
+
+std::unordered_map<std::wstring, LogFileState> g_log_files;
 
 std::wstring Timestamp() {
   SYSTEMTIME time{};
@@ -66,20 +75,47 @@ void WriteLog(std::wstring_view level,
 
   const std::wstring log_name = SanitizeComponent(component);
   auto [file_iter, inserted] = g_log_files.try_emplace(log_name);
-  if (inserted || !file_iter->second.is_open()) {
-    file_iter->second.open(log_dir / (log_name + L".log"), std::ios::app);
+  auto& state = file_iter->second;
+  if (inserted || !state.file.is_open()) {
+    state.file.open(log_dir / (log_name + L".log"), std::ios::app);
   }
-  if (!file_iter->second) {
+  if (!state.file) {
     g_log_files.erase(file_iter);
     return;
   }
 
-  auto& file = file_iter->second;
+  auto& file = state.file;
   file << L'[' << Timestamp() << L"] [" << level << L"] " << message << L'\n';
-  file.flush();
+  state.dirty = true;
+  const std::uint64_t now_ms = GetTickCount64();
+  if (detail::ShouldFlushLog(level, now_ms, state.last_flush_ms, state.dirty)) {
+    file.flush();
+    state.last_flush_ms = now_ms;
+    state.dirty = false;
+  }
 }
 
 }  // namespace
+
+namespace detail {
+
+bool ShouldFlushLog(std::wstring_view level,
+                    std::uint64_t now_ms,
+                    std::uint64_t last_flush_ms,
+                    bool dirty) noexcept {
+  if (!dirty) {
+    return false;
+  }
+  if (level == L"WARN" || level == L"ERROR") {
+    return true;
+  }
+  if (last_flush_ms == 0) {
+    return true;
+  }
+  return now_ms - last_flush_ms >= kLogFlushIntervalMs;
+}
+
+}  // namespace detail
 
 void LogInfo(std::wstring_view component, std::wstring_view message) {
   WriteLog(L"INFO", component, message);
@@ -91,6 +127,18 @@ void LogWarning(std::wstring_view component, std::wstring_view message) {
 
 void LogError(std::wstring_view component, std::wstring_view message) {
   WriteLog(L"ERROR", component, message);
+}
+
+void FlushLogs() {
+  std::lock_guard lock(g_log_mutex);
+  const std::uint64_t now_ms = GetTickCount64();
+  for (auto& [_, state] : g_log_files) {
+    if (state.dirty && state.file) {
+      state.file.flush();
+      state.last_flush_ms = now_ms;
+      state.dirty = false;
+    }
+  }
 }
 
 }  // namespace fp
