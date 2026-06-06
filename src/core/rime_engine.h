@@ -17,6 +17,18 @@
 
 namespace fp::core {
 
+namespace detail {
+
+[[nodiscard]] constexpr bool ShouldDeployRimeWorkspace(bool allow_deploy,
+                                                       bool force_rebuild_cache,
+                                                       bool user_config_changed,
+                                                       bool has_fresh_build_cache) noexcept {
+  return force_rebuild_cache ||
+         (allow_deploy && (!has_fresh_build_cache || user_config_changed));
+}
+
+}  // namespace detail
+
 struct RimeEngineOptions {
   std::filesystem::path shared_data_dir;
   std::filesystem::path user_data_dir;
@@ -24,6 +36,7 @@ struct RimeEngineOptions {
   std::filesystem::path staging_dir;
   std::filesystem::path prebuilt_data_dir;
   std::string schema_id;
+  // Allows Rime deploy only when cache is missing, stale, or changed.
   bool deploy = true;
   bool force_rebuild_cache = false;
 };

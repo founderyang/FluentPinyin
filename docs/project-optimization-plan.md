@@ -94,7 +94,7 @@ Acceptance:
 
 ## Phase 1: User-Visible Performance
 
-Status: started in `codex/phase1-performance`.
+Status: continued in `codex/phase15-rime-cache-tests`.
 
 Work:
 
@@ -108,6 +108,11 @@ Work:
   default cache after MSI completion. Started in
   `codex/phase2-rime-warmup` with a user-impersonated custom action that starts
   a hidden background `warmup-rime` process after install finalization.
+- Avoid unnecessary Rime deploy work when the build cache is already fresh.
+  Phase 15 changes deploy from an unconditional default path to "deploy only
+  when cache is missing, user config changed, or force rebuild is requested";
+  TSF first-key initialization and installer warmup now avoid a failed
+  no-deploy pass followed by a second deploy pass.
 - Cache candidate layout metrics for the current candidate list and visual
   settings, then reuse them across visible-count calculation, positioning, and
   draw. Started by reusing the layout calculated during
@@ -202,7 +207,7 @@ Acceptance:
 
 ## Phase 4: Tests and CI
 
-Status: continued in `codex/phase14-settings-tests`.
+Status: continued in `codex/phase15-rime-cache-tests`.
 
 Work:
 
@@ -213,6 +218,8 @@ Work:
     sync settings read/write, line-value sanitization, provider normalization,
     boolean parsing, interval clamping, and `LoadConfig`.
   - Rime cache-signature logic
+  - Rime deploy decision logic. Implemented with `core_unit`, covering cache
+    hit, cache miss, user-config change, disabled deploy, and forced rebuild.
   - candidate page selection behavior
 - Add integration smoke tests for COM registration and TSF activation.
 - Add packaging smoke tests for generated payload content.

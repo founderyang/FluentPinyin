@@ -378,6 +378,11 @@ if(BUILD_TESTING)
   )
   target_link_libraries(common_unit PRIVATE fluent_pinyin_common)
 
+  add_executable(core_unit
+    tests/core_unit.cpp
+  )
+  target_link_libraries(core_unit PRIVATE fluent_pinyin_common)
+
   add_executable(sync_package_integrity
     tests/sync_package_integrity.cpp
     src/sync/sync_service.cpp
@@ -421,6 +426,10 @@ if(BUILD_TESTING)
   add_test(
     NAME common_unit
     COMMAND common_unit
+  )
+  add_test(
+    NAME core_unit
+    COMMAND core_unit
   )
   add_test(
     NAME sync_package_integrity

@@ -1472,11 +1472,16 @@ RimeEngineStatus RimeEngine::Initialize(const RimeEngineOptions& options) {
 
   const bool has_fresh_build_cache =
       HasFreshRimeBuildCache(shared_data_dir_, user_data_dir_, staging_dir_, schema_selection);
-  const bool should_deploy = options.deploy || (user_config_changed_ && !has_fresh_build_cache);
+  const bool should_deploy = detail::ShouldDeployRimeWorkspace(options.deploy,
+                                                               options.force_rebuild_cache,
+                                                               user_config_changed_,
+                                                               has_fresh_build_cache);
   fp::LogInfo(L"core",
               std::wstring(L"Rime build cache ") +
                   (has_fresh_build_cache ? L"hit" : L"miss") +
                   L"; deploy=" + (should_deploy ? std::wstring(L"yes") : std::wstring(L"no")) +
+                  L"; allow_deploy=" +
+                  (options.deploy ? std::wstring(L"yes") : std::wstring(L"no")) +
                   L"; force_rebuild=" +
                   (options.force_rebuild_cache ? std::wstring(L"yes") : std::wstring(L"no")) +
                   L"; staging=" + staging_dir_.wstring());

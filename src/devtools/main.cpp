@@ -1177,14 +1177,7 @@ int WarmupRime() {
 
   fp::core::RimeEngine engine;
   fp::core::RimeEngineOptions options;
-  options.deploy = false;
   auto status = engine.Initialize(options);
-  if (status.initialized && !engine.HasBuiltSchema()) {
-    fp::LogWarning(L"installer", L"Rime warmup found missing build cache; redeploying.");
-    engine.Shutdown();
-    options.deploy = true;
-    status = engine.Initialize(options);
-  }
 
   const bool built_schema = status.initialized && engine.HasBuiltSchema();
   if (background_mode) {

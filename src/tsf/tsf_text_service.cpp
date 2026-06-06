@@ -8725,14 +8725,7 @@ void TsfTextService::InitializeRime() {
 
   auto engine = std::make_unique<fp::core::RimeEngine>();
   fp::core::RimeEngineOptions options;
-  options.deploy = false;
   auto status = engine->Initialize(options);
-  if (status.initialized && !engine->HasBuiltSchema()) {
-    fp::LogWarning(L"tsf", L"Rime build missing; redeploying once for Wanxiang.");
-    engine->Shutdown();
-    options.deploy = true;
-    status = engine->Initialize(options);
-  }
   if (status.initialized) {
     rime_ = std::move(engine);
   }
@@ -10733,15 +10726,8 @@ void TsfTextService::ReloadRimeAndAlgorithmService() {
   rime_ = std::make_unique<fp::core::RimeEngine>();
   rime_ready_ = false;
   fp::core::RimeEngineOptions options;
-  options.deploy = false;
+  options.force_rebuild_cache = true;
   auto status = rime_->Initialize(options);
-  if (status.initialized && !rime_->HasBuiltSchema()) {
-    fp::LogWarning(L"tsf", L"Rime build missing after settings change; forcing cache rebuild.");
-    rime_->Shutdown();
-    options.deploy = true;
-    options.force_rebuild_cache = true;
-    status = rime_->Initialize(options);
-  }
   rime_ready_ = status.initialized;
   if (rime_ready_) {
     ApplyRimeOptionsLocked();
