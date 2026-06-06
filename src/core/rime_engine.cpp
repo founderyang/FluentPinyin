@@ -1379,10 +1379,20 @@ RimeEngineStatus RimeEngine::Initialize(const RimeEngineOptions& options) {
   initialized_ = true;
   return {.initialized = true, .message = L"Rime engine placeholder initialized."};
 #else
+  const ULONGLONG init_start_tick = GetTickCount64();
+  ULONGLONG step_start_tick = init_start_tick;
+  auto log_step = [&](std::wstring_view step) {
+    const ULONGLONG now = GetTickCount64();
+    fp::LogInfo(L"core",
+                std::wstring(L"Rime init step ") + std::wstring(step) + L" took " +
+                    std::to_wstring(now - step_start_tick) + L" ms.");
+    step_start_tick = now;
+  };
+
   shared_data_dir_ =
       options.shared_data_dir.empty() ? DefaultSharedDataDir() : options.shared_data_dir;
   user_data_dir_ = options.user_data_dir.empty() ? fp::GetFpRoamingDataPath() / L"Rime"
-                                                 : options.user_data_dir;
+                                                  : options.user_data_dir;
   log_dir_ = options.log_dir.empty() ? fp::GetFpLogDirectory() / L"rime" : options.log_dir;
   const InputSchemaSelection schema_selection = CurrentInputSchemaSelection();
   staging_dir_ =
@@ -1393,6 +1403,7 @@ RimeEngineStatus RimeEngine::Initialize(const RimeEngineOptions& options) {
   schema_id_overridden_ = !options.schema_id.empty();
   schema_id_ = schema_id_overridden_ ? options.schema_id : schema_selection.schema_id;
   user_config_changed_ = false;
+  log_step(L"resolve paths and schema settings");
 
   if (!fp::EnsureDirectory(user_data_dir_) || !fp::EnsureDirectory(log_dir_) ||
       !fp::EnsureDirectory(staging_dir_)) {
@@ -1407,16 +1418,26 @@ RimeEngineStatus RimeEngine::Initialize(const RimeEngineOptions& options) {
   if (!EnsureUserConfig()) {
     return {.initialized = false, .message = L"Failed to create Rime user config files."};
   }
+  log_step(L"ensure user config");
   EnsureWanxiangRuntimeFiles(shared_data_dir_, user_data_dir_);
+  log_step(L"ensure Wanxiang runtime files");
 
   const bool has_fresh_build_cache =
       HasFreshRimeBuildCache(shared_data_dir_, user_data_dir_, staging_dir_, schema_selection);
   const bool should_deploy = options.deploy || (user_config_changed_ && !has_fresh_build_cache);
+  fp::LogInfo(L"core",
+              std::wstring(L"Rime build cache ") +
+                  (has_fresh_build_cache ? L"hit" : L"miss") +
+                  L"; deploy=" + (should_deploy ? std::wstring(L"yes") : std::wstring(L"no")) +
+                  L"; force_rebuild=" +
+                  (options.force_rebuild_cache ? std::wstring(L"yes") : std::wstring(L"no")) +
+                  L"; staging=" + staging_dir_.wstring());
   NamedMutexLock deploy_lock(L"Local\\FluentPinyinRimeDeploy",
                              should_deploy ? 120000 : 1500);
   if (!deploy_lock.locked()) {
     return {.initialized = false, .message = L"Timed out waiting for Rime deploy lock."};
   }
+  log_step(L"check build cache and acquire deploy lock");
 
   if (should_deploy) {
     EnsureFreshRimeBuildCache(shared_data_dir_,
@@ -1424,6 +1445,7 @@ RimeEngineStatus RimeEngine::Initialize(const RimeEngineOptions& options) {
                               staging_dir_,
                               schema_selection,
                               options.force_rebuild_cache);
+    log_step(L"prepare build cache signature");
   }
 
   RimeApi* api = rime_get_api();
@@ -1455,6 +1477,7 @@ RimeEngineStatus RimeEngine::Initialize(const RimeEngineOptions& options) {
     std::lock_guard<std::recursive_mutex> api_lock(RimeApiProcessMutex());
     bool& process_initialized = RimeApiProcessInitialized();
     if (should_deploy && !process_initialized) {
+      const ULONGLONG deploy_start_tick = GetTickCount64();
       api->setup(&traits);
       api->set_notification_handler(RimeNotification, nullptr);
       if (!DeployRimeWorkspace(api, &traits)) {
@@ -1462,26 +1485,41 @@ RimeEngineStatus RimeEngine::Initialize(const RimeEngineOptions& options) {
         return {.initialized = false, .message = L"Rime deploy failed."};
       }
       api->finalize();
+      fp::LogInfo(L"core",
+                  L"Rime deploy completed in " +
+                      std::to_wstring(GetTickCount64() - deploy_start_tick) + L" ms.");
     } else if (should_deploy) {
+      const ULONGLONG deploy_start_tick = GetTickCount64();
       if (!DeployRimeWorkspace(api, &traits)) {
         return {.initialized = false, .message = L"Rime redeploy failed while librime is active."};
       }
+      fp::LogInfo(L"core",
+                  L"Rime redeploy completed in " +
+                      std::to_wstring(GetTickCount64() - deploy_start_tick) + L" ms.");
     }
+    log_step(L"deploy workspace");
 
     if (!process_initialized) {
+      const ULONGLONG initialize_start_tick = GetTickCount64();
       api->setup(&traits);
       api->set_notification_handler(RimeNotification, nullptr);
       api->initialize(&traits);
       process_initialized = true;
+      fp::LogInfo(L"core",
+                  L"librime process initialize completed in " +
+                      std::to_wstring(GetTickCount64() - initialize_start_tick) + L" ms.");
     }
   }
+  log_step(L"initialize librime process");
 
   if (RIME_API_AVAILABLE(api, get_version)) {
     rime_version_ = api->get_version();
   }
 
   initialized_ = true;
-  fp::LogInfo(L"core", L"RimeEngine initialized with librime.");
+  fp::LogInfo(L"core",
+              L"RimeEngine initialized with librime in " +
+                  std::to_wstring(GetTickCount64() - init_start_tick) + L" ms.");
   return {.initialized = true, .message = L"Rime engine initialized."};
 #endif
 }

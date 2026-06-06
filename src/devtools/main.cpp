@@ -1,5 +1,6 @@
 ﻿#include "common/constants.h"
 #include "tsf/guids.h"
+#include "common/logging.h"
 #include "common/path_utils.h"
 
 #include <ctffunc.h>
@@ -1048,13 +1049,19 @@ int RestartTextServicesProcess() {
 }
 
 int PrepareInstall() {
+  const ULONGLONG start_tick = GetTickCount64();
   RemoveStalePendingDeletes();
   RemoveFontFilesAndRegistry();
-  std::cout << "Install prepared.\n";
+  const ULONGLONG elapsed_ms = GetTickCount64() - start_tick;
+  fp::LogInfo(L"installer",
+              std::wstring(L"prepare-install completed in ") +
+                  std::to_wstring(elapsed_ms) + L" ms.");
+  std::cout << "Install prepared in " << elapsed_ms << " ms.\n";
   return 0;
 }
 
 int FinalizeInstall() {
+  const ULONGLONG start_tick = GetTickCount64();
   const auto install_dir = DefaultInstallDir();
   const auto icon_path = install_dir / L"fluent-pinyin.ico";
   const std::wstring display_icon = icon_path.wstring();
@@ -1069,7 +1076,12 @@ int FinalizeInstall() {
               updated;
   }
 
-  std::cout << "Install finalized.\n";
+  const ULONGLONG elapsed_ms = GetTickCount64() - start_tick;
+  fp::LogInfo(L"installer",
+              std::wstring(L"finalize-install completed in ") + std::to_wstring(elapsed_ms) +
+                  L" ms; updated=" + (updated ? std::wstring(L"yes") : std::wstring(L"no")) +
+                  L".");
+  std::cout << "Install finalized in " << elapsed_ms << " ms.\n";
   return updated ? 0 : 1;
 }
 

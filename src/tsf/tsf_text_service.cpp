@@ -304,6 +304,26 @@ bool ToolbarHostControlWindowExists() {
   return FindWindowW(kToolbarHostControlWindowClassName, nullptr) != nullptr;
 }
 
+void LogTsfPerfIfSlow(std::wstring_view operation,
+                      ULONGLONG elapsed_ms,
+                      ULONGLONG threshold_ms = 20,
+                      std::wstring_view detail = L"") {
+  if (elapsed_ms < threshold_ms) {
+    return;
+  }
+  std::wstring message(operation);
+  message += L" took ";
+  message += std::to_wstring(elapsed_ms);
+  message += L" ms";
+  if (!detail.empty()) {
+    message += L" (";
+    message += detail;
+    message += L")";
+  }
+  message += L".";
+  fp::LogInfo(L"tsf", message);
+}
+
 void StartToolbarHost() {
   RequestToolbarHostRefresh();
 }
@@ -8554,6 +8574,7 @@ void TsfTextService::ApplyRimeOptionsLocked() {
 }
 
 void TsfTextService::RefreshCandidates() {
+  const ULONGLONG refresh_start_tick = GetTickCount64();
   const int requested_page_size = CandidatePageSizeLimit(horizontal_candidate_layout_,
                                                          expanded_candidate_window_,
                                                          compact_candidate_count_);
@@ -8621,6 +8642,15 @@ void TsfTextService::RefreshCandidates() {
     last_candidate_query_page_size_ = 0;
   }
   ClampCandidateSelection();
+  LogTsfPerfIfSlow(L"RefreshCandidates",
+                   GetTickCount64() - refresh_start_tick,
+                   20,
+                   L"input_len=" + std::to_wstring(composition_input_.size()) +
+                       L", requested_page_size=" + std::to_wstring(requested_page_size) +
+                       L", final_page_size=" + std::to_wstring(page_size) +
+                       L", candidates=" + std::to_wstring(candidates_.size()) +
+                       L", expanded=" + (expanded_candidate_window_ ? std::wstring(L"yes")
+                                                                     : std::wstring(L"no")));
 }
 
 size_t TsfTextService::VisibleCandidateCount() const {
@@ -8941,12 +8971,16 @@ bool TsfTextService::MoveCandidateSelection(WPARAM wparam) {
 }
 
 bool TsfTextService::SetCandidateExpansion(ITfContext* context, bool expanded) {
+  const ULONGLONG expansion_start_tick = GetTickCount64();
   HideStatusTip();
   if (!IsComposing()) {
     return true;
   }
   if (expanded_candidate_window_ == expanded) {
     ShowCandidateWindow(context);
+    fp::LogInfo(L"tsf",
+                std::wstring(L"Candidate expansion unchanged; show completed in ") +
+                    std::to_wstring(GetTickCount64() - expansion_start_tick) + L" ms.");
     return true;
   }
   expanded_candidate_window_ = expanded;
@@ -8954,6 +8988,11 @@ bool TsfTextService::SetCandidateExpansion(ITfContext* context, bool expanded) {
   selected_candidate_index_ = 0;
   RefreshCandidates();
   ShowCandidateWindow(context);
+  fp::LogInfo(L"tsf",
+              std::wstring(expanded ? L"Candidate expand" : L"Candidate collapse") +
+                  L" completed in " +
+                  std::to_wstring(GetTickCount64() - expansion_start_tick) +
+                  L" ms with " + std::to_wstring(candidates_.size()) + L" candidates.");
   return true;
 }
 
@@ -11639,6 +11678,7 @@ POINT TsfTextService::CandidateWindowAnchor(ITfContext* context) {
 }
 
 void TsfTextService::ShowCandidateWindow(ITfContext* context) {
+  const ULONGLONG show_start_tick = GetTickCount64();
   if (!IsComposing()) {
     HideCandidateWindow();
     return;
@@ -11781,6 +11821,16 @@ void TsfTextService::ShowCandidateWindow(ITfContext* context) {
   }
   SetTimer(candidate_window_, kCandidateWindowWatchTimer, 250, nullptr);
   RenderCandidateLayeredWindow();
+  LogTsfPerfIfSlow(L"ShowCandidateWindow",
+                   GetTickCount64() - show_start_tick,
+                   20,
+                   L"width=" + std::to_wstring(width) +
+                       L", height=" + std::to_wstring(height) +
+                       L", candidates=" + std::to_wstring(candidates_.size()) +
+                       L", geometry_changed=" +
+                       (geometry_changed ? std::wstring(L"yes") : std::wstring(L"no")) +
+                       L", expanded=" + (expanded_candidate_window_ ? std::wstring(L"yes")
+                                                                     : std::wstring(L"no")));
 }
 
 void TsfTextService::HideCandidateWindow() {
@@ -12809,11 +12859,18 @@ void TsfTextService::RenderCandidateLayeredWindow() {
   if (candidate_window_ == nullptr) {
     return;
   }
+  const ULONGLONG render_start_tick = GetTickCount64();
   const UINT dpi = ReadableDpiForWindow(candidate_window_);
   RenderRoundedLayeredWindow(candidate_window_,
                              ScaleForDpi(8, dpi),
                              CandidatePalette(theme_mode_, theme_preset_).border,
                              [this](HDC dc) { DrawCandidateWindow(dc); });
+  LogTsfPerfIfSlow(L"RenderCandidateLayeredWindow",
+                   GetTickCount64() - render_start_tick,
+                   16,
+                   L"candidates=" + std::to_wstring(candidates_.size()) +
+                       L", expanded=" + (expanded_candidate_window_ ? std::wstring(L"yes")
+                                                                     : std::wstring(L"no")));
 }
 
 ATOM TsfTextService::EnsureCandidateWindowClass() {

@@ -4,16 +4,19 @@
 
 #include <windows.h>
 
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <mutex>
-#include <cstdio>
 #include <string>
+#include <unordered_map>
 
 namespace fp {
 namespace {
 
 std::mutex g_log_mutex;
+bool g_log_directory_ready = false;
+std::unordered_map<std::wstring, std::wofstream> g_log_files;
 
 std::wstring Timestamp() {
   SYSTEMTIME time{};
@@ -54,17 +57,26 @@ void WriteLog(std::wstring_view level,
   std::lock_guard lock(g_log_mutex);
 
   const auto log_dir = GetFpLogDirectory();
-  if (!EnsureDirectory(log_dir)) {
+  if (!g_log_directory_ready) {
+    g_log_directory_ready = EnsureDirectory(log_dir);
+  }
+  if (!g_log_directory_ready) {
     return;
   }
 
-  const auto log_path = log_dir / (SanitizeComponent(component) + L".log");
-  std::wofstream file(log_path, std::ios::app);
-  if (!file) {
+  const std::wstring log_name = SanitizeComponent(component);
+  auto [file_iter, inserted] = g_log_files.try_emplace(log_name);
+  if (inserted || !file_iter->second.is_open()) {
+    file_iter->second.open(log_dir / (log_name + L".log"), std::ios::app);
+  }
+  if (!file_iter->second) {
+    g_log_files.erase(file_iter);
     return;
   }
 
+  auto& file = file_iter->second;
   file << L'[' << Timestamp() << L"] [" << level << L"] " << message << L'\n';
+  file.flush();
 }
 
 }  // namespace
