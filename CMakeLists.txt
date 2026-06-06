@@ -298,6 +298,11 @@ target_link_libraries(fluent_pinyin_devtools PRIVATE
 set_target_properties(fluent_pinyin_devtools PROPERTIES OUTPUT_NAME "fluent-pinyin-devtools")
 
 if(BUILD_TESTING)
+  add_executable(common_unit
+    tests/common_unit.cpp
+  )
+  target_link_libraries(common_unit PRIVATE fluent_pinyin_common)
+
   add_executable(sync_package_integrity
     tests/sync_package_integrity.cpp
     src/sync/sync_service.cpp
@@ -322,6 +327,10 @@ if(BUILD_TESTING)
             -BinDir "$<TARGET_FILE_DIR:fluent_pinyin_devtools>"
             -GeneratedDir "${CMAKE_BINARY_DIR}/generated"
             -ExpectedVersion "${PROJECT_VERSION}"
+  )
+  add_test(
+    NAME common_unit
+    COMMAND common_unit
   )
   add_test(
     NAME sync_package_integrity

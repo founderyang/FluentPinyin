@@ -192,13 +192,13 @@ Acceptance:
 
 ## Phase 4: Tests and CI
 
-Status: started in `codex/phase4-tests-ci`.
+Status: continued in `codex/phase10-common-tests`.
 
 Work:
 
 - Add unit tests for:
-  - encoding helpers
-  - path helpers
+  - encoding helpers. Implemented with `common_unit`.
+  - path helpers. Implemented with `common_unit`.
   - settings parsing and patch generation
   - Rime cache-signature logic
   - candidate page selection behavior
