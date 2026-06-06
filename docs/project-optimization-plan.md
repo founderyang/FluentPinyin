@@ -1,288 +1,215 @@
-# FluentPinyin project optimization plan
+# 流畅拼音项目优化方案
 
-This document combines the current code audit, package-size review, user
-feedback, and third-party review notes into one staged optimization plan. The
-goal is to improve the whole project without weakening the IME behavior,
-installer cleanup, or font-uninstall guarantees.
+本文档整合用户反馈、两份外部优化意见、当前代码审计和 00.00.04 已完成优化，作为后续拆分执行、回滚和发布的依据。
 
-## Goals
+## 目标
 
-- Reduce time from install completion to usable typing.
-- Make compact-to-expanded candidate window transitions feel immediate.
-- Keep fonts private to the application so uninstall remains clean.
-- Improve package, installer, update, and sync safety.
-- Add enough observability and tests to make future optimization measurable.
-- Reduce long-term maintenance cost in the TSF and settings code.
+- 缩短安装完成后到可以稳定输入的等待时间。
+- 降低候选框从紧凑到展开的首帧延迟。
+- 确保设置页所有功能真实生效，尤其候选框字体大小、字体族、布局、DPI。
+- 字体继续私有加载，卸载后不留下系统字体注册残留。
+- 万象 Base 开启主 `translator` 调频，`wanxiang_pro` 保持关闭；不修改 RIME 和万象上游文件。
+- 版本保持 `00.00.04`，发布物、README、GitHub About 和 Release 文案使用中文。
+- 只维护 `main` 和 `codex/optimization-test` 两个分支；每批完成后推送测试分支，验证通过后合并 `main` 并刷新 Release。
 
-## Current Findings
+## 硬约束
 
-### Package and install
+- 不修改 `schemas/wanxiang/current` 中的万象上游数据，不修改 RIME 上游源码或预编译二进制。
+- 不把 MiSans、Source Han Sans、Plangothic 等字体注册到系统字体表。
+- MSI 安装验证必须限时，不能再使用可能长期卡住的无限等待方式。
+- 大重构前必须先补测试、日志、基准或脚本，确保可回滚。
+- 每个阶段都要能独立构建、测试、打包、安装验证。
 
-- Release payload is about 559 MB.
-- `rime-data` is about 432 MB.
-- Fonts are about 117 MB and must remain privately loaded, not installed as
-  system fonts.
-- `wanxiang-lts-zh-hans.gram` is about 235 MB.
-- Packaged `rime-data/build` is currently absent, so first use can require Rime
-  deployment work on the user's machine.
-- The MSI has several custom actions. Some are necessary for TSF registration
-  and cleanup, but they need timing logs and clearer failure diagnostics.
+## 当前状态
 
-### Startup and first input
+- `00.00.04` 已完成多轮性能、安全和安装修复。
+- 已加入 Rime warmup/cache、候选窗布局缓存、候选框字体设置即时刷新、多显示器 DPI 适配、Windows App Runtime 安装器、私有字体检查、万象 Base/Pro 调频 patch。
+- 已加入日志文件句柄复用、INFO flush 节流、8MB 日志轮转。
+- README、安装包 README、GitHub About、Release notes 已中文化。
+- 已新增本机安装验证脚本，覆盖 ProductCode、中文 README、私有字体、Windows App Runtime、TSF smoke、万象 Base/Pro 调频。
+- 已新增 TSF `settings.ini` 时间戳缓存，避免设置刷新时重复打开和解析设置文件。
 
-- `RimeEngine::Initialize` prepares paths, writes managed Rime config, ensures
-  Wanxiang runtime files, checks build cache, may deploy, and initializes
-  librime.
-- `EnsureWanxiangRuntimeFiles` copies the large grammar file into the user Rime
-  directory when missing or stale. This can dominate cold start.
-- TSF activation mostly avoids synchronous Rime init, but the first alphabet key
-  can still fall back to synchronous initialization if warmup has not completed.
+## P0：安全网、可观测性和设置读写
 
-### Candidate window
+### 1. 固化基准与日志
 
-- Expanding the candidate window can increase candidate count from the compact
-  3-9 range to as many as 34.
-- One expand action currently does candidate query, visible-count calculation,
-  window layout, and full layered-window render.
-- `CalculateCandidateLayout`, text measurement, fallback-font checks, and
-  rendering repeat work across `RefreshCandidates`, `ShowCandidateWindow`, and
-  `DrawCandidateWindow`.
-- Font fallback and glyph checks are especially expensive when repeated across
-  expanded candidate rows.
+执行项：
 
-### Code quality and project health
+- 保留 Rime 初始化、deploy、cache hit/miss、warmup、候选刷新、候选窗口 render 的耗时日志。
+- 增加可重复的基准记录：安装后 warmup 耗时、暖缓存首键初始化耗时、候选展开 render 耗时。
+- 高频日志继续使用 flush 节流和轮转，避免日志本身影响输入性能。
 
-- `src/tsf/tsf_text_service.cpp` is over 13k lines and owns too many UI,
-  keyboard, state, and rendering responsibilities.
-- `src/config_winui/main.cpp` is over 7k lines and should be split by settings
-  area.
-- Encoding conversion helpers are duplicated across the project.
-- The updater parses JSON manually and launches downloaded MSI files without
-  Authenticode verification.
-- Test coverage and CI are currently insufficient for broad refactoring.
+验收：
 
-## Non-negotiable Constraints
+- 可以从日志判断慢点来自文件复制、Rime deploy、librime 初始化、候选查询、布局还是渲染。
+- 常规输入时日志不会无限增长。
 
-- Do not install bundled fonts into the system font registry.
-- Preserve clean uninstall behavior for private font files and app data cleanup.
-- Do not introduce blocking installer custom actions for heavy Rime deployment.
-- Do not do a large TSF split until performance baselines and core tests exist.
-- Keep changes compatible with Windows 11 x64 and the existing CMake/MSI flow.
+### 2. 统一设置读写模块
 
-## Phase 0: Observability and Safety Net
+问题：
 
-Status: started in `codex/project-optimization`.
+- 设置读写分散在 TSF、Core、WinUI 设置、Sync 中。
+- 各处编码、缓存、写入和迁移策略不同。
 
-Work:
+阶段执行：
 
-- Add timing logs to Rime initialization, deployment, and cache checks.
-- Add slow-path timing logs for candidate refresh, candidate window show, and
-  layered render.
-- Add installer custom action timing logs for prepare/finalize steps.
-- Reduce logging overhead by reusing component log file handles.
-- Add a repeatable smoke script for registration, activation, Rime warmup,
-  candidate query, and uninstall cleanup checks.
-- Add CI build once local scripts are stable.
+- 短期：TSF 和 Core 增加本地时间戳缓存，减少初始化和设置刷新重复 I/O。
+- 中期：抽出 `common/settings_store.*`，统一 UTF-8/UTF-16/ANSI 兼容读取、时间戳缓存、索引、原子写入、迁移和并发锁。
+- 长期：WinUI 设置页和 Sync 配置逐步迁移到同一模块。
 
-Acceptance:
+验收：
 
-- Logs identify whether slow first input is caused by file copy, cache miss,
-  deploy, librime initialization, session creation, or candidate query.
-- Logs identify whether candidate expansion is dominated by Rime query, layout,
-  window positioning, or rendering.
-- A release build can be produced from a clean checkout.
+- 设置 App 修改后 TSF 能刷新到最新值。
+- 候选框字体大小、字体族、布局、主题、热键、词库开关均能按设置生效。
+- Rime 初始化不再为每个设置项重复读取文件。
 
-## Phase 1: User-Visible Performance
+### 3. 安装验证防卡
 
-Status: continued in `codex/phase17-rime-lock-fastpath`.
+执行项：
 
-Work:
+- 使用 `tests/install_msi.ps1` 进行限时 MSI 安装验证。
+- 脚本通过进程状态和 MSI 日志判断成功，超时输出日志尾部和 PID。
 
-- Prebuild default Rime cache during packaging and include it under
-  `rime-data/build`.
-- Prefer direct shared-data reference or hard link for
-  `wanxiang-lts-zh-hans.gram`; copy only as a fallback. Implemented with a
-  hard-link-first runtime file path, with copy fallback for filesystems that do
-  not support hard links.
-- Add a non-blocking post-install warmup command that validates or builds the
-  default cache after MSI completion. Started in
-  `codex/phase2-rime-warmup` with a user-impersonated custom action that starts
-  a hidden background `warmup-rime` process after install finalization.
-- Avoid unnecessary Rime deploy work when the build cache is already fresh.
-  Phase 15 changes deploy from an unconditional default path to "deploy only
-  when cache is missing, user config changed, or force rebuild is requested";
-  TSF first-key initialization and installer warmup now avoid a failed
-  no-deploy pass followed by a second deploy pass. Phase 17 keeps deploy paths
-  serialized, but allows cache-hit initialization to continue when another
-  background warmup still owns the deploy lock.
-- Cache candidate layout metrics for the current candidate list and visual
-  settings, then reuse them across visible-count calculation, positioning, and
-  draw. Started by reusing the layout calculated during
-  `ShowCandidateWindow` for that same layered render. Phase 16 adds a
-  conservative per-thread layout cache keyed by window, DPI, layout mode,
-  expansion state, font size, charset, compact count, and candidate text/comment
-  hash, so expand/collapse, digit selection, navigation, tooltips, and mouse
-  hover/click paths do not repeatedly create GDI fonts and recalculate the same
-  expanded layout.
-- Cache text measurement and glyph fallback decisions by text, font family,
-  point size, DPI, and simplified/traditional mode. Started with a bounded
-  process-local text measurement cache for candidate-window text.
-- Keep private font loading, but make large fallback fonts lazy when possible.
-  Implemented in the TSF process by loading MiSans base fonts first and
-  deferring Source Han Sans, Plangothic, and MiSans L3 until fallback or
-  Source-Han candidate rendering is requested.
-- Cache expanded brand icons by DPI and theme instead of loading them on every
-  draw. Implemented with a small process-local icon cache.
+验收：
 
-Acceptance:
+- 安装验证不会无限等待。
+- 安装后 `tests/install_verify.ps1` 必须通过。
 
-- Warm cache first input does not block on deploy.
-- Cold first input has a visible warmup path and no long UI-thread stall.
-- Candidate compact-to-expanded transition P95 is below 50 ms on the target
-  test machine.
-- Candidate render slow-path logs are rare during normal typing.
+## P1：性能和用户体验
 
-## Phase 2: Package and Installer
+### 1. Rime 冷启动继续优化
 
-Status: continued in `codex/phase12-installer-diagnostics`.
+执行项：
 
-Work:
+- 保持安装后非阻塞 warmup。
+- Core 设置读取加缓存，减少 `CurrentInputSchemaSelection` 的重复 I/O。
+- 继续审计 `EnsureWanxiangRuntimeFiles`、cache signature、deploy lock，避免暖缓存首键被后台 warmup 锁阻塞。
 
-- Add package-size reporting to `scripts/package_release.py` by top-level
-  payload area and largest files. Implemented; current release payload is about
-  559.3 MB, led by `rime-data` at 432.5 MB and fonts at 117.5 MB. The report is
-  now also persisted as `payload-size-report.txt` in the release directory.
-- Decide whether all dictionaries and fonts must ship in the base MSI or can be
-  optional packages.
-- Keep font cleanup logic, but avoid unnecessary registry/font cleanup work on
-  clean installs when there is no previous footprint. Font files remain bundled
-  private resources under the app `fonts` directory; Phase 9 keeps the generated
-  WiX payload manifest and adds package smoke checks that reject system font
-  registration entries.
-- Record install and uninstall logs to a deterministic local path. Phase 12
-  extends custom-action diagnostics so install cleanup logs input parameters,
-  elapsed time, font resource attempts, registry value deletions, scheduled task
-  removal state, and unsafe install-directory refusals.
-- Split devtools install commands into narrower helpers where possible:
-  registration, activation, cleanup, warmup, diagnostics.
+验收：
 
-Acceptance:
+- 暖缓存首键不触发 deploy。
+- 日志中 cache hit 初始化应稳定在低耗时范围。
 
-- Release artifact report shows payload size deltas in every package run.
-- Clean install, upgrade, repair, and uninstall all leave no system font
-  residues.
-- Installer diagnostics explain custom action failures without requiring MSI log
-  spelunking first. Implemented for prepare/install cleanup, font cleanup, and
-  scheduled-task cleanup summaries.
+### 2. 候选窗布局和渲染继续缓存
 
-## Phase 3: Maintainability Refactor
+执行项：
 
-Status: continued in `codex/phase13-cmake-maintainability`.
+- 保留候选 layout cache、text measure cache、fallback glyph cache、icon cache。
+- 下一步拆出候选布局纯函数测试，先让布局计算可单测，再考虑拆文件。
+- 审核鼠标 hover、tooltip、展开、翻页是否重复计算相同 layout。
 
-Work:
+验收：
 
-- Move encoding helpers into `fluent_pinyin_common`. Implemented for updater,
-  devtools, settings, and sync; sync keeps strict UTF-8 decode semantics via
-  `Utf8ToWideStrict`.
-- Split `tsf_text_service.cpp` incrementally:
-  - candidate layout and drawing
-  - candidate interaction
-  - toolbar window
-  - status tip
-  - context menu
-  - key handling
-  - Rime service coordination
-- Split `config_winui/main.cpp` by settings page and shared UI helpers.
-- Move UI layout constants into focused headers.
-- Generate `constants.h` version values from CMake so product version has one
-  source of truth. Implemented by generating `common/constants.h` from
-  `constants.h.in` with CMake.
-- Replace local COM helper duplication with a shared helper or a small
-  project-owned `ComPtr`.
-- Reduce CMake package and asset-copy duplication. Phase 13 resolves local
-  WinUI/WebView2/C++/WinRT NuGet package roots by package id, makes Windows SDK
-  paths configurable with fallback discovery, validates required WinUI build
-  dependencies, and reuses target asset-copy helpers for icons/private fonts.
+- 紧凑到展开首帧 P95 目标小于 50ms。
+- 鼠标 hover 和 tooltip 不造成明显重绘抖动。
 
-Acceptance:
+### 3. DPI 和设置生效复查
 
-- No behavior change in TSF smoke tests after each split.
-- Smaller files have clear ownership and no circular include churn.
-- Release version cannot drift between CMake and C++ constants.
-- Upgrading a local WinUI NuGet package or Windows SDK does not require editing
-  hard-coded version paths in multiple places.
+执行项：
 
-## Phase 4: Tests and CI
+- 保留候选窗、工具栏、状态提示、菜单按所在显示器 DPI 定位。
+- 设置页所有功能逐项核对：默认输入状态、候选框、外观、高级、词库、热键、同步、关于。
+- 生成设置功能映射文档，标记“立即生效”“需重启 Rime”“需重新打开窗口”。
 
-Status: continued in `codex/phase15-rime-cache-tests`.
+验收：
 
-Work:
+- 用户修改候选字体大小后 TSF 候选窗立即刷新。
+- 跨显示器移动后候选窗不越界、不缩放异常。
 
-- Add unit tests for:
-  - encoding helpers. Implemented with `common_unit`.
-  - path helpers. Implemented with `common_unit`.
-  - settings parsing and patch generation. Started with Phase 14 coverage for
-    sync settings read/write, line-value sanitization, provider normalization,
-    boolean parsing, interval clamping, and `LoadConfig`.
-  - Rime cache-signature logic
-  - Rime deploy decision logic. Implemented with `core_unit`, covering cache
-    hit, cache miss, user-config change, disabled deploy, and forced rebuild.
-  - candidate page selection behavior
-- Add integration smoke tests for COM registration and TSF activation.
-- Add packaging smoke tests for generated payload content.
-  Implemented with `tests/package_smoke.ps1`.
-- Add GitHub Actions or equivalent CI for configure, build, and package smoke.
-  Started with a Windows Release build workflow and a non-mutating CTest smoke
-  test for build artifacts, generated version constants, and basic tool entry
-  points.
+## P1：构建和 CI
 
-Acceptance:
+执行项：
 
-- Core tests run locally without requiring an installed IME.
-- CI catches CMake, packaging, and updater regressions.
-- Risky refactors have a test harness before they land.
-- Settings-file changes are covered before adding caches or splitting settings
-  UI code.
+- CI 保持 Release build、CTest、package smoke。
+- 增加 Debug build。
+- 增加 updater 离线 JSON 单测。
+- 增加 payload 大小阈值检查。
+- 评估 MSVC `/analyze` 或 clang-tidy，但先不阻断发布。
+- 评估 PCH，优先给大目标降低本地编译时间。
 
-## Phase 5: Security and Robustness
+验收：
 
-Status: continued in `codex/phase11-pbkdf2-policy`.
+- CI 能发现 Release/Debug 基础构建问题。
+- payload 体积异常增长会失败或至少报警。
 
-Work:
+## P2：安全和鲁棒性
 
-- Verify downloaded MSI files with `WinVerifyTrust` before launching updater
-  installs. Implemented in `codex/phase3-version-security`.
-- Replace handwritten GitHub API JSON parsing with a JSON library or a stricter
-  parser. Implemented in updater with bounded object/array scanning, JSON string
-  unescaping, UTF-8 BOM tolerance, and an offline smoke test.
-- Add sync package integrity verification, such as an authenticated tag/HMAC
-  over encrypted data. Current `.fpsync` packages already use AES-GCM with a
-  16-byte authentication tag; Phase 8 adds a CTest smoke that tampers with an
-  encrypted package and verifies restore fails.
-- Review PBKDF2 iteration policy and document migration behavior. Current
-  `.fpsync` packages store and require `150000` PBKDF2-SHA256 iterations with
-  package version `2`; changing this value must either bump the package version
-  or add multi-iteration read compatibility. Phase 11 extends the sync package
-  smoke to verify the stored iteration count and reject a tampered count.
-- Normalize error handling for operations that cross process, filesystem,
-  registry, COM, network, or crypto boundaries.
+执行项：
 
-Acceptance:
+- Updater 下载继续验证 Authenticode 签名。
+- 给 WinINet HTTP 请求设置连接/发送/接收超时。
+- 保持 updater JSON 解析的边界测试；如引入 JSON 库，必须评估包体和依赖。
+- 审计 `LinkOrCopyFileIfNewer` 的删除到硬链接窗口期，优先降低 TOCTOU 风险。
+- Sync 服务保持 AES-GCM 完整性校验，继续补网络错误模拟。
 
-- Updater refuses unsigned or incorrectly signed MSI files.
-- Sync restore rejects corrupted or tampered packages.
-- Error logs include enough context to diagnose failed update/sync/install
-  operations.
+验收：
 
-## Current Branch Work Items
+- updater 网络异常不会长时间挂起。
+- 下载资产解析和签名验证失败会给出明确错误。
+- 同步包篡改测试继续失败即通过。
 
-The first implementation branch focuses on Phase 0 items:
+## P2：维护性重构
 
-- Reuse component log file handles in `src/common/logging.cpp`.
-- Add Rime initialization and deployment timing in `src/core/rime_engine.cpp`.
-- Add candidate refresh/show/render timing in `src/tsf/tsf_text_service.cpp`.
-- Add installer prepare/finalize timing in `src/devtools/main.cpp`.
-- Add this project optimization plan.
+### 1. 拆分 `tsf_text_service.cpp`
 
-After the branch builds cleanly, merge it to `main` and use the new logs to
-choose the next performance patch from Phase 1.
+顺序：
+
+1. 候选布局纯函数和测试。
+2. 候选窗口渲染和交互。
+3. 工具栏窗口。
+4. 状态提示。
+5. 右键菜单。
+6. 按键处理。
+7. Rime 协调层。
+
+策略：
+
+- 每次只拆一个职责。
+- 不改变行为。
+- 每次拆分后跑构建、CTest、package smoke、安装验证。
+
+### 2. 拆分 `config_winui/main.cpp`
+
+顺序：
+
+1. UI helper。
+2. General。
+3. Appearance。
+4. Lexicon。
+5. Hotkeys。
+6. Sync。
+7. About。
+
+### 3. 同步和更新器拆层
+
+目标模块：
+
+- `sync_config`
+- `sync_package`
+- `sync_crypto`
+- `sync_remote_webdav`
+- `sync_remote_s3`
+- `sync_schedule`
+- `release_client`
+- `json_reader`
+- `installer_verifier`
+
+## P3：体积治理
+
+执行项：
+
+- payload-size-report 保持生成。
+- 增加 CI 阈值。
+- 评估基础版/完整版安装包，但当前 `00.00.04` 先保持离线可用体验。
+- 不移除万象语法模型和字体，除非另行确认用户体验取舍。
+
+## 当前执行队列
+
+1. 完成本轮 Core 设置缓存和限时安装脚本。
+2. 更新 CI/package smoke，纳入安装验证脚本的语法或轻量检查。
+3. 增加 Debug CI 和 payload 大小阈值。
+4. 增加 updater HTTP 超时。
+5. 增加 updater JSON 离线边界测试。
+6. 抽出 `common/settings_store.*`。
+7. 候选布局纯函数测试和模块拆分。
+8. 逐步拆分 TSF、设置 App、Sync、Updater。

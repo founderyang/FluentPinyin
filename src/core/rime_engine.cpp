@@ -24,6 +24,7 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <unordered_map>
 #include <vector>
 
 namespace fp::core {
@@ -192,22 +193,70 @@ std::wstring NormalizeSettingLine(std::wstring line) {
   return line;
 }
 
-std::wstring ReadStringSetting(std::wstring_view key, std::wstring_view default_value = L"") {
-  std::ifstream input(SettingsPath(), std::ios::binary);
+std::filesystem::file_time_type SettingsFileWriteTime(const std::filesystem::path& path) {
+  std::error_code error;
+  if (!std::filesystem::exists(path, error)) {
+    return std::filesystem::file_time_type{};
+  }
+  const auto write_time = std::filesystem::last_write_time(path, error);
+  return error ? std::filesystem::file_time_type{} : write_time;
+}
+
+struct SettingsCache {
+  std::filesystem::path path;
+  std::filesystem::file_time_type write_time{};
+  bool loaded = false;
+  std::unordered_map<std::wstring, std::wstring> values;
+};
+
+std::mutex& SettingsCacheMutex() {
+  static std::mutex mutex;
+  return mutex;
+}
+
+SettingsCache& MutableSettingsCache() {
+  static SettingsCache cache;
+  return cache;
+}
+
+void EnsureSettingsCacheLoadedLocked(SettingsCache& cache) {
+  const auto path = std::filesystem::path(SettingsPath());
+  const auto write_time = SettingsFileWriteTime(path);
+  if (cache.loaded && cache.path == path && cache.write_time == write_time) {
+    return;
+  }
+
+  cache.path = path;
+  cache.write_time = write_time;
+  cache.loaded = true;
+  cache.values.clear();
+
+  std::ifstream input(path, std::ios::binary);
   if (!input) {
-    return std::wstring(default_value);
+    return;
   }
 
   std::stringstream buffer;
   buffer << input.rdbuf();
   std::wistringstream lines(DecodeSettingsText(buffer.str()));
   std::wstring line;
-  const std::wstring prefix = std::wstring(key) + L"=";
   while (std::getline(lines, line)) {
     line = NormalizeSettingLine(std::move(line));
-    if (line.starts_with(prefix)) {
-      return line.substr(prefix.size());
+    const size_t equals = line.find(L'=');
+    if (equals == std::wstring::npos) {
+      continue;
     }
+    cache.values.try_emplace(line.substr(0, equals), line.substr(equals + 1));
+  }
+}
+
+std::wstring ReadStringSetting(std::wstring_view key, std::wstring_view default_value = L"") {
+  std::lock_guard lock(SettingsCacheMutex());
+  auto& cache = MutableSettingsCache();
+  EnsureSettingsCacheLoadedLocked(cache);
+  const auto found = cache.values.find(std::wstring(key));
+  if (found != cache.values.end()) {
+    return found->second;
   }
   return std::wstring(default_value);
 }
