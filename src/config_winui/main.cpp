@@ -1808,6 +1808,15 @@ void RequestInputStateRefresh() {
   PostMessageW(HWND_BROADCAST, message, 0, 0);
 }
 
+void RequestCandidateWindowVisualRefresh() {
+  const UINT message =
+      RegisterWindowMessageW(std::wstring(fp::kRefreshCandidateWindowVisualsMessageName).c_str());
+  if (message != 0) {
+    PostMessageW(HWND_BROADCAST, message, 0, 0);
+  }
+  RequestInputStateRefresh();
+}
+
 void RequestApplyInputConfigDeferred(DWORD delay_ms = 360) {
   static std::atomic<unsigned long> generation{0};
   const unsigned long request_generation = ++generation;
@@ -1829,6 +1838,18 @@ void RequestInputStateRefreshDeferred(DWORD delay_ms = 260) {
       return;
     }
     RequestInputStateRefresh();
+  }).detach();
+}
+
+void RequestCandidateWindowVisualRefreshDeferred(DWORD delay_ms = 120) {
+  static std::atomic<unsigned long> generation{0};
+  const unsigned long request_generation = ++generation;
+  std::thread([request_generation, delay_ms]() {
+    Sleep(delay_ms);
+    if (generation.load() != request_generation) {
+      return;
+    }
+    RequestCandidateWindowVisualRefresh();
   }).detach();
 }
 
@@ -3135,7 +3156,7 @@ ComboBox CandidateCountCombo() {
   }
   return ChoiceCombo(labels, current - kMinCandidateCount, [](int selected) {
     WriteIntSetting(L"candidate_count", kMinCandidateCount + selected);
-    RequestInputStateRefresh();
+    RequestCandidateWindowVisualRefresh();
   });
 }
 
@@ -3151,7 +3172,7 @@ ComboBox CandidateCountCombo(TextBlock const& icon_label) {
     const int value = kMinCandidateCount + selected;
     WriteIntSetting(L"candidate_count", value);
     icon_label.Text(std::to_wstring(value));
-    RequestInputStateRefresh();
+    RequestCandidateWindowVisualRefresh();
   });
 }
 
@@ -3170,8 +3191,8 @@ ComboBox CandidateFontSizeCombo() {
       return;
     }
     WriteIntSetting(L"candidate_font_size_level", selected);
-    RequestInputStateRefresh();
-    RequestInputStateRefreshDeferred(120);
+    RequestCandidateWindowVisualRefresh();
+    RequestCandidateWindowVisualRefreshDeferred(120);
   });
 }
 
@@ -3189,8 +3210,8 @@ ComboBox CandidateFontFamilyCombo(TextBlock const& icon_label) {
       false,
       CandidateFontIconText,
       [](std::wstring_view) {
-        RequestInputStateRefresh();
-        RequestInputStateRefreshDeferred(120);
+        RequestCandidateWindowVisualRefresh();
+        RequestCandidateWindowVisualRefreshDeferred(120);
       });
 }
 
@@ -6286,7 +6307,8 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
                           false,
                           [candidate_layout_icon](std::wstring_view value) {
                             SetIconChild(candidate_layout_icon, CandidateLayoutIcon(value));
-                            RequestInputStateRefresh();
+                            RequestCandidateWindowVisualRefresh();
+                            RequestCandidateWindowVisualRefreshDeferred(120);
                           }),
         candidate_layout_icon,
         L"已联动"));

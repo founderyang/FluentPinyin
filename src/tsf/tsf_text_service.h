@@ -107,6 +107,7 @@ class TsfTextService final : public ITfTextInputProcessorEx,
   void ApplyInputStateFromSettings(bool allow_during_composition);
   void ApplyDefaultInputStateFromSettings();
   void RefreshInputStateFromSettings();
+  void RefreshCandidateWindowVisualSettings();
   void ReloadCandidateWindowVisualSettings();
   void SaveCandidateLayoutSetting() const;
   void SaveToolbarSetting() const;

@@ -261,6 +261,12 @@ UINT LegacyRefreshInputStateMessage() {
   return message;
 }
 
+UINT RefreshCandidateWindowVisualsMessage() {
+  static const UINT message =
+      RegisterWindowMessageW(std::wstring(fp::kRefreshCandidateWindowVisualsMessageName).c_str());
+  return message;
+}
+
 void RequestInputStateRefresh() {
   const UINT message = RefreshInputStateMessage();
   if (message != 0) {
@@ -8246,6 +8252,51 @@ void TsfTextService::RefreshInputStateFromSettings() {
   }
 }
 
+void TsfTextService::RefreshCandidateWindowVisualSettings() {
+  const bool previous_horizontal_candidate_layout = horizontal_candidate_layout_;
+  const int previous_compact_candidate_count = compact_candidate_count_;
+  const int previous_candidate_font_size_level = candidate_font_size_level_;
+  const std::wstring previous_candidate_font_family = candidate_font_family_;
+  const std::wstring previous_theme_mode = theme_mode_;
+  const std::wstring previous_theme_preset = theme_preset_;
+  const bool previous_apps_use_light_theme = apps_use_light_theme_;
+  const bool previous_system_uses_light_theme = system_uses_light_theme_;
+
+  ReloadCandidateWindowVisualSettings();
+  apps_use_light_theme_ = AppsUseLightTheme();
+  system_uses_light_theme_ = SystemUsesLightTheme();
+
+  const bool candidate_window_settings_changed =
+      previous_horizontal_candidate_layout != horizontal_candidate_layout_ ||
+      previous_compact_candidate_count != compact_candidate_count_ ||
+      previous_candidate_font_size_level != candidate_font_size_level_ ||
+      previous_candidate_font_family != candidate_font_family_;
+  const bool theme_changed =
+      previous_theme_mode != theme_mode_ || previous_theme_preset != theme_preset_ ||
+      previous_apps_use_light_theme != apps_use_light_theme_ ||
+      previous_system_uses_light_theme != system_uses_light_theme_;
+  if (!candidate_window_settings_changed && !theme_changed) {
+    return;
+  }
+
+  InvalidateCandidateLayoutCache();
+  last_candidate_query_input_.clear();
+  last_candidate_query_page_index_ = -1;
+  last_candidate_query_page_size_ = 0;
+  if (candidate_window_ != nullptr) {
+    ApplyCandidateDwmFrame(candidate_window_, theme_mode_, theme_preset_);
+  }
+  if (IsComposing()) {
+    candidate_page_index_ = 0;
+    selected_candidate_index_ = 0;
+    RefreshCandidates();
+    ShowCandidateWindow(active_context_);
+  } else if (candidate_window_ != nullptr) {
+    RenderCandidateLayeredWindow();
+  }
+  fp::LogInfo(L"tsf", L"Candidate window visual settings refreshed.");
+}
+
 void TsfTextService::ReloadCandidateWindowVisualSettings() {
   const std::wstring candidate_layout = ReadStringSetting(L"candidate_layout");
   if (candidate_layout == L"horizontal") {
@@ -8437,6 +8488,10 @@ LRESULT TsfTextService::ControlWindowProc(HWND window,
   if (message == RefreshInputStateMessage() || message == LegacyRefreshInputStateMessage()) {
     fp::LogInfo(L"tsf", L"Settings requested input state refresh.");
     RefreshInputStateFromSettings();
+    return 0;
+  }
+  if (message == RefreshCandidateWindowVisualsMessage()) {
+    RefreshCandidateWindowVisualSettings();
     return 0;
   }
   if (message == WM_SETTINGCHANGE || message == WM_THEMECHANGED || message == WM_SYSCOLORCHANGE) {

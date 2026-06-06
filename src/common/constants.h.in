@@ -26,6 +26,8 @@ inline constexpr std::wstring_view kRefreshInputStateMessageName =
     L"FluentPinyin.RequestRefreshInputState.V2";
 inline constexpr std::wstring_view kLegacyRefreshInputStateMessageName =
     L"FluentPinyin.RequestRefreshInputState";
+inline constexpr std::wstring_view kRefreshCandidateWindowVisualsMessageName =
+    L"FluentPinyin.RequestRefreshCandidateWindowVisuals.V1";
 inline constexpr std::wstring_view kToolbarRefreshMessageName =
     L"FluentPinyin.Toolbar.Refresh.V4";
 inline constexpr std::wstring_view kLegacyToolbarRefreshMessageName =
