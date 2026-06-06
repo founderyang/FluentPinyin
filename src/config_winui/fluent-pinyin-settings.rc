@@ -1,9 +1,9 @@
 ﻿#include "../tsf/resource.h"
 #include <winver.h>
 
-IDI_APP_ICON ICON "../tsf/fluent-pinyin-dark.ico"
-IDI_FLUENT_PINYIN_DARK ICON "../tsf/fluent-pinyin-dark.ico"
-IDI_FLUENT_PINYIN_LIGHT ICON "../tsf/fluent-pinyin-light.ico"
+IDI_APP_ICON ICON "../../assets/icons/fluent-pinyin.ico"
+IDI_FLUENT_PINYIN_DARK ICON "../../assets/icons/fluent-pinyin-dark.ico"
+IDI_FLUENT_PINYIN_LIGHT ICON "../../assets/icons/fluent-pinyin-light.ico"
 
 VS_VERSION_INFO VERSIONINFO
  FILEVERSION 0,0,2,0

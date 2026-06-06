@@ -1,5 +1,5 @@
 #include "resource.h"
 
-IDI_APP_ICON ICON "fluent-pinyin-dark.ico"
-IDI_FLUENT_PINYIN_DARK ICON "fluent-pinyin-dark.ico"
-IDI_FLUENT_PINYIN_LIGHT ICON "fluent-pinyin-light.ico"
+IDI_APP_ICON ICON "../../assets/icons/fluent-pinyin.ico"
+IDI_FLUENT_PINYIN_DARK ICON "../../assets/icons/fluent-pinyin-dark.ico"
+IDI_FLUENT_PINYIN_LIGHT ICON "../../assets/icons/fluent-pinyin-light.ico"

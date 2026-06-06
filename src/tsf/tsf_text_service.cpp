@@ -1517,10 +1517,10 @@ COLORREF TrayTextColor() {
                             sizeof(high_contrast),
                             &high_contrast,
                             0) &&
-       (high_contrast.dwFlags & HCF_HIGHCONTRASTON) != 0) {
+      (high_contrast.dwFlags & HCF_HIGHCONTRASTON) != 0) {
     return GetSysColor(COLOR_WINDOWTEXT);
   }
-  return SystemUsesLightTheme() ? RGB(32, 32, 32) : RGB(245, 245, 245);
+  return RGB(71, 74, 178);
 }
 
 struct ToolbarPalette {
@@ -3246,9 +3246,7 @@ std::wstring ToolbarTooltipText(int item,
                               L"shortcut_toolbar_charset",
                               L"Ctrl+Shift+F");
     case kToolbarItemEmoji:
-      return TextWithShortcut(L"\u8868\u60C5\u7B26\u53F7/\u7B26\u53F7",
-                              L"shortcut_toolbar_emoji",
-                              L"Win+.");
+      return L"\u8868\u60C5\u7B26\u53F7/\u7B26\u53F7";
     case kToolbarItemSettings:
       return L"\u8BBE\u7F6E";
     default:
@@ -5459,7 +5457,7 @@ class InputModeLangBarItem final : public ITfLangBarItemButton, public ITfSource
     return S_OK;
   }
 
-  void NotifyUpdated(DWORD flags = TF_LBI_BTNALL | TF_LBI_STATUS) {
+  void NotifyUpdated(DWORD flags = TF_LBI_BTNALL | TF_LBI_STATUS | TF_LBI_ICON) {
     if (sink_ != nullptr) {
       sink_->OnUpdate(flags);
     }
@@ -6715,6 +6713,10 @@ bool IsVirtualKeyDown(int virtual_key) {
   return (GetKeyState(virtual_key) & 0x8000) != 0;
 }
 
+bool IsCapsLockOn() {
+  return (GetKeyState(VK_CAPITAL) & 0x0001) != 0;
+}
+
 struct ShortcutChord {
   bool valid = false;
   bool ctrl = false;
@@ -6931,9 +6933,6 @@ UINT ToolbarShortcutCommand(WPARAM wparam) {
   }
   if (ShortcutMatches(L"shortcut_toolbar_charset", L"Ctrl+Shift+F", wparam)) {
     return kMenuCharset;
-  }
-  if (ShortcutMatches(L"shortcut_toolbar_emoji", L"Win+.", wparam)) {
-    return kMenuEmoji;
   }
   return 0;
 }
@@ -7363,8 +7362,7 @@ STDMETHODIMP TsfTextService::OnTestKeyUp(ITfContext* context,
       wparam == VK_SHIFT || wparam == VK_LSHIFT || wparam == VK_RSHIFT;
   *eaten = ((input_mode_shortcut_down_ &&
              ShortcutKeyEquals(input_mode_shortcut_key_, wparam)) ||
-            ((shift_key && shift_key_down_) || (wparam == VK_CAPITAL && caps_key_down_)) &&
-                !IsModifierShortcutActive())
+            (shift_key && shift_key_down_ && !IsModifierShortcutActive()))
                ? TRUE
                : FALSE;
   return S_OK;
@@ -7384,7 +7382,6 @@ STDMETHODIMP TsfTextService::OnKeyUp(ITfContext* context,
     input_mode_shortcut_down_ = false;
     input_mode_shortcut_key_ = 0;
     shift_key_down_ = false;
-    caps_key_down_ = false;
     *eaten = ToggleAsciiModeFromKey(context, false) ? TRUE : FALSE;
     return S_OK;
   }
@@ -7396,12 +7393,6 @@ STDMETHODIMP TsfTextService::OnKeyUp(ITfContext* context,
       return S_OK;
     }
     *eaten = ToggleAsciiModeFromKey(context, false) ? TRUE : FALSE;
-    return S_OK;
-  }
-
-  if (wparam == VK_CAPITAL && caps_key_down_) {
-    caps_key_down_ = false;
-    *eaten = TRUE;
     return S_OK;
   }
 
@@ -7584,6 +7575,8 @@ void TsfTextService::LoadUserSettings(bool force, bool allow_candidate_changes_d
       fp::NormalizeThemeModeSetting(ReadStringSetting(fp::kThemeModeSetting, legacy_theme));
   theme_preset_ =
       fp::NormalizeThemePresetSetting(ReadStringSetting(fp::kThemePresetSetting, legacy_theme));
+  apps_use_light_theme_ = AppsUseLightTheme();
+  system_uses_light_theme_ = SystemUsesLightTheme();
   if (IsComposing()) {
     if (!allow_candidate_changes_during_composition) {
       horizontal_candidate_layout_ = previous_horizontal_layout;
@@ -7643,6 +7636,8 @@ void TsfTextService::RefreshInputStateFromSettings() {
   const std::wstring previous_candidate_font_family = candidate_font_family_;
   const std::wstring previous_theme_mode = theme_mode_;
   const std::wstring previous_theme_preset = theme_preset_;
+  const bool previous_apps_use_light_theme = apps_use_light_theme_;
+  const bool previous_system_uses_light_theme = system_uses_light_theme_;
 
   LoadUserSettings(true, true);
   ApplyInputStateFromSettings(true);
@@ -7679,7 +7674,9 @@ void TsfTextService::RefreshInputStateFromSettings() {
       previous_candidate_font_size_level != candidate_font_size_level_ ||
       previous_candidate_font_family != candidate_font_family_;
   const bool theme_changed =
-      previous_theme_mode != theme_mode_ || previous_theme_preset != theme_preset_;
+      previous_theme_mode != theme_mode_ || previous_theme_preset != theme_preset_ ||
+      previous_apps_use_light_theme != apps_use_light_theme_ ||
+      previous_system_uses_light_theme != system_uses_light_theme_;
   if (candidate_window_settings_changed && !rime_options_changed) {
     last_candidate_query_input_.clear();
     last_candidate_query_page_index_ = -1;
@@ -7701,7 +7698,7 @@ void TsfTextService::RefreshInputStateFromSettings() {
     }
   }
 
-  if (previous_ascii_mode != ascii_mode_ || rime_options_changed) {
+  if (previous_ascii_mode != ascii_mode_ || rime_options_changed || theme_changed) {
     NotifyInputModeChanged();
   }
   if (toolbar_window_ != nullptr) {
@@ -7920,6 +7917,10 @@ LRESULT TsfTextService::ControlWindowProc(HWND window,
     RefreshInputStateFromSettings();
     return 0;
   }
+  if (message == WM_SETTINGCHANGE || message == WM_THEMECHANGED || message == WM_SYSCOLORCHANGE) {
+    RefreshInputStateFromSettings();
+    return 0;
+  }
   if (message == ToolbarRefreshMessage()) {
     RefreshToolbarFromSettings();
     return 0;
@@ -7975,7 +7976,7 @@ bool TsfTextService::IsKeyHandled(WPARAM wparam, LPARAM lparam) const {
     return false;
   }
   if (wparam == VK_CAPITAL) {
-    return true;
+    return false;
   }
 
   if (IsComposing()) {
@@ -8033,33 +8034,28 @@ bool TsfTextService::HandleKey(ITfContext* context, WPARAM wparam, LPARAM lparam
         input_mode_shortcut_down_ = true;
         input_mode_shortcut_key_ = wparam;
         shift_key_down_ = false;
-        caps_key_down_ = false;
         return true;
       }
       input_mode_shortcut_down_ = false;
       input_mode_shortcut_key_ = 0;
       shift_key_down_ = false;
-      caps_key_down_ = false;
       return ToggleAsciiModeFromKey(context, false);
     }
     input_mode_shortcut_down_ = false;
     input_mode_shortcut_key_ = 0;
     shift_key_down_ = false;
-    caps_key_down_ = false;
     HandleLangBarMenuCommand(command);
     return true;
   }
   if (IsModifierShortcutActive() && !IsComposing()) {
     shift_key_down_ = false;
-    caps_key_down_ = false;
     return false;
   }
   if (wparam == VK_SHIFT || wparam == VK_LSHIFT || wparam == VK_RSHIFT) {
     return false;
   }
   if (wparam == VK_CAPITAL) {
-    caps_key_down_ = true;
-    return ToggleAsciiModeFromKey(context, true);
+    return false;
   }
 
   if (active_context_ != context) {
@@ -8074,6 +8070,9 @@ bool TsfTextService::HandleKey(ITfContext* context, WPARAM wparam, LPARAM lparam
   }
 
   if (ascii_mode_ && !IsComposing()) {
+    return false;
+  }
+  if (!IsComposing() && IsCapsLockOn() && IsAlphabetVirtualKey(wparam)) {
     return false;
   }
 
@@ -8147,7 +8146,6 @@ bool TsfTextService::HandleKey(ITfContext* context, WPARAM wparam, LPARAM lparam
 
   if (IsModifierShortcutActive()) {
     shift_key_down_ = false;
-    caps_key_down_ = false;
     return false;
   }
 
@@ -10466,6 +10464,8 @@ void TsfTextService::RefreshToolbarFromSettings() {
       fp::NormalizeThemeModeSetting(ReadStringSetting(fp::kThemeModeSetting, legacy_theme));
   theme_preset_ =
       fp::NormalizeThemePresetSetting(ReadStringSetting(fp::kThemePresetSetting, legacy_theme));
+  apps_use_light_theme_ = AppsUseLightTheme();
+  system_uses_light_theme_ = SystemUsesLightTheme();
   toolbar_vertical_layout_ = ReadStringSetting(kToolbarLayoutSetting, L"horizontal") == L"vertical";
   toolbar_visible_items_ = ParseToolbarVisibleItems(ReadStringSetting(kToolbarItemsSetting));
   ApplyInputStateFromSettings(true);

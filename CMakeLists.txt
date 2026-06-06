@@ -129,10 +129,13 @@ set_target_properties(fluent_pinyin_tsf PROPERTIES
 
 add_custom_command(TARGET fluent_pinyin_tsf POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_if_different
-          "${CMAKE_SOURCE_DIR}/src/tsf/fluent-pinyin-dark.ico"
+          "${CMAKE_SOURCE_DIR}/assets/icons/fluent-pinyin.ico"
+          "$<TARGET_FILE_DIR:fluent_pinyin_tsf>/fluent-pinyin.ico"
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          "${CMAKE_SOURCE_DIR}/assets/icons/fluent-pinyin-dark.ico"
           "$<TARGET_FILE_DIR:fluent_pinyin_tsf>/fluent-pinyin-dark.ico"
   COMMAND ${CMAKE_COMMAND} -E copy_if_different
-          "${CMAKE_SOURCE_DIR}/src/tsf/fluent-pinyin-light.ico"
+          "${CMAKE_SOURCE_DIR}/assets/icons/fluent-pinyin-light.ico"
           "$<TARGET_FILE_DIR:fluent_pinyin_tsf>/fluent-pinyin-light.ico"
   COMMAND ${CMAKE_COMMAND} -E copy_directory
           "${CMAKE_SOURCE_DIR}/assets/fonts"
@@ -237,10 +240,13 @@ set_target_properties(fluent_pinyin_settings PROPERTIES OUTPUT_NAME "fluent-piny
 
 add_custom_command(TARGET fluent_pinyin_settings POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_if_different
-          "${CMAKE_SOURCE_DIR}/src/tsf/fluent-pinyin-dark.ico"
+          "${CMAKE_SOURCE_DIR}/assets/icons/fluent-pinyin.ico"
+          "$<TARGET_FILE_DIR:fluent_pinyin_settings>/fluent-pinyin.ico"
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          "${CMAKE_SOURCE_DIR}/assets/icons/fluent-pinyin-dark.ico"
           "$<TARGET_FILE_DIR:fluent_pinyin_settings>/fluent-pinyin-dark.ico"
   COMMAND ${CMAKE_COMMAND} -E copy_if_different
-          "${CMAKE_SOURCE_DIR}/src/tsf/fluent-pinyin-light.ico"
+          "${CMAKE_SOURCE_DIR}/assets/icons/fluent-pinyin-light.ico"
           "$<TARGET_FILE_DIR:fluent_pinyin_settings>/fluent-pinyin-light.ico"
   COMMAND ${CMAKE_COMMAND} -E copy_if_different
           "${FP_WINAPPSDK_FOUNDATION_ROOT}/runtimes/win-x64/native/Microsoft.WindowsAppRuntime.Bootstrap.dll"
@@ -270,7 +276,11 @@ add_executable(fluent_pinyin_devtools
 
 target_link_libraries(fluent_pinyin_devtools PRIVATE
   fluent_pinyin_common
+  advapi32
+  gdi32
   ole32
+  oleaut32
+  taskschd
   uuid
 )
 

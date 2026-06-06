@@ -31,7 +31,7 @@ Section "Install"
   SetShellVarContext all
   SetRegView 64
   SetOutPath "$INSTDIR"
-  RMDir /r "$INSTDIR"
+  RMDir /r /REBOOTOK "$INSTDIR"
   CreateDirectory "$INSTDIR"
   SetOutPath "$INSTDIR"
   File /r "${PAYLOAD_DIR}\*"
@@ -46,7 +46,7 @@ Section "Install"
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FluentPinyin" "NoModify" 1
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FluentPinyin" "NoRepair" 1
   WriteUninstaller "$INSTDIR\FluentPinyin-Uninstall.exe"
-  ExecWait '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\scripts\install-fonts.ps1" -SourceFontDir "$INSTDIR\fonts"'
+  ExecWait '"$INSTDIR\fluent-pinyin-devtools.exe" install-fonts "$INSTDIR\fonts"'
   ExecWait '"$SYSDIR\regsvr32.exe" /s "$INSTDIR\fluent-pinyin-tsf.dll"'
   IfFileExists "$INSTDIR\fluent-pinyin-devtools.exe" 0 +2
     ExecWait '"$INSTDIR\fluent-pinyin-devtools.exe" activate-session'
@@ -56,14 +56,16 @@ Section "Uninstall"
   SetShellVarContext all
   SetRegView 64
   IfFileExists "$INSTDIR\fluent-pinyin-devtools.exe" 0 +2
+    ExecWait '"$INSTDIR\fluent-pinyin-devtools.exe" close-settings'
+  IfFileExists "$INSTDIR\fluent-pinyin-devtools.exe" 0 +2
     ExecWait '"$INSTDIR\fluent-pinyin-devtools.exe" activate-ms-pinyin-session'
   IfFileExists "$INSTDIR\fluent-pinyin-devtools.exe" 0 +2
     ExecWait '"$INSTDIR\fluent-pinyin-devtools.exe" shutdown-core'
   IfFileExists "$INSTDIR\fluent-pinyin-tsf.dll" 0 +2
     ExecWait '"$SYSDIR\regsvr32.exe" /u /s "$INSTDIR\fluent-pinyin-tsf.dll"'
-  IfFileExists "$INSTDIR\scripts\cleanup-install.ps1" 0 +2
-    ExecWait '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\scripts\cleanup-install.ps1" -InstallDir "$INSTDIR"'
+  IfFileExists "$INSTDIR\fluent-pinyin-devtools.exe" 0 +2
+    ExecWait '"$INSTDIR\fluent-pinyin-devtools.exe" cleanup-install "$INSTDIR"'
   DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FluentPinyin"
   DeleteRegKey HKLM "Software\FluentPinyin"
-  RMDir /r "$INSTDIR"
+  RMDir /r /REBOOTOK "$INSTDIR"
 SectionEnd

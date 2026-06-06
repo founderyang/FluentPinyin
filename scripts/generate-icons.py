@@ -5,7 +5,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parents[1]
 FONT = ROOT / "assets" / "fonts" / "MiSans-Regular.ttf"
-OUT = ROOT / "src" / "tsf"
+OUT = ROOT / "assets" / "icons"
 SIZES = (16, 20, 24, 32, 40, 48, 64, 96, 128, 256)
 
 ICON_REF_SIZE = 36
@@ -62,9 +62,10 @@ def save_icon(path: Path, color: tuple[int, int, int]) -> None:
 
 
 def main() -> None:
+    OUT.mkdir(parents=True, exist_ok=True)
     save_icon(OUT / "fluent-pinyin-dark.ico", (245, 245, 245))
     save_icon(OUT / "fluent-pinyin-light.ico", (32, 32, 32))
-    save_icon(OUT / "fluent-pinyin.ico", (32, 32, 32))
+    save_icon(OUT / "fluent-pinyin.ico", (71, 74, 178))
     render_glyph("\u7545", 256, (245, 245, 245)).save(
         OUT / "fluent-pinyin-dark.preview.png"
     )

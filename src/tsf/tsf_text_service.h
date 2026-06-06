@@ -336,8 +336,9 @@ class TsfTextService final : public ITfTextInputProcessorEx,
   std::wstring candidate_font_family_ = L"misans";
   std::wstring theme_mode_ = L"dark";
   std::wstring theme_preset_ = L"default_dark";
+  bool apps_use_light_theme_ = true;
+  bool system_uses_light_theme_ = true;
   bool shift_key_down_ = false;
-  bool caps_key_down_ = false;
   bool input_mode_shortcut_down_ = false;
   WPARAM input_mode_shortcut_key_ = 0;
   bool suppress_next_composition_termination_ = false;

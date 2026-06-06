@@ -200,11 +200,6 @@ try {
         Copy-DirectoryClean -Source $winuiRuntime -Destination (Join-Path $resolvedPayload "Microsoft.UI.Xaml")
     }
 
-    $scriptsDir = Join-Path $resolvedPayload "scripts"
-    New-Item -ItemType Directory -Force -Path $scriptsDir | Out-Null
-    Copy-Item -LiteralPath ".\scripts\install-fonts.ps1" -Destination (Join-Path $scriptsDir "install-fonts.ps1") -Force
-    Copy-Item -LiteralPath ".\scripts\cleanup-install.ps1" -Destination (Join-Path $scriptsDir "cleanup-install.ps1") -Force
-
     $readme = @"
 FluentPinyin $ProductVersion
 
@@ -223,12 +218,19 @@ The MSI package is provided for managed installation.
     }
 
     if (-not $SkipInstallers) {
+        $programFiles = [Environment]::GetFolderPath("ProgramFiles")
+        $programFilesX86 = [Environment]::GetFolderPath("ProgramFilesX86")
         $makensis = Resolve-Tool `
             -Name "makensis.exe" `
-            -Fallbacks @("${env:ProgramFiles(x86)}\NSIS\makensis.exe")
+            -Fallbacks @(
+                (Join-Path $programFilesX86 "NSIS\makensis.exe"),
+                (Join-Path $programFilesX86 "NSIS\Bin\makensis.exe"),
+                (Join-Path $programFiles "NSIS\makensis.exe"),
+                (Join-Path $programFiles "NSIS\Bin\makensis.exe")
+            )
         $wix = Resolve-Tool `
             -Name "wix.exe" `
-            -Fallbacks @("${env:ProgramFiles}\WiX Toolset v7.0\bin\wix.exe")
+            -Fallbacks @((Join-Path $programFiles "WiX Toolset v7.0\bin\wix.exe"))
 
         $payloadForNsis = ConvertTo-NsisPath $resolvedPayload
         $releaseForNsis = ConvertTo-NsisPath $resolvedRelease

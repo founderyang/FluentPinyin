@@ -9,7 +9,7 @@
     <MediaTemplate EmbedCab="yes" />
     <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
     <Property Id="ARPPRODUCTICON" Value="AppIcon" />
-    <Icon Id="AppIcon" SourceFile="src\tsf\fluent-pinyin.ico" />
+    <Icon Id="AppIcon" SourceFile="assets\icons\fluent-pinyin.ico" />
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="FluentPinyin">
         <Component Id="InstallRegistry" Guid="{D0762DC7-2C6B-4D92-BB79-6D0A4475359C}">
@@ -29,7 +29,7 @@
       Directory="INSTALLFOLDER"
       Execute="deferred"
       Impersonate="yes"
-      ExeCommand='[SystemFolder]WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File "[INSTALLFOLDER]scripts\install-fonts.ps1" -SourceFontDir "[INSTALLFOLDER]fonts"' />
+      ExeCommand='"[INSTALLFOLDER]fluent-pinyin-devtools.exe" install-fonts "[INSTALLFOLDER]fonts"' />
     <CustomAction
       Id="RegisterTsf"
       Directory="INSTALLFOLDER"
@@ -49,6 +49,12 @@
       Impersonate="yes"
       ExeCommand='"[INSTALLFOLDER]fluent-pinyin-devtools.exe" activate-ms-pinyin-session' />
     <CustomAction
+      Id="CloseSettings"
+      Directory="INSTALLFOLDER"
+      Execute="deferred"
+      Impersonate="yes"
+      ExeCommand='"[INSTALLFOLDER]fluent-pinyin-devtools.exe" close-settings' />
+    <CustomAction
       Id="ShutdownInputCore"
       Directory="INSTALLFOLDER"
       Execute="deferred"
@@ -59,7 +65,7 @@
       Directory="INSTALLFOLDER"
       Execute="deferred"
       Impersonate="yes"
-      ExeCommand='[SystemFolder]WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File "[INSTALLFOLDER]scripts\cleanup-install.ps1" -InstallDir "[INSTALLFOLDER]" -SkipInstallDir' />
+      ExeCommand='"[INSTALLFOLDER]fluent-pinyin-devtools.exe" cleanup-install "[INSTALLFOLDER]" --skip-install-dir' />
     <CustomAction
       Id="UnregisterTsf"
       Directory="INSTALLFOLDER"
@@ -67,6 +73,7 @@
       Impersonate="yes"
       ExeCommand='[SystemFolder]regsvr32.exe /u /s "[INSTALLFOLDER]fluent-pinyin-tsf.dll"' />
     <InstallExecuteSequence>
+      <Custom Action="CloseSettings" Before="ActivateFallbackInput" Condition="REMOVE=&quot;ALL&quot;" />
       <Custom Action="ActivateFallbackInput" Before="ShutdownInputCore" Condition="REMOVE=&quot;ALL&quot;" />
       <Custom Action="ShutdownInputCore" Before="UnregisterTsf" Condition="REMOVE=&quot;ALL&quot;" />
       <Custom Action="UnregisterTsf" Before="RemoveFiles" Condition="REMOVE=&quot;ALL&quot;" />

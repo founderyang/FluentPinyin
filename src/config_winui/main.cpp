@@ -318,6 +318,10 @@ std::filesystem::path SiblingExe(std::wstring_view name) {
 }
 
 std::wstring WindowIconPath() {
+  const auto app_icon = ModuleDirectory() / L"fluent-pinyin.ico";
+  if (std::filesystem::exists(app_icon)) {
+    return app_icon.wstring();
+  }
   DWORD light_theme = 1;
   DWORD size = sizeof(light_theme);
   RegGetValueW(HKEY_CURRENT_USER,
@@ -2502,6 +2506,8 @@ constexpr std::wstring_view kFluentIconEditSettings20FilledPath =
     L"M12.9203 2.87317C14.1027 1.69077 16.0271 1.71505 17.1794 2.92689C18.2913 4.09631 18.2681 5.93899 17.1271 7.08003L16.4581 7.74902L12.2512 3.54217L12.9203 2.87317ZM11.5441 4.24927L3.54545 12.2475C3.21763 12.5754 2.99008 12.9899 2.88953 13.4424L2.01191 17.3923C1.97483 17.5592 2.02559 17.7335 2.14649 17.8544C2.26739 17.9753 2.44166 18.026 2.60855 17.9889L6.53494 17.1157C7.00237 17.0118 7.43048 16.7767 7.76907 16.4381L8.20707 16.0001C8.07218 15.5233 8 15.0201 8 14.5C8 11.4624 10.4624 9 13.5 9C14.02 9 14.5232 9.07217 15.0001 9.20705L15.751 8.45613L11.5441 4.24927ZM11.0667 11.4429C11.37 12.5241 10.724 13.643 9.63604 13.9209L9.175 14.0387C9.16002 14.1906 9.15234 14.3448 9.15234 14.5008C9.15234 14.6885 9.16344 14.8735 9.185 15.0551L9.53456 15.1377C10.654 15.4024 11.32 16.5545 10.9906 17.6567L10.8643 18.0795C11.1215 18.2827 11.4012 18.4569 11.699 18.5974L12.0239 18.2533C12.8138 17.417 14.1445 17.4177 14.9335 18.2548L15.2708 18.6128C15.5632 18.4778 15.8386 18.3105 16.0927 18.1151L15.9365 17.5585C15.6332 16.4773 16.2792 15.3584 17.3672 15.0805L17.8277 14.9629C17.8427 14.811 17.8504 14.6568 17.8504 14.5008C17.8504 14.313 17.8393 14.128 17.8177 13.9462L17.4687 13.8637C16.3492 13.599 15.6832 12.4469 16.0126 11.3447L16.1388 10.9225C15.8815 10.7192 15.6018 10.5449 15.304 10.4044L14.9793 10.7482C14.1895 11.5845 12.8587 11.5837 12.0698 10.7466L11.7324 10.3887C11.44 10.5236 11.1646 10.6909 10.9105 10.8862L11.0667 11.4429ZM13.5014 15.5008C12.9491 15.5008 12.5014 15.0531 12.5014 14.5008C12.5014 13.9485 12.9491 13.5008 13.5014 13.5008C14.0536 13.5008 14.5014 13.9485 14.5014 14.5008C14.5014 15.0531 14.0536 15.5008 13.5014 15.5008Z";
 constexpr std::wstring_view kFluentIconArrowClockwise20FilledPath =
     L"M4 10C4 6.68629 6.68629 4 10 4C11.5213 4 12.9107 4.56592 13.9689 5.5H12.75C12.3358 5.5 12 5.83579 12 6.25C12 6.66421 12.3358 7 12.75 7H15.75C16.1642 7 16.5 6.66421 16.5 6.25V3.25C16.5 2.83579 16.1642 2.5 15.75 2.5C15.3358 2.5 15 2.83579 15 3.25V4.40987C13.6736 3.22274 11.9213 2.5 10 2.5C5.85786 2.5 2.5 5.85786 2.5 10C2.5 14.1421 5.85786 17.5 10 17.5C14.1421 17.5 17.5 14.1421 17.5 10C17.5 9.90715 17.4983 9.81467 17.495 9.72258C17.4799 9.30864 17.1321 8.9853 16.7181 9.00038C16.3042 9.01546 15.9809 9.36324 15.9959 9.77718C15.9986 9.85109 16 9.92537 16 10C16 13.3137 13.3137 16 10 16C6.68629 16 4 13.3137 4 10Z";
+constexpr std::wstring_view kGitHubMark24Path =
+    L"M12 .5C5.648 .5 .5 5.648 .5 12C.5 17.086 3.792 21.391 8.36 22.916C8.935 23.021 9.145 22.666 9.145 22.361C9.145 22.086 9.135 21.359 9.129 20.393C5.932 21.088 5.256 18.852 5.256 18.852C4.733 17.523 3.979 17.168 3.979 17.168C2.935 16.454 4.058 16.469 4.058 16.469C5.212 16.551 5.819 17.654 5.819 17.654C6.845 19.411 8.511 18.904 9.168 18.61C9.272 17.867 9.57 17.36 9.899 17.072C7.347 16.782 4.665 15.796 4.665 11.392C4.665 10.136 5.114 9.109 5.85 8.306C5.731 8.015 5.337 6.845 5.963 5.262C5.963 5.262 6.929 4.953 9.126 6.44C10.043 6.185 11.026 6.058 12 6.053C12.974 6.058 13.958 6.185 14.876 6.44C17.071 4.953 18.035 5.262 18.035 5.262C18.663 6.845 18.269 8.015 18.15 8.306C18.888 9.109 19.334 10.136 19.334 11.392C19.334 15.807 16.648 16.779 14.088 17.064C14.5 17.419 14.868 18.12 14.868 19.193C14.868 20.73 14.854 21.971 14.854 22.361C14.854 22.669 15.061 23.027 15.646 22.914C20.21 21.386 23.5 17.084 23.5 12C23.5 5.648 18.352 .5 12 .5Z";
 
 Grid ShapeStatusIcon(bool full_shape) {
   Grid root;
@@ -2566,13 +2572,13 @@ Grid EmojiStatusIcon() {
   return root;
 }
 
-Grid FluentPathIcon(std::wstring_view path, double scale = 1.0) {
+Grid FluentPathIcon(std::wstring_view path, double scale = 1.0, double view_box_size = 20.0) {
   Grid root;
   root.Width(kSettingIconHostSize);
   root.Height(kSettingIconHostSize);
   root.HorizontalAlignment(HorizontalAlignment::Center);
   root.VerticalAlignment(VerticalAlignment::Center);
-  root.Children().Append(PathShape(path, kSettingIconVisualSize, 20, scale));
+  root.Children().Append(PathShape(path, kSettingIconVisualSize, view_box_size, scale));
   return root;
 }
 
@@ -2586,13 +2592,13 @@ Grid FluentButtonPathIcon(std::wstring_view path, double scale = 0.76) {
   return root;
 }
 
-Grid ActionButtonPathIcon(std::wstring_view path, double scale = 0.88) {
+Grid ActionButtonPathIcon(std::wstring_view path, double scale = 0.88, double view_box_size = 20.0) {
   Grid root;
   root.Width(kActionButtonIconHostSize);
   root.Height(kActionButtonIconHostSize);
   root.HorizontalAlignment(HorizontalAlignment::Center);
   root.VerticalAlignment(VerticalAlignment::Center);
-  root.Children().Append(PathShape(path, kActionButtonIconHostSize, 20, scale));
+  root.Children().Append(PathShape(path, kActionButtonIconHostSize, view_box_size, scale));
   return root;
 }
 
@@ -3491,7 +3497,8 @@ Button ActionButton(std::wstring_view text, std::wstring_view glyph) {
 
 Button ActionPathButton(std::wstring_view text,
                         std::wstring_view path,
-                        double scale = 0.88) {
+                        double scale = 0.88,
+                        double view_box_size = 20.0) {
   const auto palette = CurrentSettingsPalette();
   Button button;
   button.MinWidth(108);
@@ -3525,7 +3532,7 @@ Button ActionPathButton(std::wstring_view text,
   content.ColumnDefinitions().Append(icon_column);
   content.ColumnDefinitions().Append(text_column);
 
-  auto icon = ActionButtonPathIcon(path, scale);
+  auto icon = ActionButtonPathIcon(path, scale, view_box_size);
   Grid::SetColumn(icon, 0);
   content.Children().Append(icon);
   auto label = Text(text, 13, FW_SEMIBOLD);
@@ -3704,12 +3711,11 @@ std::wstring ShortcutConflictTooltip(std::wstring_view current_key,
     std::wstring_view label;
     std::wstring_view fallback;
   };
-  constexpr std::array<HotkeyConflictEntry, 8> shortcuts{{
+  constexpr std::array<HotkeyConflictEntry, 7> shortcuts{{
       {L"shortcut_toolbar_input_mode", L"中/英文模式", L"Shift"},
       {L"shortcut_toolbar_shape", L"全/半角", L"Shift+."},
       {L"shortcut_toolbar_punctuation", L"中/英文标点", L"Ctrl+."},
       {L"shortcut_toolbar_charset", L"简体/繁体", L"Ctrl+Shift+F"},
-      {L"shortcut_toolbar_emoji", L"表情符号/符号", L"Win+."},
       {L"shortcut_candidate_expand", L"展开/收起候选框", L"Tab"},
       {L"shortcut_candidate_previous_page", L"上一页", L"PgUp"},
       {L"shortcut_candidate_next_page", L"下一页", L"PgDn"},
@@ -4183,7 +4189,6 @@ void ResetDefaultSettings() {
   WriteStringSetting(L"shortcut_toolbar_shape", L"Shift+.");
   WriteStringSetting(L"shortcut_toolbar_punctuation", L"Ctrl+.");
   WriteStringSetting(L"shortcut_toolbar_charset", L"Ctrl+Shift+F");
-  WriteStringSetting(L"shortcut_toolbar_emoji", L"Win+.");
   WriteStringSetting(L"shortcut_candidate_expand", L"Tab");
   WriteStringSetting(L"shortcut_candidate_previous_page", L"PgUp");
   WriteStringSetting(L"shortcut_candidate_next_page", L"PgDn");
@@ -6726,8 +6731,6 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
         L"中/英文标点", L"shortcut_toolbar_punctuation", L"Ctrl+.", PunctuationStatusIcon(true)));
     page.Children().Append(HotkeyBindingRowWithIcon(
         L"简体/繁体", L"shortcut_toolbar_charset", L"Ctrl+Shift+F", TextIcon(L"简")));
-    page.Children().Append(HotkeyBindingRowWithIcon(
-        L"表情符号/符号", L"shortcut_toolbar_emoji", L"Win+.", EmojiStatusIcon()));
     page.Children().Append(SectionHeader(L"候选导航"));
     page.Children().Append(HotkeyBindingRowWithIcon(
         L"展开/收起候选框",
@@ -6898,7 +6901,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
   }
 
   UIElement BuildAboutPage() {
-    auto page = PageShell(L"关于", L"版本、更新和组件来源。");
+    auto page = PageShell(L"关于", L"版本和更新。");
     page.Children().Append(SectionHeader(L"更新", true));
     auto check_button = ActionPathButton(L"更新", kFluentIconArrowClockwise20RegularPath, 0.84);
     check_button.Click([](auto const&, auto const&) {
@@ -6910,36 +6913,24 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
                                               FluentPathIcon(kFluentIconArrowClockwise20RegularPath, 0.94),
                                               L"已接通"));
     page.Children().Append(SectionHeader(L"版本信息"));
-    page.Children().Append(Card(Text(std::wstring(fp::kProductName) + L"\n版本 " +
-                                         std::wstring(fp::kProductVersion),
-                                     14)));
-    auto repo_button = ActionPathButton(L"打开 GitHub", kFluentIconDocument20RegularPath, 0.82);
+    Grid version_spacer;
+    version_spacer.Width(1);
+    version_spacer.Height(1);
+    page.Children().Append(SettingRowWithIcon(std::wstring(fp::kProductName),
+                                              L"版本 " + std::wstring(fp::kProductVersion),
+                                              version_spacer,
+                                              TextIcon(L"畅"),
+                                              L"",
+                                              1.0));
+    auto repo_button = ActionPathButton(L"打开 GitHub", kGitHubMark24Path, 0.76, 24.0);
     repo_button.Click([](auto const&, auto const&) {
       OpenUrl(fp::kGitHubRepoUrl);
     });
     page.Children().Append(SettingRowWithIcon(L"GitHub 开源地址",
                                               std::wstring(fp::kGitHubRepoUrl),
                                               repo_button,
-                                              FluentPathIcon(kFluentIconLibrary20RegularPath, 0.94),
+                                              FluentPathIcon(kGitHubMark24Path, 0.78, 24.0),
                                               L"开源"));
-    page.Children().Append(SectionHeader(L"开源组件"));
-    page.Children().Append(Card(Text(
-        L"librime 1.16.1： https://github.com/rime/librime\n"
-        L"OpenCC： https://github.com/BYVoid/OpenCC\n"
-        L"Windows App SDK 1.8： https://github.com/microsoft/WindowsAppSDK\n"
-        L"C++/WinRT 3.0： https://github.com/microsoft/cppwinrt\n"
-        L"Fluent UI System Icons： https://github.com/microsoft/fluentui-system-icons\n"
-        L"Source Han Sans 2.005R： https://github.com/adobe-fonts/source-han-sans\n"
-        L"Plangothic Project： https://github.com/Fitzgerald-Porthmouth-Koenigsegg/Plangothic_Project\n"
-        L"万象拼音 15.11.1： https://github.com/amzxyz/rime-wanxiang\n"
-        L"RIME-LMDG LTS： https://github.com/amzxyz/RIME-LMDG",
-        13)));
-    page.Children().Append(SectionHeader(L"内置资源"));
-    page.Children().Append(Card(Text(
-        L"MiSans / MiSans TC / MiSans L3：非开源字体资源，允许随包分发，来源 https://hyperos.mi.com/font\n"
-        L"应用图标：由随包字体生成，生成脚本 scripts/generate-icons.py\n"
-        L"随包字体和图标仅用于流畅拼音显示与安装包分发。",
-        13)));
     return Scroll(page);
   }
 
