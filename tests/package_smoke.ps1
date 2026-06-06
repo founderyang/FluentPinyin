@@ -41,9 +41,38 @@ foreach ($dir in @(
   Assert-PathExists (Join-Path $PayloadDir $dir)
 }
 
+$rimeDataDir = Join-Path $PayloadDir "rime-data"
+foreach ($file in @(
+  "default.yaml",
+  "wanxiang.schema.yaml",
+  "wanxiang.dict.yaml",
+  "wanxiang-lts-zh-hans.gram"
+)) {
+  Assert-PathExists (Join-Path $rimeDataDir $file)
+}
+
+$grammar = Get-Item -LiteralPath (Join-Path $rimeDataDir "wanxiang-lts-zh-hans.gram")
+if ($grammar.Length -lt 200MB) {
+  throw "Wanxiang grammar model looks missing or truncated: $($grammar.Length) bytes"
+}
+
+$yamlFiles = Get-ChildItem -LiteralPath $rimeDataDir -Recurse -File -Include "*.yaml"
+foreach ($yaml in $yamlFiles) {
+  $yamlText = Get-Content -LiteralPath $yaml.FullName -Raw -Encoding UTF8
+  if ($yamlText -match "FluentPinyin managed") {
+    throw "Packaged upstream Rime data must not contain runtime managed patch text: $($yaml.FullName)"
+  }
+}
+
 $fontFiles = Get-ChildItem -LiteralPath (Join-Path $PayloadDir "fonts") -File
 if ($fontFiles.Count -eq 0) {
   throw "Payload fonts directory is empty"
+}
+foreach ($fontPattern in @("MiSans*.ttf", "SourceHanSans*.otf", "Plangothic*.ttf")) {
+  $matches = @($fontFiles | Where-Object { $_.Name -like $fontPattern })
+  if ($matches.Count -eq 0) {
+    throw "Payload fonts directory is missing required private font pattern: $fontPattern"
+  }
 }
 
 $report = Join-Path $ReleaseDir "payload-size-report.txt"
