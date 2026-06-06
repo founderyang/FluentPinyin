@@ -1,5 +1,6 @@
 ﻿#include "common/constants.h"
 #include "tsf/guids.h"
+#include "common/encoding.h"
 #include "common/logging.h"
 #include "common/path_utils.h"
 #include "core/rime_engine.h"
@@ -37,34 +38,6 @@ std::wstring HresultToString(HRESULT result) {
   return buffer;
 }
 
-std::string WideToUtf8(std::wstring_view value) {
-  if (value.empty()) {
-    return {};
-  }
-
-  const int required = WideCharToMultiByte(CP_UTF8,
-                                           0,
-                                           value.data(),
-                                           static_cast<int>(value.size()),
-                                           nullptr,
-                                           0,
-                                           nullptr,
-                                           nullptr);
-  if (required <= 0) {
-    return {};
-  }
-
-  std::string result(static_cast<size_t>(required), '\0');
-  WideCharToMultiByte(CP_UTF8,
-                      0,
-                      value.data(),
-                      static_cast<int>(value.size()),
-                      result.data(),
-                      required,
-                      nullptr,
-                      nullptr);
-  return result;
-}
 
 template <typename T>
 class ComPtr {
@@ -1289,8 +1262,8 @@ int ListProfiles() {
 
     found = true;
     std::cout << "FluentPinyin profile found\n";
-    std::cout << "  clsid:       " << WideToUtf8(GuidToString(profile.clsid)) << "\n";
-    std::cout << "  profile:     " << WideToUtf8(GuidToString(profile.guidProfile)) << "\n";
+    std::cout << "  clsid:       " << fp::WideToUtf8(GuidToString(profile.clsid)) << "\n";
+    std::cout << "  profile:     " << fp::WideToUtf8(GuidToString(profile.guidProfile)) << "\n";
     std::cout << "  langid:      0x" << std::hex << std::setw(4) << std::setfill('0')
               << profile.langid << std::dec << "\n";
     std::cout << "  type:        " << profile.dwProfileType << "\n";
@@ -1388,8 +1361,8 @@ int ActiveProfile() {
   }
 
   std::cout << "Active keyboard TIP\n";
-  std::cout << "  clsid:   " << WideToUtf8(GuidToString(profile.clsid)) << "\n";
-  std::cout << "  profile: " << WideToUtf8(GuidToString(profile.guidProfile)) << "\n";
+  std::cout << "  clsid:   " << fp::WideToUtf8(GuidToString(profile.clsid)) << "\n";
+  std::cout << "  profile: " << fp::WideToUtf8(GuidToString(profile.guidProfile)) << "\n";
   std::cout << "  langid:  0x" << std::hex << std::setw(4) << std::setfill('0')
             << profile.langid << std::dec << "\n";
   const char* product = "other";
@@ -1538,14 +1511,14 @@ int InspectLangBar() {
 
   ComPtr<ITfLangBarItem> input_mode;
   result = manager->GetItem(fp::tsf::kInputModeLangBarItemGuid, input_mode.put());
-  std::cout << "GetItem(kInputModeLangBarItemGuid): " << WideToUtf8(HresultToString(result))
+  std::cout << "GetItem(kInputModeLangBarItemGuid): " << fp::WideToUtf8(HresultToString(result))
             << "\n";
   if (SUCCEEDED(result) && input_mode) {
     TF_LANGBARITEMINFO info{};
     DWORD status = 0;
     if (SUCCEEDED(input_mode->GetInfo(&info))) {
-      std::cout << "  clsid: " << WideToUtf8(GuidToString(info.clsidService)) << "\n";
-      std::cout << "  desc:  " << WideToUtf8(info.szDescription) << "\n";
+      std::cout << "  clsid: " << fp::WideToUtf8(GuidToString(info.clsidService)) << "\n";
+      std::cout << "  desc:  " << fp::WideToUtf8(info.szDescription) << "\n";
       std::cout << "  style: 0x" << std::hex << info.dwStyle << std::dec << "\n";
     }
     if (SUCCEEDED(input_mode->GetStatus(&status))) {

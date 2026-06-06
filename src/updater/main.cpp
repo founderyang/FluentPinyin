@@ -1,4 +1,5 @@
 ﻿#include "common/constants.h"
+#include "common/encoding.h"
 #include "common/logging.h"
 #include "common/path_utils.h"
 
@@ -26,59 +27,7 @@ struct ReleaseInfo {
   std::string asset_url;
 };
 
-std::string WideToUtf8(std::wstring_view value) {
-  if (value.empty()) {
-    return {};
-  }
 
-  const int required = WideCharToMultiByte(CP_UTF8,
-                                           0,
-                                           value.data(),
-                                           static_cast<int>(value.size()),
-                                           nullptr,
-                                           0,
-                                           nullptr,
-                                           nullptr);
-  if (required <= 0) {
-    return {};
-  }
-
-  std::string result(static_cast<size_t>(required), '\0');
-  WideCharToMultiByte(CP_UTF8,
-                      0,
-                      value.data(),
-                      static_cast<int>(value.size()),
-                      result.data(),
-                      required,
-                      nullptr,
-                      nullptr);
-  return result;
-}
-
-std::wstring Utf8ToWide(std::string_view value) {
-  if (value.empty()) {
-    return {};
-  }
-
-  const int required = MultiByteToWideChar(CP_UTF8,
-                                           0,
-                                           value.data(),
-                                           static_cast<int>(value.size()),
-                                           nullptr,
-                                           0);
-  if (required <= 0) {
-    return {};
-  }
-
-  std::wstring result(static_cast<size_t>(required), L'\0');
-  MultiByteToWideChar(CP_UTF8,
-                      0,
-                      value.data(),
-                      static_cast<int>(value.size()),
-                      result.data(),
-                      required);
-  return result;
-}
 
 std::optional<std::string> HttpGet(const wchar_t* url) {
   HINTERNET internet = InternetOpenW(L"FluentPinyin updater",
@@ -237,7 +186,7 @@ std::optional<ReleaseInfo> CheckRelease(const wchar_t* latest_url,
 
 std::optional<ReleaseInfo> QueryAppRelease() {
   const std::wstring latest_url(fp::kGitHubLatestReleaseApiUrl);
-  return CheckRelease(latest_url.c_str(), WideToUtf8(fp::kReleaseMsiAssetName));
+  return CheckRelease(latest_url.c_str(), fp::WideToUtf8(fp::kReleaseMsiAssetName));
 }
 
 bool LaunchInstaller(const std::filesystem::path& installer_path, std::string_view) {
@@ -280,7 +229,7 @@ bool VerifyInstallerSignature(const std::filesystem::path& installer_path) {
 }
 
 std::wstring NormalizeVersionTag(std::string_view tag) {
-  std::wstring value = Utf8ToWide(tag);
+  std::wstring value = fp::Utf8ToWide(tag);
   if (!value.empty() && (value.front() == L'v' || value.front() == L'V')) {
     value.erase(value.begin());
   }
@@ -332,7 +281,7 @@ int CheckUpdates() {
 
   std::wcout << L"FluentPinyin current: " << fp::kProductVersion << L"\n";
   std::wcout << L"FluentPinyin latest: " << NormalizeVersionTag(app->tag) << L"\n";
-  std::wcout << L"Installer asset: " << Utf8ToWide(app->asset_url) << L"\n";
+  std::wcout << L"Installer asset: " << fp::Utf8ToWide(app->asset_url) << L"\n";
   return CompareVersions(fp::kProductVersion, NormalizeVersionTag(app->tag)) < 0 ? 2 : 0;
 }
 
@@ -367,9 +316,9 @@ int UpdateApp() {
   }
 
   const auto update_dir = fp::GetFpLocalDataPath() / L"Updates";
-  const auto target = update_dir / Utf8ToWide(release->asset_name);
-  std::wcout << L"Downloading FluentPinyin " << Utf8ToWide(release->tag) << L"...\n";
-  if (!DownloadFile(Utf8ToWide(release->asset_url), target)) {
+  const auto target = update_dir / fp::Utf8ToWide(release->asset_name);
+  std::wcout << L"Downloading FluentPinyin " << fp::Utf8ToWide(release->tag) << L"...\n";
+  if (!DownloadFile(fp::Utf8ToWide(release->asset_url), target)) {
     std::wcerr << L"Failed to download installer.\n";
     MessageBoxW(nullptr,
                 L"下载安装包失败，请稍后重试。",

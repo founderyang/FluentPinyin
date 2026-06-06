@@ -52,6 +52,7 @@ foreach(config DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)
 endforeach()
 
 add_library(fluent_pinyin_common STATIC
+  src/common/encoding.cpp
   src/common/logging.cpp
   src/common/path_utils.cpp
 )

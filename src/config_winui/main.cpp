@@ -1,4 +1,5 @@
 #include "common/constants.h"
+#include "common/encoding.h"
 #include "common/path_utils.h"
 #include "common/theme.h"
 #include "sync/sync_service.h"
@@ -863,60 +864,6 @@ int CurrentStatusTipBlacklistCount() {
   return static_cast<int>(CurrentStatusTipBlacklistItems().size());
 }
 
-std::wstring Utf8ToWide(std::string_view value) {
-  if (value.empty()) {
-    return {};
-  }
-
-  const int required = MultiByteToWideChar(CP_UTF8,
-                                           0,
-                                           value.data(),
-                                           static_cast<int>(value.size()),
-                                           nullptr,
-                                           0);
-  if (required <= 0) {
-    return {};
-  }
-
-  std::wstring result(static_cast<size_t>(required), L'\0');
-  MultiByteToWideChar(CP_UTF8,
-                      0,
-                      value.data(),
-                      static_cast<int>(value.size()),
-                      result.data(),
-                      required);
-  return result;
-}
-
-std::string WideToUtf8(std::wstring_view value) {
-  if (value.empty()) {
-    return {};
-  }
-
-  const int required = WideCharToMultiByte(CP_UTF8,
-                                           0,
-                                           value.data(),
-                                           static_cast<int>(value.size()),
-                                           nullptr,
-                                           0,
-                                           nullptr,
-                                           nullptr);
-  if (required <= 0) {
-    return {};
-  }
-
-  std::string result(static_cast<size_t>(required), '\0');
-  WideCharToMultiByte(CP_UTF8,
-                      0,
-                      value.data(),
-                      static_cast<int>(value.size()),
-                      result.data(),
-                      required,
-                      nullptr,
-                      nullptr);
-  return result;
-}
-
 std::wstring TrimText(std::wstring_view value) {
   size_t first = 0;
   while (first < value.size() && std::iswspace(value[first])) {
@@ -1232,7 +1179,7 @@ std::vector<PhraseEntry> ReadUserLexiconEntries() {
     return {};
   }
 
-  const std::wstring wide = Utf8ToWide(*content);
+  const std::wstring wide = fp::Utf8ToWide(*content);
   const size_t body = wide.find(L"\n...\n");
   if (body == std::wstring::npos) {
     return {};
@@ -1244,7 +1191,7 @@ bool WriteUserLexiconEntries(const std::vector<PhraseEntry>& entries) {
   std::ostringstream output;
   output << "# encoding: utf-8\n"
          << "---\n"
-         << "name: " << WideToUtf8(kDefaultManagedUserLexiconName) << "\n"
+         << "name: " << fp::WideToUtf8(kDefaultManagedUserLexiconName) << "\n"
          << "version: \"1\"\n"
          << "sort: by_weight\n"
          << "...\n";
@@ -1257,9 +1204,9 @@ bool WriteUserLexiconEntries(const std::vector<PhraseEntry>& entries) {
     if (phrase.empty() || code.empty()) {
       continue;
     }
-    output << WideToUtf8(phrase) << "\t"
-           << WideToUtf8(code) << "\t"
-           << WideToUtf8(NormalizePhraseWeight(entry.weight)) << "\n";
+    output << fp::WideToUtf8(phrase) << "\t"
+           << fp::WideToUtf8(code) << "\t"
+           << fp::WideToUtf8(NormalizePhraseWeight(entry.weight)) << "\n";
   }
   return WriteFileUtf8(
       RimeUserDataPath() / (std::wstring(kDefaultManagedUserLexiconName) + L".dict.yaml"),
@@ -1309,7 +1256,7 @@ bool WriteManagedDictionaryIntegrationFiles(
 
   std::vector<std::string> enabled_names;
   if (ReadBoolSetting(L"user_lexicon_enabled", true) && UserLexiconHasEntries()) {
-    enabled_names.push_back(WideToUtf8(kDefaultManagedUserLexiconName));
+    enabled_names.push_back(fp::WideToUtf8(kDefaultManagedUserLexiconName));
   }
   if (ReadBoolSetting(L"imported_lexicons_enabled", true)) {
     auto imported = EnabledManagedDictionaryNames(entries);
@@ -1355,7 +1302,7 @@ bool ImportManagedDictionary(const std::filesystem::path& source_path,
 
   const auto user_data_dir = RimeUserDataPath();
   fp::EnsureDirectory(user_data_dir);
-  const auto target_path = user_data_dir / (Utf8ToWide(*dict_name) + L".dict.yaml");
+  const auto target_path = user_data_dir / (fp::Utf8ToWide(*dict_name) + L".dict.yaml");
   if (!WriteFileUtf8(target_path, *yaml)) {
     if (error_message) {
       *error_message = L"写入用户词库目录失败。";
@@ -1387,7 +1334,7 @@ bool RemoveManagedDictionaryFile(std::string_view name) {
     return false;
   }
   std::error_code error;
-  std::filesystem::remove(RimeUserDataPath() / (Utf8ToWide(name) + L".dict.yaml"), error);
+  std::filesystem::remove(RimeUserDataPath() / (fp::Utf8ToWide(name) + L".dict.yaml"), error);
   return !error;
 }
 
@@ -1396,7 +1343,7 @@ std::vector<PhraseEntry> ReadCustomPhraseEntries() {
   if (!content) {
     return {};
   }
-  return ParseTabSeparatedLexiconLines(Utf8ToWide(*content));
+  return ParseTabSeparatedLexiconLines(fp::Utf8ToWide(*content));
 }
 
 bool WriteCustomPhraseEntries(const std::vector<PhraseEntry>& entries) {
@@ -1412,9 +1359,9 @@ bool WriteCustomPhraseEntries(const std::vector<PhraseEntry>& entries) {
     if (phrase.empty() || code.empty()) {
       continue;
     }
-    output << WideToUtf8(phrase) << "\t"
-           << WideToUtf8(code) << "\t"
-           << WideToUtf8(NormalizePhraseWeight(entry.weight)) << "\n";
+    output << fp::WideToUtf8(phrase) << "\t"
+           << fp::WideToUtf8(code) << "\t"
+           << fp::WideToUtf8(NormalizePhraseWeight(entry.weight)) << "\n";
   }
   return WriteFileUtf8(RimeUserDataPath() / L"custom_phrase.txt", output.str());
 }
@@ -5619,11 +5566,11 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
       row.ColumnDefinitions().Append(switch_column);
       row.ColumnDefinitions().Append(remove_column);
 
-      auto label = Text(Utf8ToWide(name), 13, FW_SEMIBOLD);
+      auto label = Text(fp::Utf8ToWide(name), 13, FW_SEMIBOLD);
       label.TextWrapping(TextWrapping::NoWrap);
       label.TextTrimming(TextTrimming::CharacterEllipsis);
       label.VerticalAlignment(VerticalAlignment::Center);
-      ToolTipService::SetToolTip(label, box_value(Utf8ToWide(name)));
+      ToolTipService::SetToolTip(label, box_value(fp::Utf8ToWide(name)));
       Grid::SetColumn(label, 0);
       row.Children().Append(label);
 

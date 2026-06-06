@@ -1,6 +1,7 @@
 #include "sync/sync_service.h"
 
 #include "common/constants.h"
+#include "common/encoding.h"
 #include "common/path_utils.h"
 
 #include <windows.h>
@@ -136,56 +137,6 @@ std::wstring PercentEncodeUtf8(std::string_view value, bool encode_slash) {
     out.push_back(hex[ch & 0xF]);
   }
   return out;
-}
-
-std::string WideToUtf8(std::wstring_view value) {
-  if (value.empty()) {
-    return {};
-  }
-  const int required = WideCharToMultiByte(CP_UTF8,
-                                           0,
-                                           value.data(),
-                                           static_cast<int>(value.size()),
-                                           nullptr,
-                                           0,
-                                           nullptr,
-                                           nullptr);
-  if (required <= 0) {
-    return {};
-  }
-  std::string result(static_cast<size_t>(required), '\0');
-  WideCharToMultiByte(CP_UTF8,
-                      0,
-                      value.data(),
-                      static_cast<int>(value.size()),
-                      result.data(),
-                      required,
-                      nullptr,
-                      nullptr);
-  return result;
-}
-
-std::wstring Utf8ToWide(std::string_view value) {
-  if (value.empty()) {
-    return {};
-  }
-  const int required = MultiByteToWideChar(CP_UTF8,
-                                           MB_ERR_INVALID_CHARS,
-                                           value.data(),
-                                           static_cast<int>(value.size()),
-                                           nullptr,
-                                           0);
-  if (required <= 0) {
-    return {};
-  }
-  std::wstring result(static_cast<size_t>(required), L'\0');
-  MultiByteToWideChar(CP_UTF8,
-                      MB_ERR_INVALID_CHARS,
-                      value.data(),
-                      static_cast<int>(value.size()),
-                      result.data(),
-                      required);
-  return result;
 }
 
 std::uint64_t UnixNow() {
@@ -479,14 +430,14 @@ std::optional<std::vector<std::uint8_t>> ReadSettingsForPortablePackage(
       text += line;
       text += L"\n";
     }
-    return WideToUtf8(text);
+    return fp::WideToUtf8(text);
   }();
   return std::vector<std::uint8_t>(utf8.begin(), utf8.end());
 }
 
 bool WriteSettingsFromPortablePackage(const std::vector<std::uint8_t>& data) {
   const std::string utf8(data.begin(), data.end());
-  const std::wstring text = Utf8ToWide(utf8);
+  const std::wstring text = fp::Utf8ToWideStrict(utf8);
   std::wstringstream stream(text);
   std::wstring line;
   std::vector<std::wstring> lines;
@@ -549,7 +500,7 @@ std::optional<std::filesystem::path> SafeDestination(const std::filesystem::path
   if (!IsSafeRelativeUtf8Path(relative_utf8)) {
     return std::nullopt;
   }
-  std::filesystem::path relative = Utf8ToWide(relative_utf8);
+  std::filesystem::path relative = fp::Utf8ToWideStrict(relative_utf8);
   if (relative.empty() || relative.is_absolute()) {
     return std::nullopt;
   }
@@ -597,7 +548,7 @@ std::optional<PlainPackage> CollectPlainPackage(const SyncConfig& config) {
         if (!ReadBinaryFile(item.path(), &data)) {
           return std::nullopt;
         }
-        std::string path = "rime/" + WideToUtf8(relative.generic_wstring());
+        std::string path = "rime/" + fp::WideToUtf8(relative.generic_wstring());
         package.entries.push_back({std::move(path), std::move(data)});
       }
     }
@@ -611,10 +562,10 @@ std::vector<std::uint8_t> SerializePlainPackage(const PlainPackage& package) {
   AppendString(data, "FPSYNC-PLAIN");
   AppendU32(data, kPackageVersion);
   AppendU64(data, package.metadata.created_unix);
-  AppendString(data, WideToUtf8(package.metadata.device_id));
+  AppendString(data, fp::WideToUtf8(package.metadata.device_id));
   data.push_back(package.metadata.has_clipboard ? 1 : 0);
   data.push_back(package.metadata.has_user_data ? 1 : 0);
-  AppendString(data, WideToUtf8(package.clipboard_text));
+  AppendString(data, fp::WideToUtf8(package.clipboard_text));
   AppendU32(data, static_cast<std::uint32_t>(package.entries.size()));
   for (const auto& entry : package.entries) {
     AppendString(data, entry.path);
@@ -642,13 +593,13 @@ std::optional<PlainPackage> DeserializePlainPackage(const std::vector<std::uint8
       !ReadString(data, &offset, &device_id) || offset + 2 > data.size()) {
     return std::nullopt;
   }
-  package.metadata.device_id = Utf8ToWide(device_id);
+  package.metadata.device_id = fp::Utf8ToWideStrict(device_id);
   package.metadata.has_clipboard = data[offset++] != 0;
   package.metadata.has_user_data = data[offset++] != 0;
   if (!ReadString(data, &offset, &clipboard)) {
     return std::nullopt;
   }
-  package.clipboard_text = Utf8ToWide(clipboard);
+  package.clipboard_text = fp::Utf8ToWideStrict(clipboard);
   std::uint32_t entry_count = 0;
   if (!ReadU32(data, &offset, &entry_count) || entry_count > 10000) {
     return std::nullopt;
@@ -783,7 +734,7 @@ bool DeriveAesKey(std::wstring_view secret,
   if (BCryptOpenAlgorithmProvider(&alg, BCRYPT_SHA256_ALGORITHM, nullptr, BCRYPT_ALG_HANDLE_HMAC_FLAG) != 0) {
     return false;
   }
-  const std::string secret_utf8 = WideToUtf8(secret);
+  const std::string secret_utf8 = fp::WideToUtf8(secret);
   const NTSTATUS status = BCryptDeriveKeyPBKDF2(alg,
                                                 reinterpret_cast<PUCHAR>(const_cast<char*>(secret_utf8.data())),
                                                 static_cast<ULONG>(secret_utf8.size()),
@@ -859,7 +810,7 @@ std::optional<std::vector<std::uint8_t>> EncryptPackageBytes(const std::vector<s
   }
 
   std::vector<std::uint8_t> package;
-  AppendString(package, WideToUtf8(kPackageMagic));
+  AppendString(package, fp::WideToUtf8(kPackageMagic));
   AppendU32(package, kPackageVersion);
   AppendU32(package, kPbkdf2Iterations);
   AppendU32(package, static_cast<std::uint32_t>(salt.size()));
@@ -880,7 +831,7 @@ std::optional<std::vector<std::uint8_t>> DecryptPackageBytes(const std::vector<s
   std::uint32_t version = 0;
   std::uint32_t iterations = 0;
   std::uint32_t salt_size = 0;
-  if (!ReadString(package, &offset, &magic) || magic != WideToUtf8(kPackageMagic) ||
+  if (!ReadString(package, &offset, &magic) || magic != fp::WideToUtf8(kPackageMagic) ||
       !ReadU32(package, &offset, &version) || version != kPackageVersion ||
       !ReadU32(package, &offset, &iterations) || iterations != kPbkdf2Iterations ||
       !ReadU32(package, &offset, &salt_size) || salt_size != 16 ||
@@ -1001,7 +952,7 @@ bool RestorePlainPackage(const PlainPackage& package) {
     if (entry.path.starts_with("rime/")) {
       const std::string_view relative(entry.path.data() + 5, entry.path.size() - 5);
       const auto destination = SafeDestination(DefaultRimeUserDataPath(), relative);
-      if (!destination || IsExcludedRimeFile(std::filesystem::path(Utf8ToWide(relative)))) {
+      if (!destination || IsExcludedRimeFile(std::filesystem::path(fp::Utf8ToWideStrict(relative)))) {
         continue;
       }
       if (!WriteBinaryFile(*destination, entry.data)) {
@@ -1182,7 +1133,7 @@ std::wstring JoinRemotePath(std::wstring_view base_url, std::wstring_view key) {
 }
 
 std::wstring BasicAuthHeader(std::wstring_view username, std::wstring_view password) {
-  const std::string auth = WideToUtf8(username) + ":" + WideToUtf8(password);
+  const std::string auth = fp::WideToUtf8(username) + ":" + fp::WideToUtf8(password);
   DWORD required = 0;
   CryptBinaryToStringA(reinterpret_cast<const BYTE*>(auth.data()),
                        static_cast<DWORD>(auth.size()),
@@ -1199,7 +1150,7 @@ std::wstring BasicAuthHeader(std::wstring_view username, std::wstring_view passw
     return {};
   }
   encoded.resize(required > 0 && encoded[required - 1] == '\0' ? required - 1 : required);
-  return L"Authorization: Basic " + Utf8ToWide(encoded);
+  return L"Authorization: Basic " + fp::Utf8ToWideStrict(encoded);
 }
 
 SyncResult WebDavUpload(const SyncConfig& config, const std::vector<std::uint8_t>& package) {
@@ -1266,7 +1217,7 @@ std::optional<S3Request> BuildS3Request(const SyncConfig& config,
   }
 
   const std::wstring encoded_bucket = UrlEncodePathSegment(config.object_bucket);
-  const std::string key_utf8 = WideToUtf8(key);
+  const std::string key_utf8 = fp::WideToUtf8(key);
   const std::wstring encoded_key = PercentEncodeUtf8(key_utf8, false);
   const std::wstring path = L"/" + encoded_bucket + L"/" + encoded_key;
   const std::wstring url_text = endpoint + path;
@@ -1291,18 +1242,18 @@ std::optional<S3Request> BuildS3Request(const SyncConfig& config,
     return std::nullopt;
   }
   const std::string payload_hex = HexLower(*payload_hash);
-  const std::string host = WideToUtf8(url->host);
-  const std::string region = WideToUtf8(config.object_region.empty() ? L"auto" : config.object_region);
+  const std::string host = fp::WideToUtf8(url->host);
+  const std::string region = fp::WideToUtf8(config.object_region.empty() ? L"auto" : config.object_region);
   const std::string amz_date_text = amz_date.str();
   const std::string short_date_text = short_date.str();
-  const std::string canonical_uri = WideToUtf8(url->path);
+  const std::string canonical_uri = fp::WideToUtf8(url->path);
   const std::string canonical_headers =
       "host:" + host + "\n" +
       "x-amz-content-sha256:" + payload_hex + "\n" +
       "x-amz-date:" + amz_date_text + "\n";
   const std::string signed_headers = "host;x-amz-content-sha256;x-amz-date";
   const std::string canonical_request =
-      WideToUtf8(method) + "\n" + canonical_uri + "\n\n" + canonical_headers + "\n" +
+      fp::WideToUtf8(method) + "\n" + canonical_uri + "\n\n" + canonical_headers + "\n" +
       signed_headers + "\n" + payload_hex;
   const auto canonical_hash = Sha256(canonical_request);
   if (!canonical_hash) {
@@ -1311,7 +1262,7 @@ std::optional<S3Request> BuildS3Request(const SyncConfig& config,
   const std::string scope = short_date_text + "/" + region + "/s3/aws4_request";
   const std::string string_to_sign =
       "AWS4-HMAC-SHA256\n" + amz_date_text + "\n" + scope + "\n" + HexLower(*canonical_hash);
-  const auto signing_key = SigningKey(WideToUtf8(config.object_secret_key),
+  const auto signing_key = SigningKey(fp::WideToUtf8(config.object_secret_key),
                                       short_date_text,
                                       region,
                                       "s3");
@@ -1320,7 +1271,7 @@ std::optional<S3Request> BuildS3Request(const SyncConfig& config,
     return std::nullopt;
   }
   const std::string authorization =
-      "AWS4-HMAC-SHA256 Credential=" + WideToUtf8(config.object_access_key) + "/" + scope +
+      "AWS4-HMAC-SHA256 Credential=" + fp::WideToUtf8(config.object_access_key) + "/" + scope +
       ", SignedHeaders=" + signed_headers + ", Signature=" + HexLower(*signature);
 
   S3Request request;
@@ -1328,9 +1279,9 @@ std::optional<S3Request> BuildS3Request(const SyncConfig& config,
   request.url = url_text;
   request.headers = {
       L"Host: " + url->host,
-      L"x-amz-content-sha256: " + Utf8ToWide(payload_hex),
-      L"x-amz-date: " + Utf8ToWide(amz_date_text),
-      L"Authorization: " + Utf8ToWide(authorization),
+      L"x-amz-content-sha256: " + fp::Utf8ToWideStrict(payload_hex),
+      L"x-amz-date: " + fp::Utf8ToWideStrict(amz_date_text),
+      L"Authorization: " + fp::Utf8ToWideStrict(authorization),
       L"Content-Type: application/octet-stream",
       L"User-Agent: FluentPinyin Sync",
   };

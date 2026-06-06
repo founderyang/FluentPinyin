@@ -158,9 +158,13 @@ Acceptance:
 
 ## Phase 3: Maintainability Refactor
 
+Status: continued in `codex/phase6-common-encoding`.
+
 Work:
 
-- Move encoding helpers into `fluent_pinyin_common`.
+- Move encoding helpers into `fluent_pinyin_common`. Implemented for updater,
+  devtools, settings, and sync; sync keeps strict UTF-8 decode semantics via
+  `Utf8ToWideStrict`.
 - Split `tsf_text_service.cpp` incrementally:
   - candidate layout and drawing
   - candidate interaction
