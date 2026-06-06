@@ -4,7 +4,9 @@
 
 #include <windows.h>
 #include <shellapi.h>
+#include <softpub.h>
 #include <wininet.h>
+#include <wintrust.h>
 
 #include <algorithm>
 #include <filesystem>
@@ -244,6 +246,39 @@ bool LaunchInstaller(const std::filesystem::path& installer_path, std::string_vi
              ShellExecuteW(nullptr, L"runas", L"msiexec.exe", params.c_str(), nullptr, SW_SHOWNORMAL)) > 32;
 }
 
+bool VerifyInstallerSignature(const std::filesystem::path& installer_path) {
+  WINTRUST_FILE_INFO file_info{};
+  file_info.cbStruct = sizeof(file_info);
+  const std::wstring path = installer_path.wstring();
+  file_info.pcwszFilePath = path.c_str();
+
+  WINTRUST_DATA trust_data{};
+  trust_data.cbStruct = sizeof(trust_data);
+  trust_data.dwUIChoice = WTD_UI_NONE;
+  trust_data.fdwRevocationChecks = WTD_REVOKE_WHOLECHAIN;
+  trust_data.dwUnionChoice = WTD_CHOICE_FILE;
+  trust_data.dwStateAction = WTD_STATEACTION_VERIFY;
+  trust_data.dwProvFlags = WTD_REVOCATION_CHECK_CHAIN_EXCLUDE_ROOT;
+  trust_data.pFile = &file_info;
+
+  GUID policy = WINTRUST_ACTION_GENERIC_VERIFY_V2;
+  LONG status = WinVerifyTrust(nullptr, &policy, &trust_data);
+
+  trust_data.dwStateAction = WTD_STATEACTION_CLOSE;
+  WinVerifyTrust(nullptr, &policy, &trust_data);
+
+  if (status == ERROR_SUCCESS) {
+    fp::LogInfo(L"updater", L"Installer signature verified: " + installer_path.wstring());
+    return true;
+  }
+
+  fp::LogWarning(L"updater",
+                 L"Installer signature verification failed (" +
+                     std::to_wstring(static_cast<unsigned long>(status)) + L"): " +
+                     installer_path.wstring());
+  return false;
+}
+
 std::wstring NormalizeVersionTag(std::string_view tag) {
   std::wstring value = Utf8ToWide(tag);
   if (!value.empty() && (value.front() == L'v' || value.front() == L'V')) {
@@ -341,6 +376,15 @@ int UpdateApp() {
                 L"流畅拼音 更新",
                 MB_OK | MB_ICONERROR);
     return 2;
+  }
+
+  if (!VerifyInstallerSignature(target)) {
+    std::wcerr << L"Installer signature verification failed.\n";
+    MessageBoxW(nullptr,
+                L"安装包签名验证失败，已停止更新。",
+                L"流畅拼音 更新",
+                MB_OK | MB_ICONERROR);
+    return 4;
   }
 
   if (!LaunchInstaller(target, release->asset_name)) {

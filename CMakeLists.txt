@@ -36,6 +36,12 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 
+configure_file(
+  "${CMAKE_SOURCE_DIR}/src/common/constants.h.in"
+  "${CMAKE_BINARY_DIR}/generated/common/constants.h"
+  @ONLY
+)
+
 foreach(config DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)
   string(TOUPPER "${config}" config_upper)
   set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_${config_upper} "${CMAKE_BINARY_DIR}/bin/${config}")
@@ -49,6 +55,7 @@ add_library(fluent_pinyin_common STATIC
 )
 
 target_include_directories(fluent_pinyin_common PUBLIC src)
+target_include_directories(fluent_pinyin_common PUBLIC "${CMAKE_BINARY_DIR}/generated")
 
 target_compile_definitions(fluent_pinyin_common PUBLIC
   UNICODE
@@ -267,7 +274,7 @@ add_executable(fluent_pinyin_updater WIN32
   src/updater/main.cpp
 )
 
-target_link_libraries(fluent_pinyin_updater PRIVATE fluent_pinyin_common wininet)
+target_link_libraries(fluent_pinyin_updater PRIVATE fluent_pinyin_common wininet wintrust crypt32)
 set_target_properties(fluent_pinyin_updater PROPERTIES OUTPUT_NAME "fluent-pinyin-updater")
 
 add_executable(fluent_pinyin_devtools WIN32

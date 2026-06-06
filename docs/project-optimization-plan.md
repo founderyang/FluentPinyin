@@ -169,9 +169,8 @@ Work:
 - Split `config_winui/main.cpp` by settings page and shared UI helpers.
 - Move UI layout constants into focused headers.
 - Generate `constants.h` version values from CMake so product version has one
-  source of truth. Before the generator lands, the optimized release version is
-  manually synchronized as `00.00.04` in CMake, C++ constants, and WinUI
-  resource metadata.
+  source of truth. Implemented by generating `common/constants.h` from
+  `constants.h.in` with CMake.
 - Replace local COM helper duplication with a shared helper or a small
   project-owned `ComPtr`.
 
@@ -206,7 +205,7 @@ Acceptance:
 Work:
 
 - Verify downloaded MSI files with `WinVerifyTrust` before launching updater
-  installs.
+  installs. Implemented in `codex/phase3-version-security`.
 - Replace handwritten GitHub API JSON parsing with a JSON library or a stricter
   parser.
 - Add sync package integrity verification, such as an authenticated tag/HMAC
