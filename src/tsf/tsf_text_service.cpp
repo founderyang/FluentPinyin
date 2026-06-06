@@ -27,6 +27,7 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <mutex>
 #include <new>
 #include <optional>
 #include <shlwapi.h>
@@ -34,6 +35,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -976,6 +978,59 @@ std::vector<std::wstring> ReadSettingLines(const std::filesystem::path& path) {
   return lines;
 }
 
+std::filesystem::file_time_type SettingsFileWriteTime(const std::filesystem::path& path) {
+  std::error_code error;
+  if (!std::filesystem::exists(path, error)) {
+    return std::filesystem::file_time_type{};
+  }
+  const auto write_time = std::filesystem::last_write_time(path, error);
+  return error ? std::filesystem::file_time_type{} : write_time;
+}
+
+struct SettingsCache {
+  std::filesystem::path path;
+  std::filesystem::file_time_type write_time{};
+  bool loaded = false;
+  std::vector<std::wstring> lines;
+  std::unordered_map<std::wstring, std::vector<size_t>> line_indices;
+};
+
+std::mutex& SettingsCacheMutex() {
+  static std::mutex mutex;
+  return mutex;
+}
+
+SettingsCache& MutableSettingsCache() {
+  static SettingsCache cache;
+  return cache;
+}
+
+void RebuildSettingsIndex(SettingsCache& cache) {
+  cache.line_indices.clear();
+  for (size_t index = 0; index < cache.lines.size(); ++index) {
+    const std::wstring& line = cache.lines[index];
+    const size_t equals = line.find(L'=');
+    if (equals == std::wstring::npos) {
+      continue;
+    }
+    cache.line_indices[line.substr(0, equals)].push_back(index);
+  }
+}
+
+void EnsureSettingsCacheLoadedLocked(SettingsCache& cache) {
+  const auto path = SettingsPath();
+  const auto write_time = SettingsFileWriteTime(path);
+  if (cache.loaded && cache.path == path && cache.write_time == write_time) {
+    return;
+  }
+
+  cache.path = path;
+  cache.write_time = write_time;
+  cache.loaded = true;
+  cache.lines = ReadSettingLines(path);
+  RebuildSettingsIndex(cache);
+}
+
 void FlushSettingLines(const std::filesystem::path& path,
                        const std::vector<std::wstring>& lines) {
   fp::EnsureDirectory(path.parent_path());
@@ -992,11 +1047,15 @@ void FlushSettingLines(const std::filesystem::path& path,
 }
 
 std::optional<std::wstring> FindSettingValue(std::wstring_view key) {
-  const std::wstring prefix = std::wstring(key) + L"=";
-  for (auto line : ReadSettingLines(SettingsPath())) {
-    line = NormalizeSettingLine(std::move(line));
-    if (line.starts_with(prefix)) {
-      return line.substr(prefix.size());
+  std::lock_guard lock(SettingsCacheMutex());
+  auto& cache = MutableSettingsCache();
+  EnsureSettingsCacheLoadedLocked(cache);
+  const auto found = cache.line_indices.find(std::wstring(key));
+  if (found != cache.line_indices.end() && !found->second.empty()) {
+    const std::wstring& line = cache.lines[found->second.front()];
+    const size_t equals = line.find(L'=');
+    if (equals != std::wstring::npos) {
+      return line.substr(equals + 1);
     }
   }
   return std::nullopt;
@@ -1024,9 +1083,15 @@ void UpsertSettingLine(std::vector<std::wstring>* lines,
 
 void WriteSettingLine(std::wstring_view key, std::wstring_view value) {
   const auto path = SettingsPath();
-  std::vector<std::wstring> lines = ReadSettingLines(path);
-  UpsertSettingLine(&lines, key, value);
-  FlushSettingLines(path, lines);
+  std::lock_guard lock(SettingsCacheMutex());
+  auto& cache = MutableSettingsCache();
+  EnsureSettingsCacheLoadedLocked(cache);
+  UpsertSettingLine(&cache.lines, key, value);
+  FlushSettingLines(path, cache.lines);
+  cache.path = path;
+  cache.write_time = SettingsFileWriteTime(path);
+  cache.loaded = true;
+  RebuildSettingsIndex(cache);
 }
 
 void WriteStringSetting(std::wstring_view key, std::wstring_view value) {
@@ -8461,7 +8526,6 @@ void TsfTextService::SaveCandidateLayoutSetting() const {
 
 void TsfTextService::SaveToolbarSetting() const {
   const auto path = SettingsPath();
-  std::vector<std::wstring> lines = ReadSettingLines(path);
   bool save_position_user = toolbar_position_user_;
   bool save_has_position = has_toolbar_position_;
   POINT save_position = toolbar_position_;
@@ -8473,18 +8537,30 @@ void TsfTextService::SaveToolbarSetting() const {
       save_position = *saved_point;
     }
   }
-  UpsertSettingLine(&lines, kToolbarVisibleSetting, toolbar_visible_ ? L"1" : L"0");
-  UpsertSettingLine(&lines, kToolbarPositionUserSetting, save_position_user ? L"1" : L"0");
-  UpsertSettingLine(&lines, kToolbarLayoutSetting, toolbar_vertical_layout_ ? L"vertical" : L"horizontal");
-  UpsertSettingLine(&lines, kToolbarItemsSetting, SerializeToolbarVisibleItems(toolbar_visible_items_));
-  UpsertSettingLine(&lines, L"toolbar_visible", L"0");
+
+  std::lock_guard lock(SettingsCacheMutex());
+  auto& cache = MutableSettingsCache();
+  EnsureSettingsCacheLoadedLocked(cache);
+  UpsertSettingLine(&cache.lines, kToolbarVisibleSetting, toolbar_visible_ ? L"1" : L"0");
+  UpsertSettingLine(&cache.lines, kToolbarPositionUserSetting, save_position_user ? L"1" : L"0");
+  UpsertSettingLine(&cache.lines,
+                    kToolbarLayoutSetting,
+                    toolbar_vertical_layout_ ? L"vertical" : L"horizontal");
+  UpsertSettingLine(&cache.lines,
+                    kToolbarItemsSetting,
+                    SerializeToolbarVisibleItems(toolbar_visible_items_));
+  UpsertSettingLine(&cache.lines, L"toolbar_visible", L"0");
   if (save_position_user && save_has_position) {
-    UpsertSettingLine(&lines,
+    UpsertSettingLine(&cache.lines,
                       kToolbarPositionSetting,
                       std::to_wstring(save_position.x) + L"," +
                           std::to_wstring(save_position.y));
   }
-  FlushSettingLines(path, lines);
+  FlushSettingLines(path, cache.lines);
+  cache.path = path;
+  cache.write_time = SettingsFileWriteTime(path);
+  cache.loaded = true;
+  RebuildSettingsIndex(cache);
 }
 
 void TsfTextService::SaveToolbarItemsSetting() const {
