@@ -1,4 +1,5 @@
 import argparse
+import hashlib
 import json
 import shutil
 import subprocess
@@ -14,6 +15,7 @@ LIBRIME_DIR = ROOT / "third_party" / "librime"
 WANXIANG_DIR = ROOT / "schemas" / "wanxiang" / "current"
 FONT_DIR = ROOT / "assets" / "fonts"
 ASSETS_PATH = DOWNLOADS_DIR / "m2-assets.json"
+DEPENDENCIES_PATH = ROOT / "scripts" / "package_dependencies.json"
 
 
 DEFAULT_ASSETS = {
@@ -54,27 +56,112 @@ DEFAULT_ASSETS = {
 }
 
 
+def load_dependencies():
+    try:
+        dependencies = json.loads(DEPENDENCIES_PATH.read_text(encoding="utf-8-sig"))
+    except Exception as exc:
+        raise RuntimeError(f"Cannot read dependency manifest {DEPENDENCIES_PATH}: {exc}") from exc
+    result = {}
+    for item in dependencies:
+        try:
+            dep_id = item["id"]
+            name = item["name"]
+            url = item["url"]
+            sha256 = item["sha256"].lower()
+            size = int(item["size"])
+        except Exception as exc:
+            raise RuntimeError(f"Invalid dependency manifest entry: {item}") from exc
+        if len(sha256) != 64 or any(ch not in "0123456789abcdef" for ch in sha256):
+            raise RuntimeError(f"Invalid SHA256 for dependency {dep_id}: {sha256}")
+        result[dep_id] = {
+            "id": dep_id,
+            "name": name,
+            "url": url,
+            "sha256": sha256,
+            "size": size,
+        }
+    return result
+
+
 def ensure_dirs():
     for path in (DOWNLOADS_DIR, WINUI_DIR, LIBRIME_DIR, FONT_DIR):
         path.mkdir(parents=True, exist_ok=True)
 
 
-def load_assets():
+def load_assets(dependencies):
     if not ASSETS_PATH.exists():
         ASSETS_PATH.write_text(json.dumps(DEFAULT_ASSETS, indent=2), encoding="utf-8")
-        return dict(DEFAULT_ASSETS)
-    try:
-        assets = json.loads(ASSETS_PATH.read_text(encoding="utf-8-sig"))
-    except Exception:
-        assets = {}
-    missing = [key for key in DEFAULT_ASSETS if key not in assets]
-    if missing:
         assets = dict(DEFAULT_ASSETS)
-        ASSETS_PATH.write_text(json.dumps(assets, indent=2), encoding="utf-8")
+    else:
+        try:
+            assets = json.loads(ASSETS_PATH.read_text(encoding="utf-8-sig"))
+        except Exception:
+            assets = {}
+        missing = [key for key in DEFAULT_ASSETS if key not in assets]
+        if missing:
+            assets = dict(DEFAULT_ASSETS)
+            ASSETS_PATH.write_text(json.dumps(assets, indent=2), encoding="utf-8")
+
+    for dep_id, dependency in dependencies.items():
+        name_key = dep_id
+        url_key = f"{dep_id}Url"
+        if assets.get(name_key) != dependency["name"]:
+            raise RuntimeError(
+                f"Dependency manifest mismatch for {dep_id}: "
+                f"{name_key}={assets.get(name_key)!r}, expected {dependency['name']!r}"
+            )
+        if assets.get(url_key) != dependency["url"]:
+            raise RuntimeError(
+                f"Dependency manifest mismatch for {dep_id}: "
+                f"{url_key}={assets.get(url_key)!r}, expected {dependency['url']!r}"
+            )
     return assets
 
 
-def get_asset_file(name, url, force):
+def sha256_file(path):
+    digest = hashlib.sha256()
+    with path.open("rb") as input_file:
+        for chunk in iter(lambda: input_file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def verify_asset_file(path, dependency):
+    if not path.exists():
+        raise RuntimeError(f"Missing dependency {dependency['id']}: {path}")
+    actual_size = path.stat().st_size
+    if actual_size != dependency["size"]:
+        raise RuntimeError(
+            f"Dependency size mismatch for {dependency['id']} ({path.name}): "
+            f"expected {dependency['size']}, got {actual_size}"
+        )
+    actual_hash = sha256_file(path)
+    if actual_hash != dependency["sha256"]:
+        raise RuntimeError(
+            f"Dependency SHA256 mismatch for {dependency['id']} ({path.name}): "
+            f"expected {dependency['sha256']}, got {actual_hash}"
+        )
+    print(f"Verified {dependency['id']}: {path.name}")
+
+
+def verify_all_downloads(dependencies):
+    for dependency in dependencies.values():
+        verify_asset_file(DOWNLOADS_DIR / dependency["name"], dependency)
+
+
+def dependency_for_name(dependencies, name):
+    for dependency in dependencies.values():
+        if dependency["name"] == name:
+            return dependency
+    raise RuntimeError(f"No dependency manifest entry for {name}")
+
+
+def get_asset_file(name, url, force, dependencies):
+    dependency = dependency_for_name(dependencies, name)
+    if dependency["url"] != url:
+        raise RuntimeError(
+            f"URL mismatch for {name}: expected {dependency['url']}, got {url}"
+        )
     archive = DOWNLOADS_DIR / name
     if force or not archive.exists():
         print(f"Downloading {url}")
@@ -82,6 +169,7 @@ def get_asset_file(name, url, force):
             shutil.copyfileobj(response, output)
     else:
         print(f"Using cached {archive}")
+    verify_asset_file(archive, dependency)
     return archive
 
 
@@ -105,7 +193,7 @@ def copy_file(source, destination, force):
         print(f"Using copied {destination}")
 
 
-def handle_fonts(assets, force):
+def handle_fonts(assets, force, dependencies):
     font_downloads = [
         (
             assets["miSans"],
@@ -143,7 +231,7 @@ def handle_fonts(assets, force):
     ]
 
     for name, url, files in font_downloads:
-        archive = get_asset_file(name, url, force)
+        archive = get_asset_file(name, url, force, dependencies)
         extract_dir = DOWNLOADS_DIR / Path(name).stem
         needs_extract = force or not extract_dir.exists()
         if not needs_extract:
@@ -163,17 +251,23 @@ def handle_fonts(assets, force):
             copy_file(source, FONT_DIR / dest_name, force)
 
     for key in ("plangothicP1", "plangothicP2"):
-        source = get_asset_file(assets[key], assets[f"{key}Url"], force)
+        source = get_asset_file(assets[key], assets[f"{key}Url"], force, dependencies)
         copy_file(source, FONT_DIR / assets[key], force)
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--force", action="store_true")
+    parser.add_argument("--verify-only", action="store_true")
     args = parser.parse_args()
 
     ensure_dirs()
-    assets = load_assets()
+    dependencies = load_dependencies()
+    assets = load_assets(dependencies)
+    if args.verify_only:
+        verify_all_downloads(dependencies)
+        print("Package download cache verified.")
+        return
 
     nuget_packages = [
         (assets["webview2"], assets["webview2Url"], "microsoft.web.webview2.1.0.3179.45"),
@@ -195,7 +289,7 @@ def main():
         ),
     ]
     for name, url, directory in nuget_packages:
-        archive = get_asset_file(name, url, args.force)
+        archive = get_asset_file(name, url, args.force, dependencies)
         expand_package(archive, WINUI_DIR / directory, args.force)
 
     downloads = [
@@ -205,7 +299,7 @@ def main():
         (assets["wanxiangGram"], assets["wanxiangGramUrl"], WANXIANG_DIR / assets["wanxiangGram"], False),
     ]
     for name, url, destination, is_archive in downloads:
-        archive = get_asset_file(name, url, args.force)
+        archive = get_asset_file(name, url, args.force, dependencies)
         if is_archive:
             expand_package(archive, destination, args.force)
         else:
@@ -215,9 +309,10 @@ def main():
         assets["windowsAppRuntimeInstaller"],
         assets["windowsAppRuntimeInstallerUrl"],
         args.force,
+        dependencies,
     )
 
-    handle_fonts(assets, args.force)
+    handle_fonts(assets, args.force, dependencies)
     print("Packages are ready.")
 
 

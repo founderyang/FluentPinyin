@@ -14,6 +14,39 @@
 namespace fp {
 namespace {
 
+constexpr wchar_t kSettingsStoreMutexName[] = L"Local\\FluentPinyin.SettingsStore.V1";
+constexpr DWORD kSettingsStoreLockTimeoutMs = 15000;
+
+class ScopedSettingsFileLock {
+ public:
+  ScopedSettingsFileLock()
+      : mutex_(CreateMutexW(nullptr, FALSE, kSettingsStoreMutexName)) {
+    if (mutex_ == nullptr) {
+      return;
+    }
+    const DWORD wait = WaitForSingleObject(mutex_, kSettingsStoreLockTimeoutMs);
+    acquired_ = wait == WAIT_OBJECT_0 || wait == WAIT_ABANDONED;
+  }
+
+  ScopedSettingsFileLock(const ScopedSettingsFileLock&) = delete;
+  ScopedSettingsFileLock& operator=(const ScopedSettingsFileLock&) = delete;
+
+  ~ScopedSettingsFileLock() {
+    if (acquired_) {
+      ReleaseMutex(mutex_);
+    }
+    if (mutex_ != nullptr) {
+      CloseHandle(mutex_);
+    }
+  }
+
+  [[nodiscard]] bool acquired() const noexcept { return acquired_; }
+
+ private:
+  HANDLE mutex_ = nullptr;
+  bool acquired_ = false;
+};
+
 std::wstring NormalizeSettingLine(std::wstring line) {
   if (!line.empty() && line.front() == L'\ufeff') {
     line.erase(line.begin());
@@ -114,36 +147,7 @@ std::filesystem::path TemporarySettingsPath(const std::filesystem::path& path) {
   return path.parent_path() / (path.filename().wstring() + suffix);
 }
 
-}  // namespace
-
-std::filesystem::path GetSettingsPath() {
-  return GetFpRoamingDataPath() / L"settings.ini";
-}
-
-std::wstring SanitizeSettingValue(std::wstring_view value) {
-  std::wstring sanitized(value);
-  std::replace(sanitized.begin(), sanitized.end(), L'\r', L',');
-  std::replace(sanitized.begin(), sanitized.end(), L'\n', L',');
-  return sanitized;
-}
-
-bool ParseBoolSettingValue(std::wstring_view value, bool default_value) {
-  if (value == L"1" || value == L"true" || value == L"True" ||
-      value == L"TRUE" || value == L"on" || value == L"yes") {
-    return true;
-  }
-  if (value == L"0" || value == L"false" || value == L"False" ||
-      value == L"FALSE" || value == L"off" || value == L"no") {
-    return false;
-  }
-  return default_value;
-}
-
-bool IsTruthySettingValue(std::wstring_view value) {
-  return ParseBoolSettingValue(value, false);
-}
-
-std::vector<std::wstring> ReadSettingLines(const std::filesystem::path& path) {
+std::vector<std::wstring> ReadSettingLinesUnlocked(const std::filesystem::path& path) {
   std::ifstream input(path, std::ios::binary);
   if (!input) {
     return {};
@@ -170,8 +174,8 @@ std::vector<std::wstring> ReadSettingLines(const std::filesystem::path& path) {
   return lines;
 }
 
-bool WriteSettingLines(const std::filesystem::path& path,
-                       const std::vector<std::wstring>& lines) {
+bool WriteSettingLinesUnlocked(const std::filesystem::path& path,
+                               const std::vector<std::wstring>& lines) {
   if (!EnsureDirectory(path.parent_path())) {
     return false;
   }
@@ -208,6 +212,49 @@ bool WriteSettingLines(const std::filesystem::path& path,
     return false;
   }
   return true;
+}
+
+}  // namespace
+
+std::filesystem::path GetSettingsPath() {
+  return GetFpRoamingDataPath() / L"settings.ini";
+}
+
+std::wstring SanitizeSettingValue(std::wstring_view value) {
+  std::wstring sanitized(value);
+  std::replace(sanitized.begin(), sanitized.end(), L'\r', L',');
+  std::replace(sanitized.begin(), sanitized.end(), L'\n', L',');
+  return sanitized;
+}
+
+bool ParseBoolSettingValue(std::wstring_view value, bool default_value) {
+  if (value == L"1" || value == L"true" || value == L"True" ||
+      value == L"TRUE" || value == L"on" || value == L"yes") {
+    return true;
+  }
+  if (value == L"0" || value == L"false" || value == L"False" ||
+      value == L"FALSE" || value == L"off" || value == L"no") {
+    return false;
+  }
+  return default_value;
+}
+
+bool IsTruthySettingValue(std::wstring_view value) {
+  return ParseBoolSettingValue(value, false);
+}
+
+std::vector<std::wstring> ReadSettingLines(const std::filesystem::path& path) {
+  ScopedSettingsFileLock file_lock;
+  if (!file_lock.acquired()) {
+    return {};
+  }
+  return ReadSettingLinesUnlocked(path);
+}
+
+bool WriteSettingLines(const std::filesystem::path& path,
+                       const std::vector<std::wstring>& lines) {
+  ScopedSettingsFileLock file_lock;
+  return file_lock.acquired() && WriteSettingLinesUnlocked(path, lines);
 }
 
 void UpsertSettingLine(std::vector<std::wstring>* lines,
@@ -276,11 +323,15 @@ bool SettingsStore::WriteBool(std::wstring_view key, bool value) {
 
 bool SettingsStore::WriteStrings(std::span<const SettingUpdate> updates) {
   std::lock_guard lock(mutex_);
+  ScopedSettingsFileLock file_lock;
+  if (!file_lock.acquired()) {
+    return false;
+  }
   EnsureLoadedLocked();
   for (const auto& update : updates) {
     UpsertSettingLine(&lines_, update.key, SanitizeSettingValue(update.value));
   }
-  if (!WriteSettingLines(path_, lines_)) {
+  if (!WriteSettingLinesUnlocked(path_, lines_)) {
     return false;
   }
   write_time_ = FileWriteTime(path_);

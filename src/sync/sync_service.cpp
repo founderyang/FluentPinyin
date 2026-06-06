@@ -3,6 +3,7 @@
 #include "common/constants.h"
 #include "common/encoding.h"
 #include "common/path_utils.h"
+#include "common/settings_store.h"
 
 #include <windows.h>
 #include <bcrypt.h>
@@ -366,26 +367,12 @@ bool IsExcludedRimeFile(const std::filesystem::path& relative) {
 }
 
 std::vector<std::wstring> ReadSettingsLines(const std::filesystem::path& settings_path) {
-  std::vector<std::wstring> lines;
-  std::wifstream input(settings_path);
-  std::wstring line;
-  while (std::getline(input, line)) {
-    lines.push_back(line);
-  }
-  return lines;
+  return fp::ReadSettingLines(settings_path);
 }
 
 bool WriteSettingsLines(const std::filesystem::path& settings_path,
                         const std::vector<std::wstring>& lines) {
-  fp::EnsureDirectory(settings_path.parent_path());
-  std::wofstream output(settings_path, std::ios::trunc);
-  if (!output) {
-    return false;
-  }
-  for (const auto& line : lines) {
-    output << line << L"\n";
-  }
-  return output.good();
+  return fp::WriteSettingLines(settings_path, lines);
 }
 
 std::optional<std::vector<std::uint8_t>> ReadSettingsForPortablePackage(
@@ -1383,7 +1370,7 @@ std::wstring IsoDurationMinutes(int minutes) {
 }  // namespace
 
 std::filesystem::path DefaultSettingsPath() {
-  return fp::GetFpRoamingDataPath() / L"settings.ini";
+  return fp::GetSettingsPath();
 }
 
 std::filesystem::path DefaultRimeUserDataPath() {
@@ -1413,57 +1400,15 @@ std::wstring NewTimestampedBackupName() {
 std::wstring ReadSetting(const std::filesystem::path& settings_path,
                          std::wstring_view key,
                          std::wstring_view default_value) {
-  std::wifstream input(settings_path);
-  std::wstring line;
-  const std::wstring wanted(key);
-  while (std::getline(input, line)) {
-    const size_t equals = line.find(L'=');
-    if (equals == std::wstring::npos) {
-      continue;
-    }
-    if (line.substr(0, equals) == wanted) {
-      return line.substr(equals + 1);
-    }
-  }
-  return std::wstring(default_value);
+  fp::SettingsStore store(settings_path);
+  return store.ReadString(key, default_value);
 }
 
 bool WriteSetting(const std::filesystem::path& settings_path,
                   std::wstring_view key,
                   std::wstring_view value) {
-  fp::EnsureDirectory(settings_path.parent_path());
-  std::vector<std::wstring> lines;
-  {
-    std::wifstream input(settings_path);
-    std::wstring line;
-    while (std::getline(input, line)) {
-      lines.push_back(line);
-    }
-  }
-  const std::wstring wanted(key);
-  std::wstring sanitized(value);
-  std::replace(sanitized.begin(), sanitized.end(), L'\r', L',');
-  std::replace(sanitized.begin(), sanitized.end(), L'\n', L',');
-  const std::wstring new_line = wanted + L"=" + sanitized;
-  bool updated = false;
-  for (auto& line : lines) {
-    const size_t equals = line.find(L'=');
-    if (equals != std::wstring::npos && line.substr(0, equals) == wanted) {
-      line = new_line;
-      updated = true;
-    }
-  }
-  if (!updated) {
-    lines.push_back(new_line);
-  }
-  std::wofstream output(settings_path, std::ios::trunc);
-  if (!output) {
-    return false;
-  }
-  for (const auto& line : lines) {
-    output << line << L"\n";
-  }
-  return output.good();
+  fp::SettingsStore store(settings_path);
+  return store.WriteString(key, value);
 }
 
 std::optional<std::wstring> ProtectSecretText(std::wstring_view plaintext) {

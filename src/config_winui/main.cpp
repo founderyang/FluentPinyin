@@ -1,6 +1,7 @@
 #include "common/constants.h"
 #include "common/encoding.h"
 #include "common/path_utils.h"
+#include "common/settings_store.h"
 #include "common/theme.h"
 #include "sync/sync_service.h"
 #include "../tsf/resource.h"
@@ -226,86 +227,18 @@ Thickness SettingsHairlineThickness() {
 }
 
 std::filesystem::path SettingsPath() {
-  return fp::GetFpRoamingDataPath() / L"settings.ini";
+  return fp::GetSettingsPath();
 }
 
-struct SettingsCache {
-  std::filesystem::path path;
-  std::filesystem::file_time_type write_time{};
-  bool loaded = false;
-  std::vector<std::wstring> lines;
-  std::unordered_map<std::wstring, std::vector<size_t>> line_indices;
-};
-
-SettingsCache& MutableSettingsCache() {
-  static SettingsCache cache;
-  return cache;
-}
-
-void RebuildSettingsIndex(SettingsCache& cache) {
-  cache.line_indices.clear();
-  for (size_t index = 0; index < cache.lines.size(); ++index) {
-    const std::wstring& line = cache.lines[index];
-    const size_t equals = line.find(L'=');
-    if (equals == std::wstring::npos) {
-      continue;
-    }
-    cache.line_indices[line.substr(0, equals)].push_back(index);
-  }
-}
-
-std::filesystem::file_time_type SettingsFileWriteTime(const std::filesystem::path& path) {
-  std::error_code error;
-  if (!std::filesystem::exists(path, error)) {
-    return std::filesystem::file_time_type{};
-  }
-  const auto write_time = std::filesystem::last_write_time(path, error);
-  return error ? std::filesystem::file_time_type{} : write_time;
-}
-
-void EnsureSettingsCacheLoaded() {
-  auto& cache = MutableSettingsCache();
-  const auto path = SettingsPath();
-  const auto write_time = SettingsFileWriteTime(path);
-  if (cache.loaded && cache.path == path && cache.write_time == write_time) {
-    return;
-  }
-
-  cache.path = path;
-  cache.write_time = write_time;
-  cache.loaded = true;
-  cache.lines.clear();
-  cache.line_indices.clear();
-
-  std::wifstream input(path);
-  std::wstring line;
-  while (std::getline(input, line)) {
-    cache.lines.push_back(line);
-  }
-  RebuildSettingsIndex(cache);
-}
+fp::SettingsStore& RuntimeSettingsStore();
 
 void ResetSettingsCache() {
-  auto& cache = MutableSettingsCache();
-  cache.path.clear();
-  cache.write_time = {};
-  cache.loaded = false;
-  cache.lines.clear();
-  cache.line_indices.clear();
+  RuntimeSettingsStore().Reset();
 }
 
-bool FlushSettingsCache(SettingsCache& cache) {
-  fp::EnsureDirectory(cache.path.parent_path());
-  std::wofstream output(cache.path, std::ios::trunc);
-  if (!output) {
-    return false;
-  }
-  for (const auto& line : cache.lines) {
-    output << line << L"\n";
-  }
-  output.close();
-  cache.write_time = SettingsFileWriteTime(cache.path);
-  return true;
+fp::SettingsStore& RuntimeSettingsStore() {
+  static fp::SettingsStore store;
+  return store;
 }
 
 std::filesystem::path ModuleDirectory() {
@@ -385,17 +318,7 @@ void EnsureUiFontsLoaded() {
 }
 
 std::wstring ReadStringSetting(std::wstring_view key, std::wstring_view default_value = L"") {
-  EnsureSettingsCacheLoaded();
-  auto& cache = MutableSettingsCache();
-  const auto found = cache.line_indices.find(std::wstring(key));
-  if (found != cache.line_indices.end() && !found->second.empty()) {
-    const std::wstring& line = cache.lines[found->second.front()];
-    const size_t equals = line.find(L'=');
-    if (equals != std::wstring::npos) {
-      return line.substr(equals + 1);
-    }
-  }
-  return std::wstring(default_value);
+  return RuntimeSettingsStore().ReadString(key, default_value);
 }
 
 int ReadIntSetting(std::wstring_view key, int default_value, int min_value, int max_value) {
@@ -409,17 +332,14 @@ int ReadIntSetting(std::wstring_view key, int default_value, int min_value, int 
 }
 
 bool ReadBoolSetting(std::wstring_view key, bool default_value) {
-  const std::wstring value = ReadStringSetting(key, default_value ? L"1" : L"0");
-  return value == L"1" || value == L"true" || value == L"True";
+  return RuntimeSettingsStore().ReadBool(key, default_value);
 }
 
 bool ReadBoolSettingMigrated(std::wstring_view key,
                              bool default_value,
                              std::wstring_view legacy_key) {
-  const std::wstring marker = L"__missing__";
-  const std::wstring value = ReadStringSetting(key, marker);
-  if (value != marker) {
-    return value == L"1" || value == L"true" || value == L"True";
+  if (const std::optional<bool> value = RuntimeSettingsStore().ReadOptionalBool(key)) {
+    return *value;
   }
   return ReadBoolSetting(legacy_key, default_value);
 }
@@ -737,37 +657,14 @@ std::wstring NormalizeShortcutDisplay(std::wstring_view value) {
 }
 
 bool WriteSettingLine(std::wstring_view key, std::wstring_view value) {
-  EnsureSettingsCacheLoaded();
-  auto& cache = MutableSettingsCache();
-  const std::wstring key_text(key);
-  const std::wstring line = key_text + L"=" + std::wstring(value);
-  bool changed = false;
-
-  auto found = cache.line_indices.find(key_text);
-  if (found == cache.line_indices.end() || found->second.empty()) {
-    cache.line_indices[key_text].push_back(cache.lines.size());
-    cache.lines.push_back(line);
-    changed = true;
-  } else {
-    for (const size_t index : found->second) {
-      if (index < cache.lines.size() && cache.lines[index] != line) {
-        cache.lines[index] = line;
-        changed = true;
-      }
-    }
-  }
-
-  if (!changed) {
+  if (ReadStringSetting(key) == value) {
     return false;
   }
-  return FlushSettingsCache(cache);
+  return RuntimeSettingsStore().WriteString(key, value);
 }
 
 bool WriteStringSetting(std::wstring_view key, std::wstring_view value) {
-  std::wstring sanitized(value);
-  std::replace(sanitized.begin(), sanitized.end(), L'\r', L',');
-  std::replace(sanitized.begin(), sanitized.end(), L'\n', L',');
-  return WriteSettingLine(key, sanitized);
+  return WriteSettingLine(key, fp::SanitizeSettingValue(value));
 }
 
 bool WriteBoolSetting(std::wstring_view key, bool value) {

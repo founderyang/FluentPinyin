@@ -1,0 +1,121 @@
+[
+  {
+    "id": "webview2",
+    "name": "microsoft.web.webview2.1.0.3179.45.nupkg",
+    "url": "https://www.nuget.org/api/v2/package/Microsoft.Web.WebView2/1.0.3179.45",
+    "sha256": "70bd381c5d67f97a6a80294001cde125ab5b24b6d36098ad901d8e15efd752d0",
+    "size": 8800595
+  },
+  {
+    "id": "cppwinrt",
+    "name": "microsoft.windows.cppwinrt.3.0.260520.1.nupkg",
+    "url": "https://www.nuget.org/api/v2/package/Microsoft.Windows.CppWinRT/3.0.260520.1",
+    "sha256": "d22e2e26133d63217ae26e91b1685fb024b03a508a78af645f8347a3126c8435",
+    "size": 608046
+  },
+  {
+    "id": "windowsAppSdkFoundation",
+    "name": "microsoft.windowsappsdk.foundation.1.8.260505001.nupkg",
+    "url": "https://www.nuget.org/api/v2/package/Microsoft.WindowsAppSDK.Foundation/1.8.260505001",
+    "sha256": "a3cae34ba3aae46237c748886b201d8585547a6857280400df0621d186199673",
+    "size": 6060686
+  },
+  {
+    "id": "windowsAppSdkWinui",
+    "name": "microsoft.windowsappsdk.winui.1.8.260505002.nupkg",
+    "url": "https://www.nuget.org/api/v2/package/Microsoft.WindowsAppSDK.WinUI/1.8.260505002",
+    "sha256": "13be52f64aad3e8d0226d3d728a7e2054f56bb6f0731b0bb2b9ede93d345f5b6",
+    "size": 58675970
+  },
+  {
+    "id": "windowsAppSdkInteractive",
+    "name": "microsoft.windowsappsdk.interactiveexperiences.1.8.260430001.nupkg",
+    "url": "https://www.nuget.org/api/v2/package/Microsoft.WindowsAppSDK.InteractiveExperiences/1.8.260430001",
+    "sha256": "9b724bb856ca893f156a4ca4ff1864e7e3ce48e93e80fc6b5f18490f25e46c6a",
+    "size": 26273721
+  },
+  {
+    "id": "windowsAppRuntimeInstaller",
+    "name": "windowsappruntimeinstall-x64.exe",
+    "url": "https://aka.ms/windowsappsdk/1.8/1.8.260508005/windowsappruntimeinstall-x64.exe",
+    "sha256": "b271a789809d15e57d49ef4518ceef90b8614626dc04ff5d89906cca8843cdf3",
+    "size": 107213112
+  },
+  {
+    "id": "librime",
+    "name": "rime-de4700e-Windows-msvc-x64.7z",
+    "url": "https://github.com/rime/librime/releases/download/1.16.1/rime-de4700e-Windows-msvc-x64.7z",
+    "sha256": "e17c1bb4acc9934669e7a62003aef3f8b56d0afa89e5d893ed7dbf34546abb6e",
+    "size": 7373905
+  },
+  {
+    "id": "deps",
+    "name": "rime-deps-de4700e-Windows-msvc-x64.7z",
+    "url": "https://github.com/rime/librime/releases/download/1.16.1/rime-deps-de4700e-Windows-msvc-x64.7z",
+    "sha256": "8ddfa46881a8f20c37fbbfdc3b9d0e9c5f7958f486cce4335a18be6ea8277af2",
+    "size": 3620316
+  },
+  {
+    "id": "wanxiang",
+    "name": "rime-wanxiang-base.zip",
+    "url": "https://github.com/amzxyz/rime-wanxiang/releases/download/v15.11.1/rime-wanxiang-base.zip",
+    "sha256": "42c488590c1439b93566c37b9091680af520e3db90e230e777d7069027d0e00e",
+    "size": 33281697
+  },
+  {
+    "id": "wanxiangGram",
+    "name": "wanxiang-lts-zh-hans.gram",
+    "url": "https://github.com/amzxyz/RIME-LMDG/releases/download/LTS/wanxiang-lts-zh-hans.gram",
+    "sha256": "3ebdf080f33d4f3618f2679d6f9e34a290bd75906f42b9d753f630e5101e5407",
+    "size": 246140972
+  },
+  {
+    "id": "miSans",
+    "name": "MiSans.zip",
+    "url": "https://hyperos.mi.com/font-download/MiSans.zip",
+    "sha256": "b6aa1fc827035922612df8edf36e5609bca1c5441e25cd57572204569b7b81d9",
+    "size": 227880072
+  },
+  {
+    "id": "miSansTc",
+    "name": "MiSans_TC.zip",
+    "url": "https://hyperos.mi.com/font-download/MiSans_TC.zip",
+    "sha256": "417831f033601f1738fefb2ce9158586d0143385a9dd0c4cfa985bcc16c7443b",
+    "size": 114017249
+  },
+  {
+    "id": "miSansL3",
+    "name": "MiSans_L3.zip",
+    "url": "https://hyperos.mi.com/font-download/MiSans_L3.zip",
+    "sha256": "467fe0171ec9ea21d925aba9c032b1a775a3e756c458f075e7a2ee57568b0c79",
+    "size": 25282366
+  },
+  {
+    "id": "sourceHanSansSc",
+    "name": "SourceHanSansSC.zip",
+    "url": "https://github.com/adobe-fonts/source-han-sans/releases/download/2.005R/09_SourceHanSansSC.zip",
+    "sha256": "ef7364f7ac2564be1ae9c1d74276de2653fe38b73449070398c4fc0b7e032ff1",
+    "size": 95177106
+  },
+  {
+    "id": "sourceHanSansTc",
+    "name": "SourceHanSansTC.zip",
+    "url": "https://github.com/adobe-fonts/source-han-sans/releases/download/2.005R/10_SourceHanSansTC.zip",
+    "sha256": "28058dc7d729560c5fa5c850e7298905cac8de55c1e33cfd5cb13e3d7408989e",
+    "size": 95332943
+  },
+  {
+    "id": "plangothicP1",
+    "name": "PlangothicP1-Regular.ttf",
+    "url": "https://github.com/Fitzgerald-Porthmouth-Koenigsegg/Plangothic_Project/releases/download/V2.9.5792/PlangothicP1-Regular.ttf",
+    "sha256": "ac2d45bcd91953f291cfaf437f5a6498b55aa4358dca76f1a6edac37c7ebca63",
+    "size": 20412816
+  },
+  {
+    "id": "plangothicP2",
+    "name": "PlangothicP2-Regular.ttf",
+    "url": "https://github.com/Fitzgerald-Porthmouth-Koenigsegg/Plangothic_Project/releases/download/V2.9.5792/PlangothicP2-Regular.ttf",
+    "sha256": "3ab368be64602826e82622658ef36bc59248f2432169a77d614832f9cba1c0c9",
+    "size": 12377596
+  }
+]
