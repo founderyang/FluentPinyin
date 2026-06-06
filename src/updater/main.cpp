@@ -29,7 +29,31 @@ struct ReleaseInfo {
   std::string asset_url;
 };
 
+constexpr DWORD kHttpConnectTimeoutMs = 10000;
+constexpr DWORD kHttpSendTimeoutMs = 15000;
+constexpr DWORD kHttpReceiveTimeoutMs = 30000;
 
+bool SetInternetTimeouts(HINTERNET handle) {
+  if (handle == nullptr) {
+    return false;
+  }
+  DWORD connect_timeout = kHttpConnectTimeoutMs;
+  DWORD send_timeout = kHttpSendTimeoutMs;
+  DWORD receive_timeout = kHttpReceiveTimeoutMs;
+  const BOOL connect_ok = InternetSetOptionW(handle,
+                                             INTERNET_OPTION_CONNECT_TIMEOUT,
+                                             &connect_timeout,
+                                             sizeof(connect_timeout));
+  const BOOL send_ok = InternetSetOptionW(handle,
+                                          INTERNET_OPTION_SEND_TIMEOUT,
+                                          &send_timeout,
+                                          sizeof(send_timeout));
+  const BOOL receive_ok = InternetSetOptionW(handle,
+                                             INTERNET_OPTION_RECEIVE_TIMEOUT,
+                                             &receive_timeout,
+                                             sizeof(receive_timeout));
+  return connect_ok != FALSE && send_ok != FALSE && receive_ok != FALSE;
+}
 
 std::optional<std::string> HttpGet(const wchar_t* url) {
   HINTERNET internet = InternetOpenW(L"FluentPinyin updater",
@@ -40,6 +64,7 @@ std::optional<std::string> HttpGet(const wchar_t* url) {
   if (internet == nullptr) {
     return std::nullopt;
   }
+  SetInternetTimeouts(internet);
 
   HINTERNET request = InternetOpenUrlW(internet,
                                        url,
@@ -52,6 +77,7 @@ std::optional<std::string> HttpGet(const wchar_t* url) {
     InternetCloseHandle(internet);
     return std::nullopt;
   }
+  SetInternetTimeouts(request);
 
   std::string body;
   char buffer[8192]{};
@@ -76,6 +102,7 @@ bool DownloadFile(const std::wstring& url, const std::filesystem::path& target_p
   if (internet == nullptr) {
     return false;
   }
+  SetInternetTimeouts(internet);
 
   HINTERNET request = InternetOpenUrlW(internet,
                                        url.c_str(),
@@ -87,6 +114,7 @@ bool DownloadFile(const std::wstring& url, const std::filesystem::path& target_p
     InternetCloseHandle(internet);
     return false;
   }
+  SetInternetTimeouts(request);
 
   std::ofstream file(target_path, std::ios::binary);
   if (!file) {
