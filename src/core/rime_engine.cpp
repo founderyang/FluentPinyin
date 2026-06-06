@@ -3,6 +3,7 @@
 #include "common/constants.h"
 #include "common/logging.h"
 #include "common/path_utils.h"
+#include "common/settings_store.h"
 
 #ifdef FP_WITH_LIBRIME
 #include <rime_api.h>
@@ -130,135 +131,9 @@ std::optional<std::filesystem::file_time_type> LastWriteTime(
   return value;
 }
 
-std::wstring SettingsPath() {
-  return (fp::GetFpRoamingDataPath() / L"settings.ini").wstring();
-}
-
-std::wstring DecodeSettingsText(const std::string& bytes) {
-  if (bytes.empty()) {
-    return {};
-  }
-
-  if (bytes.size() >= 2 && static_cast<unsigned char>(bytes[0]) == 0xFF &&
-      static_cast<unsigned char>(bytes[1]) == 0xFE) {
-    const size_t wchar_count = (bytes.size() - 2) / sizeof(wchar_t);
-    return std::wstring(reinterpret_cast<const wchar_t*>(bytes.data() + 2), wchar_count);
-  }
-  if (bytes.size() >= 2 && static_cast<unsigned char>(bytes[0]) == 0xFE &&
-      static_cast<unsigned char>(bytes[1]) == 0xFF) {
-    std::wstring result;
-    result.reserve((bytes.size() - 2) / 2);
-    for (size_t index = 2; index + 1 < bytes.size(); index += 2) {
-      const wchar_t ch =
-          static_cast<wchar_t>((static_cast<unsigned char>(bytes[index]) << 8) |
-                               static_cast<unsigned char>(bytes[index + 1]));
-      result.push_back(ch);
-    }
-    return result;
-  }
-
-  const char* data = bytes.data();
-  int size = static_cast<int>(bytes.size());
-  if (bytes.size() >= 3 && static_cast<unsigned char>(bytes[0]) == 0xEF &&
-      static_cast<unsigned char>(bytes[1]) == 0xBB &&
-      static_cast<unsigned char>(bytes[2]) == 0xBF) {
-    data += 3;
-    size -= 3;
-  }
-
-  int required = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, data, size, nullptr, 0);
-  UINT code_page = CP_UTF8;
-  DWORD flags = MB_ERR_INVALID_CHARS;
-  if (required <= 0) {
-    code_page = CP_ACP;
-    flags = 0;
-    required = MultiByteToWideChar(code_page, flags, data, size, nullptr, 0);
-  }
-  if (required <= 0) {
-    return {};
-  }
-
-  std::wstring result(static_cast<size_t>(required), L'\0');
-  MultiByteToWideChar(code_page, flags, data, size, result.data(), required);
-  return result;
-}
-
-std::wstring NormalizeSettingLine(std::wstring line) {
-  if (!line.empty() && line.front() == L'\ufeff') {
-    line.erase(line.begin());
-  }
-  if (!line.empty() && line.back() == L'\r') {
-    line.pop_back();
-  }
-  return line;
-}
-
-std::filesystem::file_time_type SettingsFileWriteTime(const std::filesystem::path& path) {
-  std::error_code error;
-  if (!std::filesystem::exists(path, error)) {
-    return std::filesystem::file_time_type{};
-  }
-  const auto write_time = std::filesystem::last_write_time(path, error);
-  return error ? std::filesystem::file_time_type{} : write_time;
-}
-
-struct SettingsCache {
-  std::filesystem::path path;
-  std::filesystem::file_time_type write_time{};
-  bool loaded = false;
-  std::unordered_map<std::wstring, std::wstring> values;
-};
-
-std::mutex& SettingsCacheMutex() {
-  static std::mutex mutex;
-  return mutex;
-}
-
-SettingsCache& MutableSettingsCache() {
-  static SettingsCache cache;
-  return cache;
-}
-
-void EnsureSettingsCacheLoadedLocked(SettingsCache& cache) {
-  const auto path = std::filesystem::path(SettingsPath());
-  const auto write_time = SettingsFileWriteTime(path);
-  if (cache.loaded && cache.path == path && cache.write_time == write_time) {
-    return;
-  }
-
-  cache.path = path;
-  cache.write_time = write_time;
-  cache.loaded = true;
-  cache.values.clear();
-
-  std::ifstream input(path, std::ios::binary);
-  if (!input) {
-    return;
-  }
-
-  std::stringstream buffer;
-  buffer << input.rdbuf();
-  std::wistringstream lines(DecodeSettingsText(buffer.str()));
-  std::wstring line;
-  while (std::getline(lines, line)) {
-    line = NormalizeSettingLine(std::move(line));
-    const size_t equals = line.find(L'=');
-    if (equals == std::wstring::npos) {
-      continue;
-    }
-    cache.values.try_emplace(line.substr(0, equals), line.substr(equals + 1));
-  }
-}
-
 std::wstring ReadStringSetting(std::wstring_view key, std::wstring_view default_value = L"") {
-  std::lock_guard lock(SettingsCacheMutex());
-  auto& cache = MutableSettingsCache();
-  EnsureSettingsCacheLoadedLocked(cache);
-  const auto found = cache.values.find(std::wstring(key));
-  if (found != cache.values.end()) {
-    return found->second;
-  }
-  return std::wstring(default_value);
+  static fp::SettingsStore store;
+  return store.ReadString(key, default_value);
 }
 
 constexpr const char* kDefaultFuzzyPinyinRules =
@@ -585,21 +460,9 @@ std::string FluentPinyinAlgebraPatch(
   return patch;
 }
 
-bool ParseBoolSettingValue(const std::wstring& value, bool default_value) {
-  if (value == L"1" || value == L"true" || value == L"True" ||
-      value == L"TRUE" || value == L"on" || value == L"yes") {
-    return true;
-  }
-  if (value == L"0" || value == L"false" || value == L"False" ||
-      value == L"FALSE" || value == L"off" || value == L"no") {
-    return false;
-  }
-  return default_value;
-}
-
 bool ReadBoolSetting(std::wstring_view key, bool default_value) {
-  return ParseBoolSettingValue(ReadStringSetting(key, default_value ? L"1" : L"0"),
-                               default_value);
+  return fp::ParseBoolSettingValue(ReadStringSetting(key, default_value ? L"1" : L"0"),
+                                   default_value);
 }
 
 bool WanxiangModeSetting(std::wstring_view key,
@@ -609,7 +472,7 @@ bool WanxiangModeSetting(std::wstring_view key,
     const std::wstring marker = L"__fluent_missing_bool__";
     const std::wstring value = ReadStringSetting(key, marker);
     if (value != marker) {
-      return ParseBoolSettingValue(value, default_value);
+      return fp::ParseBoolSettingValue(value, default_value);
     }
     return ReadBoolSetting(legacy_key, default_value);
   }

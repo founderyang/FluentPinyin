@@ -3,6 +3,7 @@
 #include "common/constants.h"
 #include "common/logging.h"
 #include "common/path_utils.h"
+#include "common/settings_store.h"
 #include "common/theme.h"
 #include "tsf/guids.h"
 #include "tsf/module.h"
@@ -844,261 +845,25 @@ HFONT CreateLayeredUiFontForDpi(int point_size,
   return CreateUiFontForDpi(point_size, dpi, weight, family, ANTIALIASED_QUALITY);
 }
 
-std::filesystem::path SettingsPath() {
-  return fp::GetFpRoamingDataPath() / L"settings.ini";
-}
-
 std::wstring NarrowPath(const std::filesystem::path& path) {
   return path.wstring();
 }
 
-std::wstring NormalizeSettingLine(std::wstring line) {
-  if (!line.empty() && line.front() == L'\ufeff') {
-    line.erase(line.begin());
-  }
-  if (line.size() >= 3 && line[0] == L'\u00EF' && line[1] == L'\u00BB' &&
-      line[2] == L'\u00BF') {
-    line.erase(0, 3);
-  }
-  if (!line.empty() && line.back() == L'\r') {
-    line.pop_back();
-  }
-  return line;
-}
-
-std::wstring DecodeMultiByteSetting(UINT code_page,
-                                    DWORD flags,
-                                    const char* data,
-                                    size_t length) {
-  if (data == nullptr || length == 0 ||
-      length > static_cast<size_t>((std::numeric_limits<int>::max)())) {
-    return {};
-  }
-  const int byte_count = static_cast<int>(length);
-  const int wide_count = MultiByteToWideChar(code_page, flags, data, byte_count, nullptr, 0);
-  if (wide_count <= 0) {
-    return {};
-  }
-  std::wstring text(static_cast<size_t>(wide_count), L'\0');
-  const int written =
-      MultiByteToWideChar(code_page, flags, data, byte_count, text.data(), wide_count);
-  if (written <= 0) {
-    return {};
-  }
-  text.resize(static_cast<size_t>(written));
-  return text;
-}
-
-std::wstring DecodeSettingsBytes(const std::vector<char>& bytes) {
-  if (bytes.empty()) {
-    return {};
-  }
-
-  auto byte_at = [&bytes](size_t index) {
-    return static_cast<unsigned char>(bytes[index]);
-  };
-
-  if (bytes.size() >= 2 && byte_at(0) == 0xFF && byte_at(1) == 0xFE) {
-    std::wstring text;
-    text.reserve((bytes.size() - 2) / 2);
-    for (size_t i = 2; i + 1 < bytes.size(); i += 2) {
-      text.push_back(static_cast<wchar_t>(byte_at(i) | (byte_at(i + 1) << 8)));
-    }
-    return text;
-  }
-
-  if (bytes.size() >= 2 && byte_at(0) == 0xFE && byte_at(1) == 0xFF) {
-    std::wstring text;
-    text.reserve((bytes.size() - 2) / 2);
-    for (size_t i = 2; i + 1 < bytes.size(); i += 2) {
-      text.push_back(static_cast<wchar_t>((byte_at(i) << 8) | byte_at(i + 1)));
-    }
-    return text;
-  }
-
-  size_t offset = 0;
-  if (bytes.size() >= 3 && byte_at(0) == 0xEF && byte_at(1) == 0xBB && byte_at(2) == 0xBF) {
-    offset = 3;
-  }
-
-  const char* data = bytes.data() + offset;
-  const size_t length = bytes.size() - offset;
-  std::wstring text = DecodeMultiByteSetting(CP_UTF8, MB_ERR_INVALID_CHARS, data, length);
-  if (!text.empty() || length == 0) {
-    return text;
-  }
-  return DecodeMultiByteSetting(CP_ACP, 0, data, length);
-}
-
-std::string EncodeSettingsUtf8(std::wstring_view text) {
-  if (text.empty() ||
-      text.size() > static_cast<size_t>((std::numeric_limits<int>::max)())) {
-    return {};
-  }
-  const int wide_count = static_cast<int>(text.size());
-  const int byte_count =
-      WideCharToMultiByte(CP_UTF8, 0, text.data(), wide_count, nullptr, 0, nullptr, nullptr);
-  if (byte_count <= 0) {
-    return {};
-  }
-  std::string bytes(static_cast<size_t>(byte_count), '\0');
-  const int written = WideCharToMultiByte(
-      CP_UTF8, 0, text.data(), wide_count, bytes.data(), byte_count, nullptr, nullptr);
-  if (written <= 0) {
-    return {};
-  }
-  bytes.resize(static_cast<size_t>(written));
-  return bytes;
-}
-
-std::vector<std::wstring> ReadSettingLines(const std::filesystem::path& path) {
-  std::ifstream input(path, std::ios::binary);
-  if (!input) {
-    return {};
-  }
-
-  input.seekg(0, std::ios::end);
-  const std::streamoff size = input.tellg();
-  if (size <= 0) {
-    return {};
-  }
-  input.seekg(0, std::ios::beg);
-
-  std::vector<char> bytes(static_cast<size_t>(size));
-  input.read(bytes.data(), static_cast<std::streamsize>(bytes.size()));
-  bytes.resize(static_cast<size_t>(std::max<std::streamsize>(0, input.gcount())));
-
-  std::vector<std::wstring> lines;
-  const std::wstring text = DecodeSettingsBytes(bytes);
-  std::wistringstream stream(text);
-  std::wstring line;
-  while (std::getline(stream, line)) {
-    lines.push_back(NormalizeSettingLine(std::move(line)));
-  }
-  return lines;
-}
-
-std::filesystem::file_time_type SettingsFileWriteTime(const std::filesystem::path& path) {
-  std::error_code error;
-  if (!std::filesystem::exists(path, error)) {
-    return std::filesystem::file_time_type{};
-  }
-  const auto write_time = std::filesystem::last_write_time(path, error);
-  return error ? std::filesystem::file_time_type{} : write_time;
-}
-
-struct SettingsCache {
-  std::filesystem::path path;
-  std::filesystem::file_time_type write_time{};
-  bool loaded = false;
-  std::vector<std::wstring> lines;
-  std::unordered_map<std::wstring, std::vector<size_t>> line_indices;
-};
-
-std::mutex& SettingsCacheMutex() {
-  static std::mutex mutex;
-  return mutex;
-}
-
-SettingsCache& MutableSettingsCache() {
-  static SettingsCache cache;
-  return cache;
-}
-
-void RebuildSettingsIndex(SettingsCache& cache) {
-  cache.line_indices.clear();
-  for (size_t index = 0; index < cache.lines.size(); ++index) {
-    const std::wstring& line = cache.lines[index];
-    const size_t equals = line.find(L'=');
-    if (equals == std::wstring::npos) {
-      continue;
-    }
-    cache.line_indices[line.substr(0, equals)].push_back(index);
-  }
-}
-
-void EnsureSettingsCacheLoadedLocked(SettingsCache& cache) {
-  const auto path = SettingsPath();
-  const auto write_time = SettingsFileWriteTime(path);
-  if (cache.loaded && cache.path == path && cache.write_time == write_time) {
-    return;
-  }
-
-  cache.path = path;
-  cache.write_time = write_time;
-  cache.loaded = true;
-  cache.lines = ReadSettingLines(path);
-  RebuildSettingsIndex(cache);
-}
-
-void FlushSettingLines(const std::filesystem::path& path,
-                       const std::vector<std::wstring>& lines) {
-  fp::EnsureDirectory(path.parent_path());
-  std::wstring content;
-  for (const auto& line : lines) {
-    content += line;
-    content += L"\n";
-  }
-  const std::string bytes = EncodeSettingsUtf8(content);
-  std::ofstream output(path, std::ios::binary | std::ios::trunc);
-  if (!bytes.empty()) {
-    output.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
-  }
+fp::SettingsStore& RuntimeSettingsStore() {
+  static fp::SettingsStore store;
+  return store;
 }
 
 std::optional<std::wstring> FindSettingValue(std::wstring_view key) {
-  std::lock_guard lock(SettingsCacheMutex());
-  auto& cache = MutableSettingsCache();
-  EnsureSettingsCacheLoadedLocked(cache);
-  const auto found = cache.line_indices.find(std::wstring(key));
-  if (found != cache.line_indices.end() && !found->second.empty()) {
-    const std::wstring& line = cache.lines[found->second.front()];
-    const size_t equals = line.find(L'=');
-    if (equals != std::wstring::npos) {
-      return line.substr(equals + 1);
-    }
-  }
-  return std::nullopt;
-}
-
-void UpsertSettingLine(std::vector<std::wstring>* lines,
-                       std::wstring_view key,
-                       std::wstring_view value) {
-  if (lines == nullptr) {
-    return;
-  }
-  const std::wstring prefix = std::wstring(key) + L"=";
-  const std::wstring line_value = prefix + std::wstring(value);
-  bool replaced = false;
-  for (auto& line : *lines) {
-    if (line.starts_with(prefix)) {
-      line = line_value;
-      replaced = true;
-    }
-  }
-  if (!replaced) {
-    lines->push_back(line_value);
-  }
+  return RuntimeSettingsStore().FindString(key);
 }
 
 void WriteSettingLine(std::wstring_view key, std::wstring_view value) {
-  const auto path = SettingsPath();
-  std::lock_guard lock(SettingsCacheMutex());
-  auto& cache = MutableSettingsCache();
-  EnsureSettingsCacheLoadedLocked(cache);
-  UpsertSettingLine(&cache.lines, key, value);
-  FlushSettingLines(path, cache.lines);
-  cache.path = path;
-  cache.write_time = SettingsFileWriteTime(path);
-  cache.loaded = true;
-  RebuildSettingsIndex(cache);
+  RuntimeSettingsStore().WriteString(key, value);
 }
 
 void WriteStringSetting(std::wstring_view key, std::wstring_view value) {
-  std::wstring sanitized(value);
-  std::replace(sanitized.begin(), sanitized.end(), L'\r', L',');
-  std::replace(sanitized.begin(), sanitized.end(), L'\n', L',');
-  WriteSettingLine(key, sanitized);
+  WriteSettingLine(key, value);
 }
 
 void WriteBoolSetting(std::wstring_view key, bool value) {
@@ -1114,16 +879,12 @@ std::wstring ReadStringSetting(std::wstring_view key, std::wstring_view default_
   return value.has_value() ? *value : std::wstring(default_value);
 }
 
-bool IsTruthySettingValue(std::wstring_view value) {
-  return value == L"1" || value == L"true" || value == L"True";
-}
-
 std::optional<bool> ReadOptionalBoolSetting(std::wstring_view key) {
   const std::optional<std::wstring> value = FindSettingValue(key);
   if (!value.has_value()) {
     return std::nullopt;
   }
-  return IsTruthySettingValue(*value);
+  return fp::IsTruthySettingValue(*value);
 }
 
 bool ReadBoolSetting(std::wstring_view key, bool default_value) {
@@ -8525,7 +8286,6 @@ void TsfTextService::SaveCandidateLayoutSetting() const {
 }
 
 void TsfTextService::SaveToolbarSetting() const {
-  const auto path = SettingsPath();
   bool save_position_user = toolbar_position_user_;
   bool save_has_position = has_toolbar_position_;
   POINT save_position = toolbar_position_;
@@ -8538,29 +8298,21 @@ void TsfTextService::SaveToolbarSetting() const {
     }
   }
 
-  std::lock_guard lock(SettingsCacheMutex());
-  auto& cache = MutableSettingsCache();
-  EnsureSettingsCacheLoadedLocked(cache);
-  UpsertSettingLine(&cache.lines, kToolbarVisibleSetting, toolbar_visible_ ? L"1" : L"0");
-  UpsertSettingLine(&cache.lines, kToolbarPositionUserSetting, save_position_user ? L"1" : L"0");
-  UpsertSettingLine(&cache.lines,
-                    kToolbarLayoutSetting,
-                    toolbar_vertical_layout_ ? L"vertical" : L"horizontal");
-  UpsertSettingLine(&cache.lines,
-                    kToolbarItemsSetting,
-                    SerializeToolbarVisibleItems(toolbar_visible_items_));
-  UpsertSettingLine(&cache.lines, L"toolbar_visible", L"0");
+  std::vector<fp::SettingUpdate> updates{
+      {std::wstring(kToolbarVisibleSetting), toolbar_visible_ ? L"1" : L"0"},
+      {std::wstring(kToolbarPositionUserSetting), save_position_user ? L"1" : L"0"},
+      {std::wstring(kToolbarLayoutSetting),
+       toolbar_vertical_layout_ ? L"vertical" : L"horizontal"},
+      {std::wstring(kToolbarItemsSetting),
+       SerializeToolbarVisibleItems(toolbar_visible_items_)},
+      {L"toolbar_visible", L"0"},
+  };
   if (save_position_user && save_has_position) {
-    UpsertSettingLine(&cache.lines,
-                      kToolbarPositionSetting,
-                      std::to_wstring(save_position.x) + L"," +
-                          std::to_wstring(save_position.y));
+    updates.push_back({std::wstring(kToolbarPositionSetting),
+                       std::to_wstring(save_position.x) + L"," +
+                           std::to_wstring(save_position.y)});
   }
-  FlushSettingLines(path, cache.lines);
-  cache.path = path;
-  cache.write_time = SettingsFileWriteTime(path);
-  cache.loaded = true;
-  RebuildSettingsIndex(cache);
+  RuntimeSettingsStore().WriteStrings(updates);
 }
 
 void TsfTextService::SaveToolbarItemsSetting() const {

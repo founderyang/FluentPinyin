@@ -112,6 +112,7 @@ add_library(fluent_pinyin_common STATIC
   src/common/encoding.cpp
   src/common/logging.cpp
   src/common/path_utils.cpp
+  src/common/settings_store.cpp
 )
 
 target_include_directories(fluent_pinyin_common PUBLIC src)

@@ -1,8 +1,10 @@
 #include "common/encoding.h"
 #include "common/logging.h"
 #include "common/path_utils.h"
+#include "common/settings_store.h"
 
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <string>
 #include <string_view>
@@ -70,6 +72,52 @@ void TestLogFlushPolicy() {
   Expect(!ShouldRotateLog(2048, 0), "zero log rotation cap disables rotation");
 }
 
+void WriteBytes(const std::filesystem::path& path, const std::string& bytes) {
+  std::ofstream output(path, std::ios::binary | std::ios::trunc);
+  output.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+}
+
+void TestSettingsStoreReadWrite() {
+  const auto test_dir = fp::GetFpLogDirectory() / L"common-unit-settings";
+  std::error_code error;
+  std::filesystem::remove_all(test_dir, error);
+  Expect(fp::EnsureDirectory(test_dir), "settings test directory is created");
+
+  const auto settings_path = test_dir / L"settings.ini";
+  const std::string utf8_bom = "\xEF\xBB\xBF";
+  WriteBytes(settings_path,
+             utf8_bom + "alpha=one\r\nbeta=true\nalpha=two\nbroken\n");
+
+  fp::SettingsStore store(settings_path);
+  Expect(store.ReadString(L"alpha", L"missing") == L"one",
+         "SettingsStore reads the first value for duplicate keys");
+  Expect(store.ReadBool(L"beta", false),
+         "SettingsStore parses truthy bool values");
+  Expect(store.ReadString(L"missing", L"default") == L"default",
+         "SettingsStore returns defaults for missing values");
+
+  Expect(store.WriteString(L"gamma", L"line1\r\nline2"),
+         "SettingsStore writes sanitized strings");
+  Expect(store.WriteBool(L"beta", false),
+         "SettingsStore writes bool values");
+  Expect(store.ReadString(L"gamma", L"") == L"line1,,line2",
+         "SettingsStore sanitizes CR/LF on write");
+  Expect(!store.ReadBool(L"beta", true),
+         "SettingsStore reads updated bool values from cache");
+
+  const auto lines = fp::ReadSettingLines(settings_path);
+  bool saw_gamma = false;
+  bool saw_accidental_key = false;
+  for (const auto& line : lines) {
+    saw_gamma = saw_gamma || line == L"gamma=line1,,line2";
+    saw_accidental_key = saw_accidental_key || line.starts_with(L"line2=");
+  }
+  Expect(saw_gamma, "ReadSettingLines sees sanitized values");
+  Expect(!saw_accidental_key, "Sanitized values do not create new keys");
+
+  std::filesystem::remove_all(test_dir, error);
+}
+
 }  // namespace
 
 int main() {
@@ -77,6 +125,7 @@ int main() {
   TestEncodingInvalidInput();
   TestPaths();
   TestLogFlushPolicy();
+  TestSettingsStoreReadWrite();
   if (g_failures != 0) {
     std::cerr << g_failures << " common unit test failure(s)\n";
     return 1;
