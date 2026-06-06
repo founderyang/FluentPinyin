@@ -2,6 +2,8 @@
 
 project(FluentPinyin VERSION 00.00.04 LANGUAGES CXX)
 
+include(CTest)
+
 if(NOT WIN32)
   message(FATAL_ERROR "FluentPinyin targets Windows 11 x64 only.")
 endif()
@@ -293,3 +295,16 @@ target_link_libraries(fluent_pinyin_devtools PRIVATE
 )
 
 set_target_properties(fluent_pinyin_devtools PROPERTIES OUTPUT_NAME "fluent-pinyin-devtools")
+
+if(BUILD_TESTING)
+  add_test(
+    NAME smoke_release
+    COMMAND powershell
+            -NoProfile
+            -ExecutionPolicy Bypass
+            -File "${CMAKE_SOURCE_DIR}/tests/smoke.ps1"
+            -BinDir "$<TARGET_FILE_DIR:fluent_pinyin_devtools>"
+            -GeneratedDir "${CMAKE_BINARY_DIR}/generated"
+            -ExpectedVersion "${PROJECT_VERSION}"
+  )
+endif()

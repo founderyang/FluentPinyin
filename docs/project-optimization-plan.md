@@ -182,6 +182,8 @@ Acceptance:
 
 ## Phase 4: Tests and CI
 
+Status: started in `codex/phase4-tests-ci`.
+
 Work:
 
 - Add unit tests for:
@@ -193,6 +195,9 @@ Work:
 - Add integration smoke tests for COM registration and TSF activation.
 - Add packaging smoke tests for generated payload content.
 - Add GitHub Actions or equivalent CI for configure, build, and package smoke.
+  Started with a Windows Release build workflow and a non-mutating CTest smoke
+  test for build artifacts, generated version constants, and basic tool entry
+  points.
 
 Acceptance:
 

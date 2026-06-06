@@ -1,0 +1,33 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - main
+      - "codex/**"
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  windows-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check environment
+        run: python scripts/check_env.py
+
+      - name: Prepare packages
+        run: python scripts/prepare_packages.py
+
+      - name: Configure
+        run: cmake -S . -B build-release -A x64 -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build-release --config Release --parallel
+
+      - name: Test
+        run: ctest --test-dir build-release -C Release --output-on-failure
