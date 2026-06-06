@@ -3759,11 +3759,12 @@ std::wstring ShortcutConflictTooltip(std::wstring_view current_key,
     std::wstring_view label;
     std::wstring_view fallback;
   };
-  constexpr std::array<HotkeyConflictEntry, 7> shortcuts{{
+  constexpr std::array<HotkeyConflictEntry, 8> shortcuts{{
       {L"shortcut_toolbar_input_mode", L"中/英文模式", L"Shift"},
       {L"shortcut_toolbar_shape", L"全/半角", L"Shift+."},
       {L"shortcut_toolbar_punctuation", L"中/英文标点", L"Ctrl+."},
       {L"shortcut_toolbar_charset", L"简体/繁体", L"Ctrl+Shift+F"},
+      {L"shortcut_toolbar_emoji", L"表情符号/符号", L"Win+."},
       {L"shortcut_candidate_expand", L"展开/收起候选框", L"Tab"},
       {L"shortcut_candidate_previous_page", L"上一页", L"PgUp"},
       {L"shortcut_candidate_next_page", L"下一页", L"PgDn"},
@@ -4237,6 +4238,7 @@ void ResetDefaultSettings() {
   WriteStringSetting(L"shortcut_toolbar_shape", L"Shift+.");
   WriteStringSetting(L"shortcut_toolbar_punctuation", L"Ctrl+.");
   WriteStringSetting(L"shortcut_toolbar_charset", L"Ctrl+Shift+F");
+  WriteStringSetting(L"shortcut_toolbar_emoji", L"Win+.");
   WriteStringSetting(L"shortcut_candidate_expand", L"Tab");
   WriteStringSetting(L"shortcut_candidate_previous_page", L"PgUp");
   WriteStringSetting(L"shortcut_candidate_next_page", L"PgDn");
@@ -6781,6 +6783,8 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
         L"中/英文标点", L"shortcut_toolbar_punctuation", L"Ctrl+.", PunctuationStatusIcon(true)));
     page.Children().Append(HotkeyBindingRowWithIcon(
         L"简体/繁体", L"shortcut_toolbar_charset", L"Ctrl+Shift+F", TextIcon(L"简")));
+    page.Children().Append(HotkeyBindingRowWithIcon(
+        L"表情符号/符号", L"shortcut_toolbar_emoji", L"Win+.", EmojiStatusIcon()));
     page.Children().Append(SectionHeader(L"候选导航"));
     page.Children().Append(HotkeyBindingRowWithIcon(
         L"展开/收起候选框",

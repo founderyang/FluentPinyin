@@ -7474,6 +7474,9 @@ UINT ToolbarShortcutCommand(WPARAM wparam) {
   if (ShortcutMatches(L"shortcut_toolbar_charset", L"Ctrl+Shift+F", wparam)) {
     return kMenuCharset;
   }
+  if (ShortcutMatches(L"shortcut_toolbar_emoji", L"Win+.", wparam)) {
+    return kMenuEmoji;
+  }
   return 0;
 }
 
