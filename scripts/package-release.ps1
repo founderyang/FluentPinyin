@@ -25,16 +25,19 @@ function Resolve-Tool([string]$Name, [string[]]$Fallbacks) {
     throw "Cannot find $Name. Install it first, then run this script again."
 }
 
-function ConvertTo-NsisPath([string]$Path) {
-    return $Path.TrimEnd('\', '/') -replace '/', '\'
-}
-
 function ConvertTo-WixId([string]$Prefix, [string]$Value) {
     $clean = ($Value -replace "[^A-Za-z0-9_]", "_")
     if ($clean.Length -gt 56) {
         $clean = $clean.Substring(0, 56)
     }
     return "$Prefix`_$clean"
+}
+
+function Get-WixFileId([string]$RelativeFile) {
+    if ($RelativeFile -ieq "fluent-pinyin-devtools.exe") {
+        return "DevtoolsExe"
+    }
+    return ConvertTo-WixId "fil" $RelativeFile
 }
 
 function Escape-Xml([string]$Value) {
@@ -58,7 +61,7 @@ function Add-WixDirectoryXml(
             "$RelativePath\$($file.Name)"
         }
         $componentId = ConvertTo-WixId "cmp" $relativeFile
-        $fileId = ConvertTo-WixId "fil" $relativeFile
+        $fileId = Get-WixFileId $relativeFile
         $ComponentIds.Add($componentId)
         [void]$Builder.AppendLine("$indentText<Component Id=""$componentId"" Guid=""*"">")
         [void]$Builder.AppendLine("$indentText  <File Id=""$fileId"" Source=""$(Escape-Xml $file.FullName)"" KeyPath=""yes"" />")
@@ -162,6 +165,9 @@ try {
         Remove-Item -LiteralPath $resolvedPayload -Recurse -Force
     }
     New-Item -ItemType Directory -Force -Path $resolvedPayload, $resolvedRelease | Out-Null
+    Remove-Item -LiteralPath (Join-Path $resolvedRelease "FluentPinyin-Setup.exe") -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath (Join-Path $resolvedRelease "FluentPinyin-Uninstall.exe") -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath (Join-Path $resolvedRelease "FluentPinyin.msi") -Force -ErrorAction SilentlyContinue
 
     $requiredFiles = @(
         "fluent-pinyin-tsf.dll",
@@ -205,9 +211,7 @@ FluentPinyin $ProductVersion
 
 Install path: C:\Program Files\FluentPinyin
 
-Use FluentPinyin-Setup.exe for installation.
-Use FluentPinyin-Uninstall.exe to remove the app.
-The MSI package is provided for managed installation.
+Use FluentPinyin.msi to install or remove the app.
 "@
     [IO.File]::WriteAllText((Join-Path $resolvedPayload "README.txt"), $readme, [Text.UTF8Encoding]::new($false))
 
@@ -219,36 +223,9 @@ The MSI package is provided for managed installation.
 
     if (-not $SkipInstallers) {
         $programFiles = [Environment]::GetFolderPath("ProgramFiles")
-        $programFilesX86 = [Environment]::GetFolderPath("ProgramFilesX86")
-        $makensis = Resolve-Tool `
-            -Name "makensis.exe" `
-            -Fallbacks @(
-                (Join-Path $programFilesX86 "NSIS\makensis.exe"),
-                (Join-Path $programFilesX86 "NSIS\Bin\makensis.exe"),
-                (Join-Path $programFiles "NSIS\makensis.exe"),
-                (Join-Path $programFiles "NSIS\Bin\makensis.exe")
-            )
         $wix = Resolve-Tool `
             -Name "wix.exe" `
             -Fallbacks @((Join-Path $programFiles "WiX Toolset v7.0\bin\wix.exe"))
-
-        $payloadForNsis = ConvertTo-NsisPath $resolvedPayload
-        $releaseForNsis = ConvertTo-NsisPath $resolvedRelease
-        & $makensis `
-            "/DPRODUCT_VERSION=$ProductVersion" `
-            "/DPAYLOAD_DIR=$payloadForNsis" `
-            "/DOUTPUT_DIR=$releaseForNsis" `
-            ".\installer\fluent-pinyin.nsi"
-        if ($LASTEXITCODE -ne 0) {
-            throw "makensis failed with exit code $LASTEXITCODE"
-        }
-
-        & $makensis `
-            "/DOUTPUT_DIR=$releaseForNsis" `
-            ".\installer\fluent-pinyin-uninstall.nsi"
-        if ($LASTEXITCODE -ne 0) {
-            throw "makensis uninstall failed with exit code $LASTEXITCODE"
-        }
 
         $payloadWxs = Join-Path $resolvedRelease "payload.wxs"
         New-WixPayloadFile -PayloadPath $resolvedPayload -OutputPath $payloadWxs

@@ -233,22 +233,13 @@ std::optional<ReleaseInfo> CheckRelease(const wchar_t* latest_url,
 
 std::optional<ReleaseInfo> QueryAppRelease() {
   const std::wstring latest_url(fp::kGitHubLatestReleaseApiUrl);
-  auto release = CheckRelease(latest_url.c_str(), WideToUtf8(fp::kReleaseSetupAssetName));
-  if (release) {
-    return release;
-  }
   return CheckRelease(latest_url.c_str(), WideToUtf8(fp::kReleaseMsiAssetName));
 }
 
-bool LaunchInstaller(const std::filesystem::path& installer_path, std::string_view asset_name) {
-  if (asset_name.ends_with(".msi")) {
-    const std::wstring params = L"/i \"" + installer_path.wstring() + L"\" /qn";
-    return reinterpret_cast<intptr_t>(
-               ShellExecuteW(nullptr, L"runas", L"msiexec.exe", params.c_str(), nullptr, SW_SHOWNORMAL)) > 32;
-  }
-
+bool LaunchInstaller(const std::filesystem::path& installer_path, std::string_view) {
+  const std::wstring params = L"/i \"" + installer_path.wstring() + L"\" /qn";
   return reinterpret_cast<intptr_t>(
-             ShellExecuteW(nullptr, L"runas", installer_path.c_str(), L"/S", nullptr, SW_SHOWNORMAL)) > 32;
+             ShellExecuteW(nullptr, L"runas", L"msiexec.exe", params.c_str(), nullptr, SW_SHOWNORMAL)) > 32;
 }
 
 int CheckUpdates() {

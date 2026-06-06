@@ -12,7 +12,6 @@ inline constexpr std::wstring_view kGitHubRepoUrl =
     L"https://github.com/founderyang/FluentPinyin";
 inline constexpr std::wstring_view kGitHubLatestReleaseApiUrl =
     L"https://api.github.com/repos/founderyang/FluentPinyin/releases/latest";
-inline constexpr std::wstring_view kReleaseSetupAssetName = L"FluentPinyin-Setup.exe";
 inline constexpr std::wstring_view kReleaseMsiAssetName = L"FluentPinyin.msi";
 inline constexpr std::wstring_view kLogsDirectoryName = L"Logs";
 inline constexpr std::wstring_view kDefaultInputScheme = L"pinyin";

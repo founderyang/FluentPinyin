@@ -13,7 +13,6 @@ Requirements:
 - Visual Studio 2022 Build Tools with MSVC x64
 - CMake 3.24 or newer
 - Python 3 with Pillow for icon generation
-- NSIS 3
 - WiX Toolset 7
 - GitHub CLI for publishing releases
 
@@ -37,7 +36,7 @@ cmake -S . -B .\build-release -G "Visual Studio 17 2022" -A x64
 cmake --build .\build-release --config Release --parallel
 ```
 
-Create release installers:
+Create release package:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-release.ps1
@@ -45,8 +44,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-release.ps
 
 Generated files are written to `dist\release`:
 
-- `FluentPinyin-Setup.exe`
-- `FluentPinyin-Uninstall.exe`
 - `FluentPinyin.msi`
 
 The installer uses `C:\Program Files\FluentPinyin`.
@@ -54,7 +51,6 @@ The installer uses `C:\Program Files\FluentPinyin`.
 ## Update
 
 The About page update button downloads the latest GitHub Release asset named
-`FluentPinyin-Setup.exe`; if that asset is not present, it falls back to
 `FluentPinyin.msi`.
 
 ## Third-Party Components

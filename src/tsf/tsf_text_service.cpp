@@ -1520,7 +1520,143 @@ COLORREF TrayTextColor() {
       (high_contrast.dwFlags & HCF_HIGHCONTRASTON) != 0) {
     return GetSysColor(COLOR_WINDOWTEXT);
   }
-  return RGB(71, 74, 178);
+  return SystemUsesLightTheme() ? RGB(32, 32, 32) : RGB(245, 245, 245);
+}
+
+COLORREF TrayInverseTextColor() {
+  return SystemUsesLightTheme() ? RGB(245, 245, 245) : RGB(32, 32, 32);
+}
+
+std::wstring GuidToString(REFGUID guid) {
+  wchar_t buffer[64]{};
+  StringFromGUID2(guid, buffer, static_cast<int>(std::size(buffer)));
+  return buffer;
+}
+
+std::wstring TipLanguageProfileKey() {
+  return L"Software\\Microsoft\\CTF\\TIP\\" + GuidToString(kTextServiceClsid) +
+         L"\\LanguageProfile\\0x00000804\\" + GuidToString(kProfileGuid);
+}
+
+std::filesystem::path ProfileIconPathForSystemTheme() {
+  const auto icon = ModuleDirectory() / (SystemUsesLightTheme() ? L"fluent-pinyin-light.ico"
+                                                               : L"fluent-pinyin-dark.ico");
+  if (GetFileAttributesW(icon.c_str()) != INVALID_FILE_ATTRIBUTES) {
+    return icon;
+  }
+  return {};
+}
+
+bool RegistryStringEquals(HKEY root,
+                          const std::wstring& subkey,
+                          const wchar_t* name,
+                          const std::wstring& value) {
+  std::wstring existing(32768, L'\0');
+  DWORD size = static_cast<DWORD>(existing.size() * sizeof(wchar_t));
+  DWORD type = 0;
+  const LSTATUS status = RegGetValueW(root,
+                                      subkey.c_str(),
+                                      name,
+                                      RRF_RT_REG_SZ | RRF_RT_REG_EXPAND_SZ,
+                                      &type,
+                                      existing.data(),
+                                      &size);
+  if (status != ERROR_SUCCESS || size == 0) {
+    return false;
+  }
+  existing.resize((size / sizeof(wchar_t)) - 1);
+  return _wcsicmp(existing.c_str(), value.c_str()) == 0;
+}
+
+bool SetRegistryExpandableStringIfChanged(HKEY root,
+                                          const std::wstring& subkey,
+                                          const wchar_t* name,
+                                          const std::wstring& value) {
+  if (RegistryStringEquals(root, subkey, name, value)) {
+    return false;
+  }
+
+  HKEY key = nullptr;
+  const LSTATUS open_status = RegCreateKeyExW(root,
+                                              subkey.c_str(),
+                                              0,
+                                              nullptr,
+                                              REG_OPTION_NON_VOLATILE,
+                                              KEY_WRITE,
+                                              nullptr,
+                                              &key,
+                                              nullptr);
+  if (open_status != ERROR_SUCCESS) {
+    return false;
+  }
+  const LSTATUS write_status =
+      RegSetValueExW(key,
+                     name,
+                     0,
+                     REG_EXPAND_SZ,
+                     reinterpret_cast<const BYTE*>(value.c_str()),
+                     static_cast<DWORD>((value.size() + 1) * sizeof(wchar_t)));
+  RegCloseKey(key);
+  return write_status == ERROR_SUCCESS;
+}
+
+bool SetRegistryDwordIfChanged(HKEY root,
+                               const std::wstring& subkey,
+                               const wchar_t* name,
+                               DWORD value) {
+  DWORD existing = 0;
+  DWORD size = sizeof(existing);
+  const LSTATUS read_status = RegGetValueW(root,
+                                           subkey.c_str(),
+                                           name,
+                                           RRF_RT_REG_DWORD,
+                                           nullptr,
+                                           &existing,
+                                           &size);
+  if (read_status == ERROR_SUCCESS && existing == value) {
+    return false;
+  }
+
+  HKEY key = nullptr;
+  const LSTATUS open_status = RegCreateKeyExW(root,
+                                              subkey.c_str(),
+                                              0,
+                                              nullptr,
+                                              REG_OPTION_NON_VOLATILE,
+                                              KEY_WRITE,
+                                              nullptr,
+                                              &key,
+                                              nullptr);
+  if (open_status != ERROR_SUCCESS) {
+    return false;
+  }
+  const LSTATUS write_status =
+      RegSetValueExW(key, name, 0, REG_DWORD, reinterpret_cast<const BYTE*>(&value), sizeof(value));
+  RegCloseKey(key);
+  return write_status == ERROR_SUCCESS;
+}
+
+void RefreshProfileIconForSystemTheme() {
+  const auto icon_path = ProfileIconPathForSystemTheme();
+  if (icon_path.empty()) {
+    return;
+  }
+
+  const std::wstring icon_value = icon_path.wstring();
+  const std::wstring profile_key = TipLanguageProfileKey();
+  bool changed = false;
+  changed |= SetRegistryExpandableStringIfChanged(
+      HKEY_CURRENT_USER, profile_key, L"IconFile", icon_value);
+  changed |= SetRegistryDwordIfChanged(HKEY_CURRENT_USER, profile_key, L"IconIndex", 0);
+  changed |= SetRegistryExpandableStringIfChanged(
+      HKEY_LOCAL_MACHINE, profile_key, L"IconFile", icon_value);
+  changed |= SetRegistryDwordIfChanged(HKEY_LOCAL_MACHINE, profile_key, L"IconIndex", 0);
+  if (changed) {
+    SendNotifyMessageW(HWND_BROADCAST,
+                       WM_SETTINGCHANGE,
+                       0,
+                       reinterpret_cast<LPARAM>(L"Software\\Microsoft\\CTF\\TIP"));
+  }
 }
 
 struct ToolbarPalette {
@@ -4960,7 +5096,7 @@ HICON CreateTrayInputIcon(TrayInputIconMode mode) {
     const unsigned char fill_blue = GetBValue(text_color);
     const unsigned char fill_green = GetGValue(text_color);
     const unsigned char fill_red = GetRValue(text_color);
-    const COLORREF cross_color = SystemUsesLightTheme() ? RGB(64, 64, 64) : RGB(35, 35, 35);
+    const COLORREF cross_color = TrayInverseTextColor();
     const unsigned char cross_blue = GetBValue(cross_color);
     const unsigned char cross_green = GetGValue(cross_color);
     const unsigned char cross_red = GetRValue(cross_color);
@@ -7183,6 +7319,7 @@ STDMETHODIMP TsfTextService::Activate(ITfThreadMgr* thread_mgr, TfClientId clien
 
   LoadUserSettings();
   ApplyDefaultInputStateFromSettings();
+  RefreshProfileIconForSystemTheme();
   UpdateInputModeCompartments();
 
   ITfCategoryMgr* category_mgr = nullptr;
@@ -7699,6 +7836,9 @@ void TsfTextService::RefreshInputStateFromSettings() {
   }
 
   if (previous_ascii_mode != ascii_mode_ || rime_options_changed || theme_changed) {
+    if (theme_changed) {
+      RefreshProfileIconForSystemTheme();
+    }
     NotifyInputModeChanged();
   }
   if (toolbar_window_ != nullptr) {
