@@ -49,6 +49,12 @@ python .\scripts\package_release.py
 
 生成的文件位于 `dist\release`，其中 `FluentPinyin.msi` 是最终安装包。默认安装路径为 `C:\Program Files\FluentPinyin`。
 
+发布前完成本机安装后，可运行安装验证：
+
+```text
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\install_verify.ps1 -ExpectedProductCode "{产品代码}" -RequireWanxiangPatch
+```
+
 ## 更新
 
 设置面板“关于”页面的更新按钮会从 GitHub 最新发行版下载名为 `FluentPinyin.msi` 的安装包。

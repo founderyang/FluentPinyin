@@ -51,6 +51,7 @@ void TestPaths() {
 
 void TestLogFlushPolicy() {
   using fp::detail::ShouldFlushLog;
+  using fp::detail::ShouldRotateLog;
 
   Expect(ShouldFlushLog(L"INFO", 100, 0, true),
          "first dirty info log flushes to create visible output");
@@ -64,6 +65,9 @@ void TestLogFlushPolicy() {
          "errors flush immediately");
   Expect(!ShouldFlushLog(L"ERROR", 500, 100, false),
          "clean log state does not flush");
+  Expect(!ShouldRotateLog(1024, 2048), "small log files do not rotate");
+  Expect(ShouldRotateLog(2048, 2048), "log files rotate at the configured cap");
+  Expect(!ShouldRotateLog(2048, 0), "zero log rotation cap disables rotation");
 }
 
 }  // namespace

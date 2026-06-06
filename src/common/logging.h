@@ -11,6 +11,8 @@ namespace detail {
                                   std::uint64_t now_ms,
                                   std::uint64_t last_flush_ms,
                                   bool dirty) noexcept;
+[[nodiscard]] bool ShouldRotateLog(std::uintmax_t file_size,
+                                   std::uintmax_t max_file_size) noexcept;
 
 }  // namespace detail
 
