@@ -132,7 +132,7 @@ Acceptance:
 
 ## Phase 2: Package and Installer
 
-Status: continued in `codex/phase5-package-diagnostics`.
+Status: continued in `codex/phase9-font-uninstall-safety`.
 
 Work:
 
@@ -143,7 +143,10 @@ Work:
 - Decide whether all dictionaries and fonts must ship in the base MSI or can be
   optional packages.
 - Keep font cleanup logic, but avoid unnecessary registry/font cleanup work on
-  clean installs when there is no previous footprint.
+  clean installs when there is no previous footprint. Font files remain bundled
+  private resources under the app `fonts` directory; Phase 9 keeps the generated
+  WiX payload manifest and adds package smoke checks that reject system font
+  registration entries.
 - Record install and uninstall logs to a deterministic local path.
 - Split devtools install commands into narrower helpers where possible:
   registration, activation, cleanup, warmup, diagnostics.

@@ -413,6 +413,8 @@ def main():
 
     copy_third_party_licenses(payload_dir)
     write_payload_size_report(payload_dir, release_dir)
+    payload_wxs = release_dir / "payload.wxs"
+    write_wix_payload_file(payload_dir, payload_wxs)
 
     if args.include_zip:
         archive = release_dir / "FluentPinyin-payload.zip"
@@ -422,8 +424,6 @@ def main():
     if not args.skip_installers:
         program_files = Path(os.environ.get("ProgramFiles", r"C:\Program Files"))
         wix = resolve_tool("wix.exe", [program_files / "WiX Toolset v7.0" / "bin" / "wix.exe"])
-        payload_wxs = release_dir / "payload.wxs"
-        write_wix_payload_file(payload_dir, payload_wxs)
         product_code = "{" + str(uuid.uuid4()).upper() + "}"
         command = [
             str(wix),
@@ -440,7 +440,6 @@ def main():
             str(release_dir / "FluentPinyin.msi"),
         ]
         subprocess.run(command, cwd=ROOT, check=True)
-        remove_if_exists(payload_wxs)
         remove_if_exists(release_dir / "FluentPinyin.wixpdb")
         print(f"ProductCode: {product_code}")
 
