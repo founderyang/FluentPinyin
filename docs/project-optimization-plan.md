@@ -215,7 +215,7 @@ Acceptance:
 
 ## Phase 5: Security and Robustness
 
-Status: continued in `codex/phase7-updater-json`.
+Status: continued in `codex/phase8-sync-integrity`.
 
 Work:
 
@@ -225,7 +225,9 @@ Work:
   parser. Implemented in updater with bounded object/array scanning, JSON string
   unescaping, UTF-8 BOM tolerance, and an offline smoke test.
 - Add sync package integrity verification, such as an authenticated tag/HMAC
-  over encrypted data.
+  over encrypted data. Current `.fpsync` packages already use AES-GCM with a
+  16-byte authentication tag; Phase 8 adds a CTest smoke that tampers with an
+  encrypted package and verifies restore fails.
 - Review PBKDF2 iteration policy and document migration behavior.
 - Normalize error handling for operations that cross process, filesystem,
   registry, COM, network, or crypto boundaries.

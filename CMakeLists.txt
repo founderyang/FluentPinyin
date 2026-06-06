@@ -298,6 +298,21 @@ target_link_libraries(fluent_pinyin_devtools PRIVATE
 set_target_properties(fluent_pinyin_devtools PROPERTIES OUTPUT_NAME "fluent-pinyin-devtools")
 
 if(BUILD_TESTING)
+  add_executable(sync_package_integrity
+    tests/sync_package_integrity.cpp
+    src/sync/sync_service.cpp
+  )
+  target_link_libraries(sync_package_integrity PRIVATE
+    fluent_pinyin_common
+    bcrypt
+    crypt32
+    taskschd
+    comsuppw
+    winhttp
+    ole32
+    user32
+  )
+
   add_test(
     NAME smoke_release
     COMMAND powershell
@@ -307,5 +322,9 @@ if(BUILD_TESTING)
             -BinDir "$<TARGET_FILE_DIR:fluent_pinyin_devtools>"
             -GeneratedDir "${CMAKE_BINARY_DIR}/generated"
             -ExpectedVersion "${PROJECT_VERSION}"
+  )
+  add_test(
+    NAME sync_package_integrity
+    COMMAND sync_package_integrity "${CMAKE_BINARY_DIR}/sync-package-integrity"
   )
 endif()
