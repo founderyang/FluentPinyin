@@ -21,6 +21,7 @@
 #include <cctype>
 #include <cwctype>
 #include <filesystem>
+#include <functional>
 #include <fstream>
 #include <initializer_list>
 #include <cmath>
@@ -3910,6 +3911,38 @@ class CandidateRenderLayoutScope {
   const CandidateLayoutMetrics* previous_ = nullptr;
 };
 
+struct CandidateLayoutCacheEntry {
+  bool valid = false;
+  HWND window = nullptr;
+  UINT dpi = 0;
+  bool horizontal = true;
+  bool expanded = false;
+  int compact_count = 0;
+  int candidate_font_point_size = 0;
+  CandidateFontFamily candidate_font_family = CandidateFontFamily::kMiSans;
+  bool traditional = false;
+  size_t candidate_count = 0;
+  size_t candidate_hash = 0;
+  CandidateLayoutMetrics layout;
+};
+
+thread_local CandidateLayoutCacheEntry g_candidate_layout_cache;
+
+void InvalidateCandidateLayoutCache() {
+  g_candidate_layout_cache.valid = false;
+}
+
+size_t HashCandidateLayoutInputs(
+    const std::vector<fp::core::RimeCandidateView>& candidates) {
+  size_t hash = candidates.size();
+  std::hash<std::wstring> hasher;
+  for (const auto& candidate : candidates) {
+    hash ^= hasher(candidate.text) + 0x9e3779b97f4a7c15ull + (hash << 6) + (hash >> 2);
+    hash ^= hasher(candidate.comment) + 0x9e3779b97f4a7c15ull + (hash << 6) + (hash >> 2);
+  }
+  return hash;
+}
+
 RECT CandidateToolRect(const CandidateLayoutMetrics& layout, int tool) {
   switch (tool) {
     case kCandidateToolPrevious:
@@ -5064,6 +5097,90 @@ std::vector<size_t> ContiguousCandidateIndices(size_t candidate_count, size_t li
   return indices;
 }
 
+CandidateLayoutMetrics CandidateLayoutForWindow(
+    HWND window,
+    bool horizontal,
+    bool expanded,
+    int compact_count,
+    int candidate_font_point_size,
+    bool simplified_charset,
+    CandidateFontFamily candidate_font_family,
+    const std::vector<fp::core::RimeCandidateView>& candidates,
+    UINT* dpi_out = nullptr) {
+  if (dpi_out != nullptr) {
+    *dpi_out = window != nullptr ? ReadableDpiForWindow(window) : 96;
+  }
+  if (window == nullptr) {
+    return {};
+  }
+
+  const UINT dpi = ReadableDpiForWindow(window);
+  if (dpi_out != nullptr) {
+    *dpi_out = dpi;
+  }
+  const size_t candidate_hash = HashCandidateLayoutInputs(candidates);
+  if (g_candidate_layout_cache.valid &&
+      g_candidate_layout_cache.window == window &&
+      g_candidate_layout_cache.dpi == dpi &&
+      g_candidate_layout_cache.horizontal == horizontal &&
+      g_candidate_layout_cache.expanded == expanded &&
+      g_candidate_layout_cache.compact_count == compact_count &&
+      g_candidate_layout_cache.candidate_font_point_size == candidate_font_point_size &&
+      g_candidate_layout_cache.candidate_font_family == candidate_font_family &&
+      g_candidate_layout_cache.traditional == !simplified_charset &&
+      g_candidate_layout_cache.candidate_count == candidates.size() &&
+      g_candidate_layout_cache.candidate_hash == candidate_hash) {
+    return g_candidate_layout_cache.layout;
+  }
+
+  HWND dc_window = window;
+  HDC dc = GetDC(window);
+  if (dc == nullptr) {
+    dc_window = nullptr;
+    dc = GetDC(nullptr);
+  }
+  if (dc == nullptr) {
+    return {};
+  }
+
+  HFONT font = CreateUiFontForDpi(
+      candidate_font_point_size,
+      dpi,
+      FW_NORMAL,
+      CandidateUiFontFamily(candidate_font_family, !simplified_charset));
+  HGDIOBJ old_font = font != nullptr ? SelectObject(dc, font) : nullptr;
+  CandidateLayoutMetrics layout = CalculateCandidateLayout(window,
+                                                           dc,
+                                                           dpi,
+                                                           horizontal,
+                                                           expanded,
+                                                           compact_count,
+                                                           candidate_font_point_size,
+                                                           !simplified_charset,
+                                                           candidates);
+  if (old_font != nullptr) {
+    SelectObject(dc, old_font);
+  }
+  if (font != nullptr) {
+    DeleteObject(font);
+  }
+  ReleaseDC(dc_window, dc);
+
+  g_candidate_layout_cache.valid = true;
+  g_candidate_layout_cache.window = window;
+  g_candidate_layout_cache.dpi = dpi;
+  g_candidate_layout_cache.horizontal = horizontal;
+  g_candidate_layout_cache.expanded = expanded;
+  g_candidate_layout_cache.compact_count = compact_count;
+  g_candidate_layout_cache.candidate_font_point_size = candidate_font_point_size;
+  g_candidate_layout_cache.candidate_font_family = candidate_font_family;
+  g_candidate_layout_cache.traditional = !simplified_charset;
+  g_candidate_layout_cache.candidate_count = candidates.size();
+  g_candidate_layout_cache.candidate_hash = candidate_hash;
+  g_candidate_layout_cache.layout = layout;
+  return layout;
+}
+
 std::vector<size_t> SelectableCandidateIndicesForWindow(
     HWND window,
     bool horizontal,
@@ -5090,14 +5207,15 @@ std::vector<size_t> SelectableCandidateIndicesForWindow(
         static_cast<size_t>(CandidatePageSizeLimit(horizontal, expanded, compact_count)));
   }
 
-  const UINT dpi = ReadableDpiForWindow(window);
-  HWND dc_window = window;
-  HDC dc = GetDC(window);
-  if (dc == nullptr) {
-    dc_window = nullptr;
-    dc = GetDC(nullptr);
-  }
-  if (dc == nullptr) {
+  CandidateLayoutMetrics layout = CandidateLayoutForWindow(window,
+                                                           horizontal,
+                                                           expanded,
+                                                           compact_count,
+                                                           candidate_font_point_size,
+                                                           simplified_charset,
+                                                           candidate_font_family,
+                                                           candidates);
+  if (layout.candidate_rects.empty()) {
     if (layout_out != nullptr) {
       *layout_out = CandidateLayoutMetrics{};
     }
@@ -5105,29 +5223,6 @@ std::vector<size_t> SelectableCandidateIndicesForWindow(
         candidates.size(),
         static_cast<size_t>(CandidatePageSizeLimit(horizontal, expanded, compact_count)));
   }
-
-  HFONT font = CreateUiFontForDpi(
-      candidate_font_point_size,
-      dpi,
-      FW_NORMAL,
-      CandidateUiFontFamily(candidate_font_family, !simplified_charset));
-  HGDIOBJ old_font = font != nullptr ? SelectObject(dc, font) : nullptr;
-  CandidateLayoutMetrics layout = CalculateCandidateLayout(window,
-                                                           dc,
-                                                           dpi,
-                                                           horizontal,
-                                                           expanded,
-                                                           compact_count,
-                                                           candidate_font_point_size,
-                                                           !simplified_charset,
-                                                           candidates);
-  if (old_font != nullptr) {
-    SelectObject(dc, old_font);
-  }
-  if (font != nullptr) {
-    DeleteObject(font);
-  }
-  ReleaseDC(dc_window, dc);
   if (layout_out != nullptr) {
     *layout_out = layout;
   }
@@ -8773,6 +8868,7 @@ void TsfTextService::ApplyRimeOptionsLocked() {
 
 void TsfTextService::RefreshCandidates() {
   const ULONGLONG refresh_start_tick = GetTickCount64();
+  InvalidateCandidateLayoutCache();
   const int requested_page_size = CandidatePageSizeLimit(horizontal_candidate_layout_,
                                                          expanded_candidate_window_,
                                                          compact_candidate_count_);
@@ -8872,36 +8968,15 @@ int TsfTextService::CandidateNavigationColumns() const {
     return 1;
   }
   if (candidate_window_ != nullptr) {
-    const UINT dpi = ReadableDpiForWindow(candidate_window_);
-    HDC dc = GetDC(candidate_window_);
-    HFONT font =
-        CreateUiFontForDpi(CandidateFontPointSize(),
-                           dpi,
-                           FW_NORMAL,
-                           CandidateUiFontFamily(CandidateFontFamilyFromSetting(candidate_font_family_),
-                                                 !simplified_charset_));
-    HGDIOBJ old_font = font != nullptr && dc != nullptr ? SelectObject(dc, font) : nullptr;
     const CandidateLayoutMetrics layout =
-        dc != nullptr
-            ? CalculateCandidateLayout(candidate_window_,
-                                       dc,
-                                       dpi,
-                                        horizontal_candidate_layout_,
-                                        expanded_candidate_window_,
-                                        compact_candidate_count_,
-                                        CandidateFontPointSize(),
-                                        !simplified_charset_,
-                                        candidates_)
-            : CandidateLayoutMetrics{};
-    if (old_font != nullptr) {
-      SelectObject(dc, old_font);
-    }
-    if (font != nullptr) {
-      DeleteObject(font);
-    }
-    if (dc != nullptr) {
-      ReleaseDC(candidate_window_, dc);
-    }
+        CandidateLayoutForWindow(candidate_window_,
+                                 horizontal_candidate_layout_,
+                                 expanded_candidate_window_,
+                                 compact_candidate_count_,
+                                 CandidateFontPointSize(),
+                                 simplified_charset_,
+                                 CandidateFontFamilyFromSetting(candidate_font_family_),
+                                 candidates_);
     if (layout.expanded_columns > 0) {
       return layout.expanded_columns;
     }
@@ -9182,6 +9257,7 @@ bool TsfTextService::SetCandidateExpansion(ITfContext* context, bool expanded) {
     return true;
   }
   expanded_candidate_window_ = expanded;
+  InvalidateCandidateLayoutCache();
   candidate_page_index_ = 0;
   selected_candidate_index_ = 0;
   RefreshCandidates();
@@ -9240,6 +9316,7 @@ void TsfTextService::ChangeCandidatePage(ITfContext* context, int delta) {
     candidate_page_index_ = 0;
   }
   selected_candidate_index_ = 0;
+  InvalidateCandidateLayoutCache();
   RefreshCandidates();
   ShowCandidateWindow(context);
 }
@@ -11881,6 +11958,7 @@ void TsfTextService::ShowCandidateWindow(ITfContext* context) {
   if (previous_horizontal_candidate_layout != horizontal_candidate_layout_ ||
       previous_compact_candidate_count != compact_candidate_count_ ||
       previous_candidate_font_size_level != candidate_font_size_level_) {
+    InvalidateCandidateLayoutCache();
     last_candidate_query_input_.clear();
     last_candidate_query_page_index_ = -1;
     last_candidate_query_page_size_ = 0;
@@ -11947,35 +12025,20 @@ void TsfTextService::ShowCandidateWindow(ITfContext* context) {
     }
   }
 
-  const UINT dpi = ReadableDpiForWindow(candidate_window_);
-  HDC dc = GetDC(candidate_window_);
-  HFONT font =
-      CreateUiFontForDpi(CandidateFontPointSize(),
-                         dpi,
-                         FW_NORMAL,
-                         CandidateUiFontFamily(CandidateFontFamilyFromSetting(candidate_font_family_),
-                                               !simplified_charset_));
-  HGDIOBJ old_font = font != nullptr && dc != nullptr ? SelectObject(dc, font) : nullptr;
-  const CandidateLayoutMetrics layout =
-      dc != nullptr
-          ? CalculateCandidateLayout(candidate_window_,
-                                     dc,
-                                     dpi,
-                                     horizontal_candidate_layout_,
-                                     expanded_candidate_window_,
-                                     compact_candidate_count_,
-                                     CandidateFontPointSize(),
-                                     !simplified_charset_,
-                                     candidates_)
-          : CandidateLayoutMetrics{ScaleForDpi(300, dpi), ScaleForDpi(72, dpi)};
-  if (old_font != nullptr) {
-    SelectObject(dc, old_font);
-  }
-  if (font != nullptr) {
-    DeleteObject(font);
-  }
-  if (dc != nullptr) {
-    ReleaseDC(candidate_window_, dc);
+  UINT dpi = 96;
+  CandidateLayoutMetrics layout =
+      CandidateLayoutForWindow(candidate_window_,
+                               horizontal_candidate_layout_,
+                               expanded_candidate_window_,
+                               compact_candidate_count_,
+                               CandidateFontPointSize(),
+                               simplified_charset_,
+                               CandidateFontFamilyFromSetting(candidate_font_family_),
+                               candidates_,
+                               &dpi);
+  if (layout.width <= 0 || layout.height <= 0) {
+    layout.width = ScaleForDpi(300, dpi);
+    layout.height = ScaleForDpi(72, dpi);
   }
 
   const int width = layout.width;
@@ -12183,36 +12246,15 @@ void TsfTextService::PositionCandidateTooltip(int tool) {
                static_cast<int>(text_size.cx) + horizontal_padding * 2 + text_overhang_guard);
   const int height = CandidateToolTooltipHeight(dpi);
 
-  HDC layout_dc = GetDC(candidate_window_);
-  HFONT layout_font =
-      CreateUiFontForDpi(CandidateFontPointSize(),
-                         dpi,
-                         FW_NORMAL,
-                         CandidateUiFontFamily(CandidateFontFamilyFromSetting(candidate_font_family_),
-                                               !simplified_charset_));
-  HGDIOBJ old_layout_font =
-      layout_font != nullptr && layout_dc != nullptr ? SelectObject(layout_dc, layout_font) : nullptr;
   const CandidateLayoutMetrics layout =
-      layout_dc != nullptr
-          ? CalculateCandidateLayout(candidate_window_,
-                                     layout_dc,
-                                     dpi,
-                                     horizontal_candidate_layout_,
-                                     expanded_candidate_window_,
-                                     compact_candidate_count_,
-                                     CandidateFontPointSize(),
-                                     !simplified_charset_,
-                                     candidates_)
-          : CandidateLayoutMetrics{};
-  if (old_layout_font != nullptr) {
-    SelectObject(layout_dc, old_layout_font);
-  }
-  if (layout_font != nullptr) {
-    DeleteObject(layout_font);
-  }
-  if (layout_dc != nullptr) {
-    ReleaseDC(candidate_window_, layout_dc);
-  }
+      CandidateLayoutForWindow(candidate_window_,
+                               horizontal_candidate_layout_,
+                               expanded_candidate_window_,
+                               compact_candidate_count_,
+                               CandidateFontPointSize(),
+                               simplified_charset_,
+                               CandidateFontFamilyFromSetting(candidate_font_family_),
+                               candidates_);
 
   RECT owner_rect{};
   GetWindowRect(candidate_window_, &owner_rect);
@@ -13103,38 +13145,17 @@ LRESULT TsfTextService::CandidateWindowProc(HWND window,
     case WM_MOUSEACTIVATE:
       return MA_NOACTIVATE;
     case WM_LBUTTONDOWN: {
-      const UINT dpi = ReadableDpiForWindow(window);
       const int y = static_cast<short>(HIWORD(lparam));
       const int x = static_cast<short>(LOWORD(lparam));
-      HDC dc = GetDC(window);
-      HFONT font =
-          CreateUiFontForDpi(CandidateFontPointSize(),
-                             dpi,
-                             FW_NORMAL,
-                             CandidateUiFontFamily(CandidateFontFamilyFromSetting(candidate_font_family_),
-                                                   !simplified_charset_));
-      HGDIOBJ old_font = font != nullptr && dc != nullptr ? SelectObject(dc, font) : nullptr;
       const CandidateLayoutMetrics layout =
-          dc != nullptr
-              ? CalculateCandidateLayout(window,
-                                         dc,
-                                         dpi,
-                                          horizontal_candidate_layout_,
-                                          expanded_candidate_window_,
-                                          compact_candidate_count_,
-                                          CandidateFontPointSize(),
-                                          !simplified_charset_,
-                                          candidates_)
-              : CandidateLayoutMetrics{};
-      if (old_font != nullptr) {
-        SelectObject(dc, old_font);
-      }
-      if (font != nullptr) {
-        DeleteObject(font);
-      }
-      if (dc != nullptr) {
-        ReleaseDC(window, dc);
-      }
+          CandidateLayoutForWindow(window,
+                                   horizontal_candidate_layout_,
+                                   expanded_candidate_window_,
+                                   compact_candidate_count_,
+                                   CandidateFontPointSize(),
+                                   simplified_charset_,
+                                   CandidateFontFamilyFromSetting(candidate_font_family_),
+                                   candidates_);
 
       const int tool = CandidateToolAtPoint(layout, x, y);
       if (tool != kCandidateToolNone &&
@@ -13168,38 +13189,17 @@ LRESULT TsfTextService::CandidateWindowProc(HWND window,
       return 0;
     }
     case WM_MOUSEMOVE: {
-      const UINT dpi = ReadableDpiForWindow(window);
       const int y = static_cast<short>(HIWORD(lparam));
       const int x = static_cast<short>(LOWORD(lparam));
-      HDC dc = GetDC(window);
-      HFONT font =
-          CreateUiFontForDpi(CandidateFontPointSize(),
-                             dpi,
-                             FW_NORMAL,
-                             CandidateUiFontFamily(CandidateFontFamilyFromSetting(candidate_font_family_),
-                                                   !simplified_charset_));
-      HGDIOBJ old_font = font != nullptr && dc != nullptr ? SelectObject(dc, font) : nullptr;
       const CandidateLayoutMetrics layout =
-          dc != nullptr
-              ? CalculateCandidateLayout(window,
-                                         dc,
-                                         dpi,
-                                          horizontal_candidate_layout_,
-                                          expanded_candidate_window_,
-                                          compact_candidate_count_,
-                                          CandidateFontPointSize(),
-                                          !simplified_charset_,
-                                          candidates_)
-              : CandidateLayoutMetrics{};
-      if (old_font != nullptr) {
-        SelectObject(dc, old_font);
-      }
-      if (font != nullptr) {
-        DeleteObject(font);
-      }
-      if (dc != nullptr) {
-        ReleaseDC(window, dc);
-      }
+          CandidateLayoutForWindow(window,
+                                   horizontal_candidate_layout_,
+                                   expanded_candidate_window_,
+                                   compact_candidate_count_,
+                                   CandidateFontPointSize(),
+                                   simplified_charset_,
+                                   CandidateFontFamilyFromSetting(candidate_font_family_),
+                                   candidates_);
 
       const int previous_hovered = hovered_candidate_tool_;
       const int hit_tool = CandidateToolAtPoint(layout, x, y);
@@ -13260,38 +13260,17 @@ LRESULT TsfTextService::CandidateWindowProc(HWND window,
           ReleaseCapture();
         }
 
-        const UINT dpi = ReadableDpiForWindow(window);
         const int y = static_cast<short>(HIWORD(lparam));
         const int x = static_cast<short>(LOWORD(lparam));
-        HDC dc = GetDC(window);
-        HFONT font =
-            CreateUiFontForDpi(CandidateFontPointSize(),
-                               dpi,
-                               FW_NORMAL,
-                               CandidateUiFontFamily(CandidateFontFamilyFromSetting(candidate_font_family_),
-                                                     !simplified_charset_));
-        HGDIOBJ old_font = font != nullptr && dc != nullptr ? SelectObject(dc, font) : nullptr;
         const CandidateLayoutMetrics layout =
-            dc != nullptr
-                ? CalculateCandidateLayout(window,
-                                           dc,
-                                           dpi,
-                                            horizontal_candidate_layout_,
-                                            expanded_candidate_window_,
-                                            compact_candidate_count_,
-                                            CandidateFontPointSize(),
-                                            !simplified_charset_,
-                                            candidates_)
-                : CandidateLayoutMetrics{};
-        if (old_font != nullptr) {
-          SelectObject(dc, old_font);
-        }
-        if (font != nullptr) {
-          DeleteObject(font);
-        }
-        if (dc != nullptr) {
-          ReleaseDC(window, dc);
-        }
+            CandidateLayoutForWindow(window,
+                                     horizontal_candidate_layout_,
+                                     expanded_candidate_window_,
+                                     compact_candidate_count_,
+                                     CandidateFontPointSize(),
+                                     simplified_charset_,
+                                     CandidateFontFamilyFromSetting(candidate_font_family_),
+                                     candidates_);
 
         const int hit_tool = CandidateToolAtPoint(layout, x, y);
         const int released_tool =

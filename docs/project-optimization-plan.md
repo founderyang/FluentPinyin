@@ -94,7 +94,7 @@ Acceptance:
 
 ## Phase 1: User-Visible Performance
 
-Status: continued in `codex/phase15-rime-cache-tests`.
+Status: continued in `codex/phase16-candidate-expand`.
 
 Work:
 
@@ -116,7 +116,12 @@ Work:
 - Cache candidate layout metrics for the current candidate list and visual
   settings, then reuse them across visible-count calculation, positioning, and
   draw. Started by reusing the layout calculated during
-  `ShowCandidateWindow` for that same layered render.
+  `ShowCandidateWindow` for that same layered render. Phase 16 adds a
+  conservative per-thread layout cache keyed by window, DPI, layout mode,
+  expansion state, font size, charset, compact count, and candidate text/comment
+  hash, so expand/collapse, digit selection, navigation, tooltips, and mouse
+  hover/click paths do not repeatedly create GDI fonts and recalculate the same
+  expanded layout.
 - Cache text measurement and glyph fallback decisions by text, font family,
   point size, DPI, and simplified/traditional mode. Started with a bounded
   process-local text measurement cache for candidate-window text.
