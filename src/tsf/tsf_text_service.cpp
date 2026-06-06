@@ -820,6 +820,24 @@ RECT WorkAreaForPoint(POINT point) {
   return work_area;
 }
 
+RECT WorkAreaForWindow(HWND window) {
+  if (window != nullptr && IsWindow(window)) {
+    RECT rect{};
+    if (GetWindowRect(window, &rect)) {
+      POINT center{rect.left + (rect.right - rect.left) / 2,
+                   rect.top + (rect.bottom - rect.top) / 2};
+      return WorkAreaForPoint(center);
+    }
+  }
+  POINT cursor{};
+  if (GetCursorPos(&cursor)) {
+    return WorkAreaForPoint(cursor);
+  }
+  RECT work_area{};
+  SystemParametersInfoW(SPI_GETWORKAREA, 0, &work_area, 0);
+  return work_area;
+}
+
 HFONT CreateUiFontForDpi(int point_size,
                          UINT dpi,
                          int weight = FW_NORMAL,
@@ -11163,13 +11181,13 @@ void TsfTextService::PositionToolbarWindow(bool show_window) {
     return;
   }
 
-  RECT work_area{};
-  SystemParametersInfoW(SPI_GETWORKAREA, 0, &work_area, 0);
   const UINT dpi = ReadableDpiForWindow(toolbar_window_);
   const std::vector<int> visible_items = VisibleToolbarItemsWithSettings(toolbar_visible_items_);
   const int width = ToolbarWindowWidthPixels(toolbar_vertical_layout_, visible_items.size(), dpi);
   const int height = ToolbarWindowHeightPixels(toolbar_vertical_layout_, visible_items.size(), dpi);
   const bool use_saved_position = toolbar_position_user_ && has_toolbar_position_;
+  const RECT work_area =
+      use_saved_position ? WorkAreaForPoint(toolbar_position_) : WorkAreaForWindow(toolbar_window_);
   int x = use_saved_position
               ? toolbar_position_.x
               : work_area.right - width - ScaleForDpi(kToolbarDefaultRightInsetDips, dpi);
@@ -11503,8 +11521,7 @@ void TsfTextService::PositionToolbarTooltip(int item) {
 
   int x = anchor.x - width / 2;
   int y = anchor.y - height - s(kToolbarTooltipMouseOffsetYDips);
-  RECT work_area{};
-  SystemParametersInfoW(SPI_GETWORKAREA, 0, &work_area, 0);
+  const RECT work_area = WorkAreaForPoint(anchor);
   if (x + width > work_area.right) {
     x = work_area.right - width;
   }
@@ -11724,8 +11741,7 @@ LRESULT TsfTextService::ToolbarWindowProc(HWND window,
         POINT cursor{};
         if (GetCursorPos(&cursor)) {
           const UINT dpi = ReadableDpiForWindow(window);
-          RECT work_area{};
-          SystemParametersInfoW(SPI_GETWORKAREA, 0, &work_area, 0);
+          const RECT work_area = WorkAreaForPoint(cursor);
           RECT rect{};
           GetWindowRect(window, &rect);
           const int width = rect.right - rect.left;
@@ -12007,8 +12023,7 @@ POINT TsfTextService::CandidateWindowAnchorFromContext(ITfContext* context) {
     return last_candidate_anchor_;
   }
 
-  RECT work_area{};
-  SystemParametersInfoW(SPI_GETWORKAREA, 0, &work_area, 0);
+  const RECT work_area = WorkAreaForWindow(foreground);
   caret.x = work_area.left + ScaleForDpi(120, DpiForWindow(foreground));
   caret.y = work_area.top + ScaleForDpi(120, DpiForWindow(foreground));
   LogAnchorPoint(L"work-area", caret);
@@ -12359,8 +12374,7 @@ void TsfTextService::PositionCandidateTooltip(int tool) {
   }
   int x = anchor.x + s(4);
   int y = anchor.y + s(7);
-  RECT work_area{};
-  SystemParametersInfoW(SPI_GETWORKAREA, 0, &work_area, 0);
+  const RECT work_area = WorkAreaForPoint(anchor);
   if (x + width > work_area.right) {
     x = anchor.x - width - s(4);
   }
@@ -12674,13 +12688,11 @@ void TsfTextService::PositionStatusTip(ITfContext* context) {
 
   POINT anchor{};
   if (!GetCursorPos(&anchor) || !IsUsableScreenPoint(anchor)) {
-    RECT work_area{};
-    SystemParametersInfoW(SPI_GETWORKAREA, 0, &work_area, 0);
+    const RECT work_area = WorkAreaForWindow(status_tip_window_);
     anchor.x = work_area.left + s(120);
     anchor.y = work_area.top + s(120);
   }
-  RECT work_area{};
-  SystemParametersInfoW(SPI_GETWORKAREA, 0, &work_area, 0);
+  const RECT work_area = WorkAreaForPoint(anchor);
 
   int x = anchor.x + s(kStatusTipMouseOffsetXDips);
   int y = anchor.y + s(kStatusTipMouseOffsetYDips);
