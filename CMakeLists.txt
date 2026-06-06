@@ -1,6 +1,6 @@
 ﻿cmake_minimum_required(VERSION 3.24)
 
-project(FluentPinyin VERSION 00.00.03 LANGUAGES CXX)
+project(FluentPinyin VERSION 00.00.04 LANGUAGES CXX)
 
 if(NOT WIN32)
   message(FATAL_ERROR "FluentPinyin targets Windows 11 x64 only.")
@@ -276,6 +276,7 @@ add_executable(fluent_pinyin_devtools WIN32
 
 target_link_libraries(fluent_pinyin_devtools PRIVATE
   fluent_pinyin_common
+  fluent_pinyin_core
   advapi32
   gdi32
   ole32

@@ -105,7 +105,9 @@ Work:
   hard-link-first runtime file path, with copy fallback for filesystems that do
   not support hard links.
 - Add a non-blocking post-install warmup command that validates or builds the
-  default cache after MSI completion.
+  default cache after MSI completion. Started in
+  `codex/phase2-rime-warmup` with a user-impersonated custom action that starts
+  a hidden background `warmup-rime` process after install finalization.
 - Cache candidate layout metrics for the current candidate list and visual
   settings, then reuse them across visible-count calculation, positioning, and
   draw. Started by reusing the layout calculated during
@@ -167,7 +169,9 @@ Work:
 - Split `config_winui/main.cpp` by settings page and shared UI helpers.
 - Move UI layout constants into focused headers.
 - Generate `constants.h` version values from CMake so product version has one
-  source of truth.
+  source of truth. Before the generator lands, the optimized release version is
+  manually synchronized as `00.00.04` in CMake, C++ constants, and WinUI
+  resource metadata.
 - Replace local COM helper duplication with a shared helper or a small
   project-owned `ComPtr`.
 

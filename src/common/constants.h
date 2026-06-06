@@ -5,7 +5,7 @@
 namespace fp {
 
 inline constexpr std::wstring_view kProductName = L"\u6D41\u7545\u62FC\u97F3";
-inline constexpr std::wstring_view kProductVersion = L"00.00.03";
+inline constexpr std::wstring_view kProductVersion = L"00.00.04";
 inline constexpr std::wstring_view kGitHubRepoOwner = L"founderyang";
 inline constexpr std::wstring_view kGitHubRepoName = L"FluentPinyin";
 inline constexpr std::wstring_view kGitHubRepoUrl =

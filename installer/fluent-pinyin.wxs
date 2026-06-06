@@ -55,6 +55,13 @@
       Return="ignore"
       ExeCommand='finalize-install' />
     <CustomAction
+      Id="StartRimeWarmup"
+      FileRef="DevtoolsExe"
+      Execute="deferred"
+      Impersonate="yes"
+      Return="ignore"
+      ExeCommand='start-rime-warmup' />
+    <CustomAction
       Id="ActivateFallbackInput"
       FileRef="DevtoolsExe"
       Execute="deferred"
@@ -103,6 +110,7 @@
       <Custom Action="RegisterTsf" After="PrepareInstall" Condition="NOT REMOVE" />
       <Custom Action="ActivateTsf" After="RegisterTsf" Condition="NOT REMOVE" />
       <Custom Action="FinalizeInstall" After="PublishProduct" Condition="NOT REMOVE" />
+      <Custom Action="StartRimeWarmup" After="FinalizeInstall" Condition="NOT REMOVE" />
     </InstallExecuteSequence>
   </Package>
 </Wix>
