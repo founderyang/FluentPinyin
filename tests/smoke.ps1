@@ -34,6 +34,58 @@ function Assert-ProcessExitCode {
   }
 }
 
+function Invoke-ReleaseJsonParser {
+  param(
+    [string]$Updater,
+    [string]$JsonText,
+    [int]$ExpectedExitCode,
+    [string[]]$ExpectedOutput = @(),
+    [switch]$Utf8Bom
+  )
+
+  $suffix = [Guid]::NewGuid().ToString("N")
+  $releaseJson = Join-Path $env:TEMP "fluent-pinyin-release-$suffix.json"
+  $parseOutputFile = Join-Path $env:TEMP "fluent-pinyin-release-$suffix.out"
+  $parseErrorFile = Join-Path $env:TEMP "fluent-pinyin-release-$suffix.err"
+  try {
+    if ($Utf8Bom) {
+      $encoding = New-Object System.Text.UTF8Encoding($true)
+      [System.IO.File]::WriteAllText($releaseJson, $JsonText, $encoding)
+    } else {
+      Set-Content -LiteralPath $releaseJson -Encoding UTF8 -Value $JsonText
+    }
+
+    $parseProcess = Start-Process -FilePath $Updater `
+      -ArgumentList @("parse-release-json", $releaseJson, "FluentPinyin.msi") `
+      -Wait `
+      -PassThru `
+      -WindowStyle Hidden `
+      -RedirectStandardOutput $parseOutputFile `
+      -RedirectStandardError $parseErrorFile
+    if ($parseProcess.ExitCode -ne $ExpectedExitCode) {
+      $parseError = ""
+      if (Test-Path -LiteralPath $parseErrorFile) {
+        $parseError = Get-Content -LiteralPath $parseErrorFile -Raw
+      }
+      throw "Release JSON parser expected exit code $ExpectedExitCode, got $($parseProcess.ExitCode): $parseError"
+    }
+
+    $parseOutput = ""
+    if (Test-Path -LiteralPath $parseOutputFile) {
+      $parseOutput = Get-Content -LiteralPath $parseOutputFile -Raw
+    }
+    foreach ($required in $ExpectedOutput) {
+      if ($parseOutput -notmatch [regex]::Escape($required)) {
+        throw "Release JSON parser output missing '$required'"
+      }
+    }
+  } finally {
+    Remove-Item -LiteralPath $releaseJson -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $parseOutputFile -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $parseErrorFile -Force -ErrorAction SilentlyContinue
+  }
+}
+
 $requiredFiles = @(
   "fluent-pinyin-core.dll",
   "fluent-pinyin-tsf.dll",
@@ -60,8 +112,11 @@ $devtools = Join-Path $BinDir "fluent-pinyin-devtools.exe"
 Assert-ProcessExitCode -FilePath $updater -Expected 0
 Assert-ProcessExitCode -FilePath $devtools -Expected 1
 
-$releaseJson = Join-Path $env:TEMP "fluent-pinyin-release-smoke.json"
-@'
+Invoke-ReleaseJsonParser -Updater $updater -ExpectedExitCode 0 -ExpectedOutput @(
+  "tag=v00.00.04",
+  "asset=FluentPinyin.msi",
+  "url=https://example.invalid/downloads/FluentPinyin.msi?label=FluentPinyin%20MSI"
+) -JsonText @'
 {
   "assets": [
     {
@@ -78,39 +133,34 @@ $releaseJson = Join-Path $env:TEMP "fluent-pinyin-release-smoke.json"
   "nested": { "tag_name": "v99.99.99" },
   "escaped": "quote: \" slash: \\ unicode: \u6d41\u7545"
 }
-'@ | Set-Content -LiteralPath $releaseJson -Encoding UTF8
+'@
 
-$parseOutputFile = Join-Path $env:TEMP "fluent-pinyin-release-smoke.out"
-$parseErrorFile = Join-Path $env:TEMP "fluent-pinyin-release-smoke.err"
-$parseProcess = Start-Process -FilePath $updater `
-  -ArgumentList @("parse-release-json", $releaseJson, "FluentPinyin.msi") `
-  -Wait `
-  -PassThru `
-  -WindowStyle Hidden `
-  -RedirectStandardOutput $parseOutputFile `
-  -RedirectStandardError $parseErrorFile
-if ($parseProcess.ExitCode -ne 0) {
-  $parseError = ""
-  if (Test-Path -LiteralPath $parseErrorFile) {
-    $parseError = Get-Content -LiteralPath $parseErrorFile -Raw
-  }
-  throw "Release JSON parser smoke failed with exit code $($parseProcess.ExitCode): $parseError"
-}
-$parseOutput = ""
-if (Test-Path -LiteralPath $parseOutputFile) {
-  $parseOutput = Get-Content -LiteralPath $parseOutputFile -Raw
-}
-foreach ($required in @(
+Invoke-ReleaseJsonParser -Updater $updater -ExpectedExitCode 0 -Utf8Bom -ExpectedOutput @(
   "tag=v00.00.04",
   "asset=FluentPinyin.msi",
-  "url=https://example.invalid/downloads/FluentPinyin.msi?label=FluentPinyin%20MSI"
-)) {
-  if ($parseOutput -notmatch [regex]::Escape($required)) {
-    throw "Release JSON parser output missing '$required'"
-  }
+  "url=https://example.invalid/releases/FluentPinyin.msi?x=quote%5C%22"
+) -JsonText @'
+{
+  "tag_name": "v00.00.04",
+  "assets": [
+    {
+      "name": "FluentPinyin.msi",
+      "browser_download_url": "https://example.invalid/releases/FluentPinyin.msi?x=quote%5C%22"
+    }
+  ]
 }
-Remove-Item -LiteralPath $releaseJson -Force -ErrorAction SilentlyContinue
-Remove-Item -LiteralPath $parseOutputFile -Force -ErrorAction SilentlyContinue
-Remove-Item -LiteralPath $parseErrorFile -Force -ErrorAction SilentlyContinue
+'@
+
+Invoke-ReleaseJsonParser -Updater $updater -ExpectedExitCode 2 -JsonText @'
+{
+  "tag_name": "v00.00.04",
+  "assets": [
+    {
+      "name": "FluentPinyin.zip",
+      "browser_download_url": "https://example.invalid/FluentPinyin.zip"
+    }
+  ]
+}
+'@
 
 Write-Host "Smoke test passed for FluentPinyin $ExpectedVersion"
