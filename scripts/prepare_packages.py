@@ -4,6 +4,8 @@ import json
 import shutil
 import subprocess
 import sys
+import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -16,6 +18,8 @@ WANXIANG_DIR = ROOT / "schemas" / "wanxiang" / "current"
 FONT_DIR = ROOT / "assets" / "fonts"
 ASSETS_PATH = DOWNLOADS_DIR / "m2-assets.json"
 DEPENDENCIES_PATH = ROOT / "scripts" / "package_dependencies.json"
+DOWNLOAD_TIMEOUT_SECONDS = 120
+DOWNLOAD_RETRIES = 3
 
 
 DEFAULT_ASSETS = {
@@ -123,6 +127,22 @@ def sha256_file(path):
     return digest.hexdigest()
 
 
+def download_file(url, destination):
+    temp_path = destination.with_suffix(destination.suffix + ".tmp")
+    temp_path.unlink(missing_ok=True)
+    request = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "FluentPinyin-build/1.0",
+            "Accept": "*/*",
+        },
+    )
+    with urllib.request.urlopen(request, timeout=DOWNLOAD_TIMEOUT_SECONDS) as response:
+        with temp_path.open("wb") as output:
+            shutil.copyfileobj(response, output, length=1024 * 1024)
+    temp_path.replace(destination)
+
+
 def verify_asset_file(path, dependency):
     if not path.exists():
         raise RuntimeError(f"Missing dependency {dependency['id']}: {path}")
@@ -160,21 +180,39 @@ def get_asset_file(name, url, force, dependencies):
             f"URL mismatch for {name}: expected {dependency['url']}, got {url}"
         )
     archive = DOWNLOADS_DIR / name
-    for attempt in range(2):
+    last_error = None
+    for attempt in range(1, DOWNLOAD_RETRIES + 1):
         if force or not archive.exists():
             print(f"Downloading {url}")
-            with urllib.request.urlopen(url) as response, archive.open("wb") as output:
-                shutil.copyfileobj(response, output)
+            try:
+                download_file(url, archive)
+            except (OSError, urllib.error.URLError) as exc:
+                last_error = exc
+                archive.unlink(missing_ok=True)
+                if attempt >= DOWNLOAD_RETRIES:
+                    raise RuntimeError(
+                        f"Failed to download dependency {dependency['id']} after "
+                        f"{DOWNLOAD_RETRIES} attempts: {exc}"
+                    ) from exc
+                wait_seconds = attempt * 3
+                print(f"Download failed for {archive.name}: {exc}; retrying in {wait_seconds}s.")
+                time.sleep(wait_seconds)
+                continue
         else:
             print(f"Using cached {archive}")
         try:
             verify_asset_file(archive, dependency)
             break
-        except RuntimeError:
-            if force or attempt > 0:
+        except RuntimeError as exc:
+            last_error = exc
+            if force or attempt >= DOWNLOAD_RETRIES:
                 raise
-            print(f"Cached dependency {archive.name} failed verification; downloading again.")
+            print(f"Dependency {archive.name} failed verification: {exc}; downloading again.")
             archive.unlink(missing_ok=True)
+            wait_seconds = attempt * 3
+            time.sleep(wait_seconds)
+    else:
+        raise RuntimeError(f"Unable to prepare dependency {dependency['id']}: {last_error}")
     return archive
 
 

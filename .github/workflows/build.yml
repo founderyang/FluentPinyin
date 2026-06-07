@@ -16,6 +16,8 @@ concurrency:
 jobs:
   windows-release:
     runs-on: windows-latest
+    env:
+      DEPENDENCY_CACHE_KEY: fluent-pinyin-deps-${{ runner.os }}-${{ hashFiles('scripts/package_dependencies.json', 'scripts/prepare_packages.py') }}
 
     steps:
       - name: Checkout
@@ -30,7 +32,7 @@ jobs:
             packages/winui
             third_party/librime
             schemas/wanxiang/current
-          key: fluent-pinyin-deps-${{ runner.os }}-${{ hashFiles('scripts/package_dependencies.json') }}
+          key: ${{ env.DEPENDENCY_CACHE_KEY }}
           restore-keys: |
             fluent-pinyin-deps-${{ runner.os }}-
 
@@ -73,6 +75,10 @@ jobs:
 
   windows-debug:
     runs-on: windows-latest
+    needs: windows-release
+    if: ${{ always() && needs.windows-release.result != 'cancelled' }}
+    env:
+      DEPENDENCY_CACHE_KEY: fluent-pinyin-deps-${{ runner.os }}-${{ hashFiles('scripts/package_dependencies.json', 'scripts/prepare_packages.py') }}
 
     steps:
       - name: Checkout
@@ -87,7 +93,7 @@ jobs:
             packages/winui
             third_party/librime
             schemas/wanxiang/current
-          key: fluent-pinyin-deps-${{ runner.os }}-${{ hashFiles('scripts/package_dependencies.json') }}
+          key: ${{ env.DEPENDENCY_CACHE_KEY }}
           restore-keys: |
             fluent-pinyin-deps-${{ runner.os }}-
 
