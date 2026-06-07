@@ -1,6 +1,7 @@
 #pragma once
 
-#include "core/rime_engine.h"
+#include "common/rime_types.h"
+#include "tsf/rime_core_client.h"
 
 #include <msctf.h>
 #include <windows.h>
@@ -257,10 +258,11 @@ class TsfTextService final : public ITfTextInputProcessorEx,
   ITfThreadMgr* thread_mgr_ = nullptr;
   ITfKeystrokeMgr* keystroke_mgr_ = nullptr;
   ITfLangBarItemMgr* lang_bar_item_mgr_ = nullptr;
+  ITfLangBarItemButton* brand_item_ = nullptr;
   ITfLangBarItemButton* input_mode_item_ = nullptr;
   TfClientId client_id_ = 0;
   TfGuidAtom display_attribute_input_atom_ = TF_INVALID_GUIDATOM;
-  std::unique_ptr<fp::core::RimeEngine> rime_;
+  std::unique_ptr<RimeCoreClient> rime_;
   mutable std::mutex rime_mutex_;
   bool service_active_ = false;
   bool rime_ready_ = false;

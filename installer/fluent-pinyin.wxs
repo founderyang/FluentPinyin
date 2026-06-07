@@ -75,6 +75,11 @@
       Return="ignore"
       ExeCommand='activate-ms-pinyin-session' />
     <CustomAction
+      Id="ActivateFallbackInputBeforeUpgrade"
+      Directory="INSTALLFOLDER"
+      Return="ignore"
+      ExeCommand='&quot;[INSTALLFOLDER]fluent-pinyin-devtools.exe&quot; activate-ms-pinyin-session' />
+    <CustomAction
       Id="CloseSettings"
       FileRef="DevtoolsExe"
       Execute="deferred"
@@ -87,12 +92,27 @@
       Impersonate="yes"
       ExeCommand='shutdown-core' />
     <CustomAction
+      Id="ShutdownInputCoreBeforeUpgrade"
+      Directory="INSTALLFOLDER"
+      Return="ignore"
+      ExeCommand='&quot;[INSTALLFOLDER]fluent-pinyin-devtools.exe&quot; shutdown-core' />
+    <CustomAction
+      Id="PrepareInstallBeforeUpgrade"
+      Directory="INSTALLFOLDER"
+      Return="ignore"
+      ExeCommand='&quot;[INSTALLFOLDER]fluent-pinyin-devtools.exe&quot; prepare-install' />
+    <CustomAction
       Id="RestartTextServices"
       FileRef="DevtoolsExe"
       Execute="deferred"
       Impersonate="yes"
       Return="ignore"
       ExeCommand='restart-text-services' />
+    <CustomAction
+      Id="RestartTextServicesBeforeUpgrade"
+      Directory="INSTALLFOLDER"
+      Return="ignore"
+      ExeCommand='&quot;[INSTALLFOLDER]fluent-pinyin-devtools.exe&quot; restart-text-services' />
     <CustomAction
       Id="CleanupInstall"
       FileRef="DevtoolsExe"
@@ -112,6 +132,10 @@
       <Custom Action="UnregisterTsf" Before="RestartTextServices" Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
       <Custom Action="RestartTextServices" Before="CleanupInstall" Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
       <Custom Action="CleanupInstall" Before="RemoveFiles" Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+      <Custom Action="ActivateFallbackInputBeforeUpgrade" Before="ShutdownInputCoreBeforeUpgrade" Condition="WIX_UPGRADE_DETECTED AND NOT REMOVE" />
+      <Custom Action="ShutdownInputCoreBeforeUpgrade" Before="PrepareInstallBeforeUpgrade" Condition="WIX_UPGRADE_DETECTED AND NOT REMOVE" />
+      <Custom Action="PrepareInstallBeforeUpgrade" Before="RestartTextServicesBeforeUpgrade" Condition="WIX_UPGRADE_DETECTED AND NOT REMOVE" />
+      <Custom Action="RestartTextServicesBeforeUpgrade" Before="RemoveExistingProducts" Condition="WIX_UPGRADE_DETECTED AND NOT REMOVE" />
       <Custom Action="PrepareInstall" After="InstallFiles" Condition="NOT REMOVE" />
       <Custom Action="EnsureWinAppRuntime" After="PrepareInstall" Condition="NOT REMOVE" />
       <Custom Action="RegisterTsf" After="EnsureWinAppRuntime" Condition="NOT REMOVE" />

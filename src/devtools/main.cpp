@@ -867,6 +867,39 @@ std::vector<DWORD> FindAllProcessIds() {
   return ids;
 }
 
+std::vector<DWORD> FindProcessIdsLoadingModules(
+    const std::vector<std::wstring_view>& module_names) {
+  std::vector<DWORD> ids;
+  for (const DWORD process_id : FindAllProcessIds()) {
+    if (process_id == 0 || process_id == GetCurrentProcessId()) {
+      continue;
+    }
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32,
+                                               process_id);
+    if (snapshot == INVALID_HANDLE_VALUE) {
+      continue;
+    }
+    MODULEENTRY32W module{};
+    module.dwSize = sizeof(module);
+    bool matched = false;
+    if (Module32FirstW(snapshot, &module)) {
+      do {
+        for (std::wstring_view name : module_names) {
+          if (EqualsInsensitive(module.szModule, name)) {
+            matched = true;
+            break;
+          }
+        }
+      } while (!matched && Module32NextW(snapshot, &module));
+    }
+    CloseHandle(snapshot);
+    if (matched) {
+      ids.push_back(process_id);
+    }
+  }
+  return ids;
+}
+
 struct ProcessBasicInformation {
   PVOID reserved1 = nullptr;
   PVOID peb_base_address = nullptr;
@@ -1043,6 +1076,24 @@ void CloseProcessesUsingDirectory(const std::filesystem::path& directory) {
   }
 }
 
+int CloseLegacyInputHosts() {
+  const auto process_ids = FindProcessIdsLoadingModules({
+      L"fluent-pinyin-core.dll",
+      L"fluent-pinyin-tsf.dll",
+      L"rime.dll",
+  });
+  int closed = 0;
+  for (const DWORD process_id : process_ids) {
+    CloseProcessGracefully(process_id, 3000);
+    ++closed;
+  }
+  fp::LogInfo(L"installer",
+              L"legacy input host cleanup requested for " + std::to_wstring(closed) +
+                  L" process(es).");
+  std::cout << "Legacy input hosts closed: " << closed << "\n";
+  return 0;
+}
+
 int CloseSettingsProcess() {
   const auto process_ids = FindProcessIds(kSettingsProcessName);
   if (process_ids.empty()) {
@@ -1090,6 +1141,7 @@ int RestartTextServicesProcess() {
       CloseHandle(process);
     }
   }
+  CloseLegacyInputHosts();
 
   std::cout << "Text services restarted.\n";
   return 0;
@@ -1303,6 +1355,7 @@ int EnsureWindowsAppRuntime() {
 
 int PrepareInstall() {
   const ULONGLONG start_tick = GetTickCount64();
+  CloseLegacyInputHosts();
   RemoveStalePendingDeletes();
   const auto font_cleanup = RemoveFontFilesAndRegistry();
   const ULONGLONG elapsed_ms = GetTickCount64() - start_tick;

@@ -8,10 +8,13 @@
 #include <iostream>
 #include <string>
 #include <string_view>
+#include <windows.h>
 
 namespace {
 
 int g_failures = 0;
+
+std::filesystem::path g_isolated_appdata_root;
 
 void Expect(bool condition, std::string_view message) {
   if (condition) {
@@ -19,6 +22,23 @@ void Expect(bool condition, std::string_view message) {
   }
   ++g_failures;
   std::cerr << "FAIL: " << message << "\n";
+}
+
+void UseIsolatedAppData() {
+  g_isolated_appdata_root = std::filesystem::current_path() /
+                            (L"common-unit-appdata-" +
+                             std::to_wstring(GetCurrentProcessId()));
+  const auto local = g_isolated_appdata_root / L"Local";
+  const auto roaming = g_isolated_appdata_root / L"Roaming";
+  const auto program_data = g_isolated_appdata_root / L"ProgramData";
+  std::error_code error;
+  std::filesystem::remove_all(g_isolated_appdata_root, error);
+  std::filesystem::create_directories(local, error);
+  std::filesystem::create_directories(roaming, error);
+  std::filesystem::create_directories(program_data, error);
+  SetEnvironmentVariableW(L"LOCALAPPDATA", local.c_str());
+  SetEnvironmentVariableW(L"APPDATA", roaming.c_str());
+  SetEnvironmentVariableW(L"PROGRAMDATA", program_data.c_str());
 }
 
 void TestEncodingRoundTrip() {
@@ -89,6 +109,12 @@ void TestSettingsStoreReadWrite() {
              utf8_bom + "alpha=one\r\nbeta=true\nalpha=two\nbroken\n");
 
   fp::SettingsStore store(settings_path);
+  Expect(store.SchemaVersion() == 0,
+         "SettingsStore treats missing schema version as version zero");
+  Expect(store.EnsureSchemaVersion(),
+         "SettingsStore writes the current schema version for legacy files");
+  Expect(store.SchemaVersion() == fp::kCurrentSettingsSchemaVersion,
+         "SettingsStore reads the current schema version");
   Expect(store.ReadString(L"alpha", L"missing") == L"one",
          "SettingsStore reads the first value for duplicate keys");
   Expect(store.ReadBool(L"beta", false),
@@ -113,6 +139,9 @@ void TestSettingsStoreReadWrite() {
          "SettingsStore sanitizes batched values");
   Expect(!store.ReadBool(L"beta", true),
          "SettingsStore reads updated bool values from cache");
+  Expect(store.ReadString(fp::kSettingsSchemaVersionKey, L"") ==
+             std::to_wstring(fp::kCurrentSettingsSchemaVersion),
+         "SettingsStore preserves schema version after writes");
 
   const auto lines = fp::ReadSettingLines(settings_path);
   bool saw_gamma = false;
@@ -130,11 +159,14 @@ void TestSettingsStoreReadWrite() {
 }  // namespace
 
 int main() {
+  UseIsolatedAppData();
   TestEncodingRoundTrip();
   TestEncodingInvalidInput();
   TestPaths();
   TestLogFlushPolicy();
   TestSettingsStoreReadWrite();
+  std::error_code cleanup_error;
+  std::filesystem::remove_all(g_isolated_appdata_root, cleanup_error);
   if (g_failures != 0) {
     std::cerr << g_failures << " common unit test failure(s)\n";
     return 1;

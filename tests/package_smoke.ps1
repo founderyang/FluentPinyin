@@ -19,10 +19,21 @@ function Assert-PathExists {
   }
 }
 
+function Assert-True {
+  param(
+    [bool]$Condition,
+    [string]$Message
+  )
+  if (-not $Condition) {
+    throw $Message
+  }
+}
+
 foreach ($file in @(
   "fluent-pinyin-core.dll",
   "fluent-pinyin-tsf.dll",
   "fluent-pinyin-devtools.exe",
+  "fluent-pinyin-corehost.exe",
   "fluent-pinyin-updater.exe",
   "fluent-pinyin-settings.exe",
   "windowsappruntimeinstall-x64.exe",
@@ -89,6 +100,26 @@ if ($MaxPayloadMb -gt 0) {
   $totalMb = $totalSize / 1024 / 1024
   if ($totalMb -gt $MaxPayloadMb) {
     throw ("Payload size {0:N1} MB exceeds limit {1:N1} MB" -f $totalMb, $MaxPayloadMb)
+  }
+}
+
+$resourceManifest = Join-Path $ReleaseDir "payload-resource-manifest.json"
+Assert-PathExists $resourceManifest
+$manifest = Get-Content -LiteralPath $resourceManifest -Raw -Encoding UTF8 | ConvertFrom-Json
+Assert-True ([int64]$manifest.total_size -gt 0) "Resource manifest total size is empty"
+$manifestPaths = @($manifest.files | ForEach-Object { $_.path })
+foreach ($requiredPath in @(
+  "fluent-pinyin-corehost.exe",
+  "rime-data/wanxiang-lts-zh-hans.gram"
+)) {
+  if ($manifestPaths -notcontains $requiredPath) {
+    throw "Resource manifest missing required file: $requiredPath"
+  }
+}
+foreach ($category in @("rime-data", "fonts", "binary")) {
+  $matches = @($manifest.files | Where-Object { $_.category -eq $category })
+  if ($matches.Count -eq 0) {
+    throw "Resource manifest missing category: $category"
   }
 }
 

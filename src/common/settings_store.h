@@ -16,6 +16,9 @@ struct SettingUpdate {
   std::wstring value;
 };
 
+inline constexpr std::wstring_view kSettingsSchemaVersionKey = L"settings_schema_version";
+inline constexpr int kCurrentSettingsSchemaVersion = 1;
+
 std::filesystem::path GetSettingsPath();
 std::wstring SanitizeSettingValue(std::wstring_view value);
 bool ParseBoolSettingValue(std::wstring_view value, bool default_value);
@@ -35,6 +38,8 @@ class SettingsStore {
   std::wstring ReadString(std::wstring_view key, std::wstring_view default_value = L"");
   std::optional<bool> ReadOptionalBool(std::wstring_view key);
   bool ReadBool(std::wstring_view key, bool default_value);
+  int SchemaVersion();
+  bool EnsureSchemaVersion();
 
   bool WriteString(std::wstring_view key, std::wstring_view value);
   bool WriteBool(std::wstring_view key, bool value);

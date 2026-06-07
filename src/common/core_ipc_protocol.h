@@ -1,0 +1,58 @@
+#pragma once
+
+#include "common\rime_types.h"
+
+#include <string>
+#include <string_view>
+#include <vector>
+
+namespace fp::coreipc {
+
+inline constexpr wchar_t kPipeName[] = L"\\\\.\\pipe\\FluentPinyin.CoreHost.V1";
+inline constexpr wchar_t kCoreHostMutexName[] = L"Local\\FluentPinyin.CoreHost.V1";
+inline constexpr wchar_t kCoreHostExecutableName[] = L"fluent-pinyin-corehost.exe";
+
+std::wstring PipeName();
+std::wstring CoreHostMutexName();
+
+enum class Command : std::uint32_t {
+  kInitialize = 1,
+  kShutdown = 2,
+  kResetComposition = 3,
+  kSetOption = 4,
+  kGetCandidatePage = 5,
+  kSelectCandidate = 6,
+  kRedeploy = 7,
+};
+
+enum class Status : std::uint32_t {
+  kOk = 0,
+  kError = 1,
+};
+
+std::string EncodeInitializeRequest();
+std::string EncodeShutdownRequest();
+std::string EncodeResetCompositionRequest();
+std::string EncodeSetOptionRequest(std::string_view option_name, bool enabled);
+std::string EncodeGetCandidatePageRequest(std::string_view input, int page_index, int page_size);
+std::string EncodeSelectCandidateRequest(std::string_view input,
+                                         int page_index,
+                                         int page_size,
+                                         size_t candidate_index);
+std::string EncodeRedeployRequest();
+
+bool DecodeCommand(std::string_view payload, Command* command, std::vector<std::string>* fields);
+
+std::string EncodeStatusResponse(const fp::core::RimeEngineStatus& status);
+bool DecodeStatusResponse(std::string_view payload, fp::core::RimeEngineStatus* status);
+
+std::string EncodeCandidatePageResponse(const fp::core::RimeCandidatePage& page);
+bool DecodeCandidatePageResponse(std::string_view payload, fp::core::RimeCandidatePage* page);
+
+std::string EncodeCandidateCommitResponse(const fp::core::RimeCandidateCommit& commit);
+bool DecodeCandidateCommitResponse(std::string_view payload, fp::core::RimeCandidateCommit* commit);
+
+std::string EncodeErrorResponse(std::wstring_view message);
+std::wstring DecodeErrorMessage(std::string_view payload);
+
+}  // namespace fp::coreipc

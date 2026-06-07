@@ -238,6 +238,8 @@ void ResetSettingsCache() {
 
 fp::SettingsStore& RuntimeSettingsStore() {
   static fp::SettingsStore store;
+  static const bool migrated = store.EnsureSchemaVersion();
+  (void)migrated;
   return store;
 }
 

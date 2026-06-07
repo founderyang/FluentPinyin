@@ -57,6 +57,7 @@ foreach ($file in @(
   "fluent-pinyin-settings.exe",
   "fluent-pinyin-updater.exe",
   "fluent-pinyin-devtools.exe",
+  "fluent-pinyin-corehost.exe",
   "README.txt"
 )) {
   Assert-True (Test-Path -LiteralPath (Join-Path $InstallDir $file) -PathType Leaf) "Missing installed file: $file"
@@ -79,6 +80,16 @@ $runtime = Start-Process -FilePath $devtools -ArgumentList "ensure-winapp-runtim
 Assert-True ($runtime.ExitCode -eq 0) "ensure-winapp-runtime failed with exit code $($runtime.ExitCode)"
 $smoke = Start-Process -FilePath $devtools -ArgumentList "smoke" -Wait -PassThru -WindowStyle Hidden
 Assert-True ($smoke.ExitCode -eq 0) "devtools smoke failed with exit code $($smoke.ExitCode)"
+
+$scriptDir = if (-not [string]::IsNullOrWhiteSpace($PSScriptRoot)) {
+  $PSScriptRoot
+} else {
+  Split-Path -Parent $PSCommandPath
+}
+$settingsVerify = Join-Path $scriptDir "installed_settings_verify.ps1"
+if (Test-Path -LiteralPath $settingsVerify -PathType Leaf) {
+  & $settingsVerify
+}
 
 if ($RequireWanxiangPatch) {
   $rimeDir = Join-Path $env:APPDATA "FluentPinyin\Rime"

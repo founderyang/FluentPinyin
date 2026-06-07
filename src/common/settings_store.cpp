@@ -9,6 +9,7 @@
 #include <fstream>
 #include <limits>
 #include <sstream>
+#include <string_view>
 #include <system_error>
 
 namespace fp {
@@ -310,6 +311,27 @@ std::optional<bool> SettingsStore::ReadOptionalBool(std::wstring_view key) {
 bool SettingsStore::ReadBool(std::wstring_view key, bool default_value) {
   const std::optional<std::wstring> value = FindString(key);
   return value.has_value() ? ParseBoolSettingValue(*value, default_value) : default_value;
+}
+
+int SettingsStore::SchemaVersion() {
+  const std::optional<std::wstring> value = FindString(kSettingsSchemaVersionKey);
+  if (!value.has_value()) {
+    return 0;
+  }
+  try {
+    return std::max(0, std::stoi(*value));
+  } catch (...) {
+    return 0;
+  }
+}
+
+bool SettingsStore::EnsureSchemaVersion() {
+  const int current = SchemaVersion();
+  if (current >= kCurrentSettingsSchemaVersion) {
+    return true;
+  }
+  return WriteString(kSettingsSchemaVersionKey,
+                     std::to_wstring(kCurrentSettingsSchemaVersion));
 }
 
 bool SettingsStore::WriteString(std::wstring_view key, std::wstring_view value) {

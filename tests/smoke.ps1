@@ -11,6 +11,19 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Repair-ProcessPathEnvironment {
+  $processPath = [Environment]::GetEnvironmentVariable("PATH", "Process")
+  if ([string]::IsNullOrWhiteSpace($processPath)) {
+    $machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+    $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    $processPath = (@($machinePath, $userPath) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join ";"
+  }
+  [Environment]::SetEnvironmentVariable("path", $null, "Process")
+  [Environment]::SetEnvironmentVariable("Path", $processPath, "Process")
+}
+
+Repair-ProcessPathEnvironment
+
 function Assert-FileExists {
   param([string]$Path)
   if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
@@ -93,6 +106,7 @@ $requiredFiles = @(
   "fluent-pinyin-settings.exe",
   "fluent-pinyin-updater.exe",
   "fluent-pinyin-devtools.exe",
+  "fluent-pinyin-corehost.exe",
   "rime.dll"
 )
 

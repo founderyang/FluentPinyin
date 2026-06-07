@@ -76,6 +76,10 @@ std::wstring PathMessage(const wchar_t* prefix, const std::filesystem::path& pat
   return message;
 }
 
+std::wstring Utf8PtrToWide(const char* value) {
+  return value == nullptr ? std::wstring() : Utf8ToWide(value);
+}
+
 std::optional<std::filesystem::file_time_type> LastWriteTime(
     const std::filesystem::path& path) {
   std::error_code error;
@@ -88,6 +92,8 @@ std::optional<std::filesystem::file_time_type> LastWriteTime(
 
 std::wstring ReadStringSetting(std::wstring_view key, std::wstring_view default_value = L"") {
   static fp::SettingsStore store;
+  static const bool migrated = store.EnsureSchemaVersion();
+  (void)migrated;
   return store.ReadString(key, default_value);
 }
 
@@ -1376,18 +1382,27 @@ RimeEngineStatus RimeEngine::Initialize(const RimeEngineOptions& options) {
       !fp::EnsureDirectory(staging_dir_)) {
     return {.initialized = false, .message = L"Failed to create Rime data directories."};
   }
+  fp::LogInfo(L"core",
+              L"Rime init directories ready: shared=" + shared_data_dir_.wstring() +
+                  L"; user=" + user_data_dir_.wstring() +
+                  L"; staging=" + staging_dir_.wstring());
+  fp::FlushLogs();
 
   if (!std::filesystem::exists(shared_data_dir_ / L"default.yaml")) {
     return {.initialized = false,
             .message = PathMessage(L"Rime shared data not found", shared_data_dir_)};
   }
+  fp::LogInfo(L"core", L"Rime init shared data exists.");
+  fp::FlushLogs();
 
   if (!EnsureUserConfig()) {
     return {.initialized = false, .message = L"Failed to create Rime user config files."};
   }
   log_step(L"ensure user config");
+  fp::FlushLogs();
   EnsureWanxiangRuntimeFiles(shared_data_dir_, user_data_dir_);
   log_step(L"ensure Wanxiang runtime files");
+  fp::FlushLogs();
 
   const bool has_fresh_build_cache =
       HasFreshRimeBuildCache(shared_data_dir_, user_data_dir_, staging_dir_, schema_selection);
@@ -1756,12 +1771,6 @@ bool RimeEngine::SyncSessionInput(const std::string& input, bool reset_page) {
     return true;
   }
 
-  if (RIME_API_AVAILABLE(api, set_input) && api->set_input(session_id, input.c_str())) {
-    session_input_ = input;
-    session_page_index_ = 0;
-    return true;
-  }
-
   api->clear_composition(session_id);
   for (const unsigned char ch : input) {
     api->process_key(session_id, ch, 0);
@@ -1805,7 +1814,7 @@ RimeCandidatePage RimeEngine::GetCandidatePageForInput(const std::string& input,
 
   RIME_STRUCT(RimeContext, initial_context);
   if (api->get_context(session_id, &initial_context)) {
-    page.composition = Utf8ToWide(initial_context.composition.preedit);
+    page.composition = Utf8PtrToWide(initial_context.composition.preedit);
     api->free_context(&initial_context);
   }
 
@@ -1823,7 +1832,7 @@ RimeCandidatePage RimeEngine::GetCandidatePageForInput(const std::string& input,
     }
 
     if (page.composition.empty()) {
-      page.composition = Utf8ToWide(context.composition.preedit);
+      page.composition = Utf8PtrToWide(context.composition.preedit);
     }
 
     has_more_pages = context.menu.is_last_page == 0;
@@ -1858,7 +1867,7 @@ RimeCandidatePage RimeEngine::GetCandidatePageForInput(const std::string& input,
          ++index) {
       const RimeCandidate& candidate = context.menu.candidates[index];
       page.candidates.push_back(
-          {.text = ConvertOutputText(candidate.text), .comment = Utf8ToWide(candidate.comment)});
+          {.text = ConvertOutputText(candidate.text), .comment = Utf8PtrToWide(candidate.comment)});
     }
 
     const int consumed_from_context =
@@ -1981,7 +1990,7 @@ RimeCandidateCommit RimeEngine::SelectCandidateForInput(const std::string& input
 
       RIME_STRUCT(RimeContext, remaining_context);
       if (api->get_context(session_id, &remaining_context)) {
-        result.remaining_composition = Utf8ToWide(remaining_context.composition.preedit);
+        result.remaining_composition = Utf8PtrToWide(remaining_context.composition.preedit);
         api->free_context(&remaining_context);
       }
       break;

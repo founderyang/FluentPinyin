@@ -1,4 +1,6 @@
 import argparse
+import hashlib
+import json
 import os
 import re
 import shutil
@@ -301,6 +303,67 @@ def directory_size(path):
     return sum(child.stat().st_size for child in path.rglob("*") if child.is_file())
 
 
+def sha256_file(path):
+    digest = hashlib.sha256()
+    with path.open("rb") as input_file:
+        for chunk in iter(lambda: input_file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def payload_category(relative_path):
+    parts = relative_path.parts
+    if not parts:
+        return "unknown"
+    if parts[0] == "rime-data":
+        return "rime-data"
+    if parts[0] == "fonts":
+        return "fonts"
+    if parts[0] == "Microsoft.UI.Xaml":
+        return "winui-runtime"
+    if parts[0] == "THIRD_PARTY_LICENSES":
+        return "licenses"
+    suffix = relative_path.suffix.lower()
+    if suffix in {".dll", ".exe"}:
+        return "binary"
+    if suffix in {".txt", ".md"}:
+        return "documents"
+    return "other"
+
+
+def payload_resource_manifest(payload_dir):
+    files = []
+    category_sizes = {}
+    total = 0
+    for path in sorted((p for p in payload_dir.rglob("*") if p.is_file())):
+        relative = path.relative_to(payload_dir)
+        size = path.stat().st_size
+        category = payload_category(relative)
+        total += size
+        category_sizes[category] = category_sizes.get(category, 0) + size
+        files.append(
+            {
+                "path": relative.as_posix(),
+                "category": category,
+                "size": size,
+                "sha256": sha256_file(path),
+            }
+        )
+    return {
+        "total_size": total,
+        "category_sizes": dict(sorted(category_sizes.items())),
+        "files": files,
+    }
+
+
+def write_payload_resource_manifest(payload_dir, release_dir):
+    manifest = payload_resource_manifest(payload_dir)
+    (release_dir / "payload-resource-manifest.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
 def payload_size_report_lines(payload_dir):
     lines = []
     total = directory_size(payload_dir)
@@ -370,6 +433,7 @@ def main():
         "LICENSE.txt",
         "THIRD_PARTY_NOTICES.txt",
         "payload-size-report.txt",
+        "payload-resource-manifest.json",
         "payload.wxs",
         "FluentPinyin.wixpdb",
     ):
@@ -382,6 +446,7 @@ def main():
         "fluent-pinyin-settings.exe",
         "fluent-pinyin-updater.exe",
         "fluent-pinyin-devtools.exe",
+        "fluent-pinyin-corehost.exe",
         "rime.dll",
     ):
         copy_required(bin_dir, payload_dir, file_name)
@@ -427,6 +492,7 @@ def main():
 
     copy_third_party_licenses(payload_dir)
     write_payload_size_report(payload_dir, release_dir)
+    write_payload_resource_manifest(payload_dir, release_dir)
     payload_wxs = release_dir / "payload.wxs"
     write_wix_payload_file(payload_dir, payload_wxs)
 
@@ -441,6 +507,8 @@ def main():
         product_code = "{" + str(uuid.uuid4()).upper() + "}"
         command = [
             str(wix),
+            "--acceptEula",
+            "wix7",
             "build",
             str(ROOT / "installer" / "fluent-pinyin.wxs"),
             str(payload_wxs),

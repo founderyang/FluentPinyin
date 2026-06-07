@@ -109,6 +109,7 @@ foreach(config DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)
 endforeach()
 
 add_library(fluent_pinyin_common STATIC
+  src/common/core_ipc_protocol.cpp
   src/common/encoding.cpp
   src/common/logging.cpp
   src/common/path_utils.cpp
@@ -158,6 +159,7 @@ endif()
 add_library(fluent_pinyin_tsf SHARED
   src/tsf/class_factory.cpp
   src/tsf/dllmain.cpp
+  src/tsf/rime_core_client.cpp
   src/tsf/registration.cpp
   src/tsf/tsf_settings_adapter.cpp
   src/tsf/tsf_text_service.cpp
@@ -167,7 +169,6 @@ add_library(fluent_pinyin_tsf SHARED
 
 target_link_libraries(fluent_pinyin_tsf PRIVATE
   fluent_pinyin_common
-  fluent_pinyin_core
   advapi32
   dwmapi
   gdiplus
@@ -207,6 +208,21 @@ if(MSVC)
 endif()
 
 fp_copy_app_assets(fluent_pinyin_tsf)
+
+add_executable(fluent_pinyin_corehost WIN32
+  src/corehost/main.cpp
+)
+
+target_link_libraries(fluent_pinyin_corehost PRIVATE
+  fluent_pinyin_common
+  fluent_pinyin_core
+  advapi32
+)
+
+set_target_properties(fluent_pinyin_corehost PROPERTIES OUTPUT_NAME "fluent-pinyin-corehost")
+if(MSVC)
+  target_precompile_headers(fluent_pinyin_corehost REUSE_FROM fluent_pinyin_common)
+endif()
 
 add_executable(fluent_pinyin_ui WIN32
   src/ui/main.cpp
@@ -371,7 +387,14 @@ add_executable(fluent_pinyin_updater WIN32
   src/updater/release_json.cpp
 )
 
-target_link_libraries(fluent_pinyin_updater PRIVATE fluent_pinyin_common wininet wintrust crypt32)
+target_include_directories(fluent_pinyin_updater PRIVATE "${FP_WINDOWS_SDK_CPPWINRT_INCLUDE}")
+target_link_libraries(fluent_pinyin_updater PRIVATE
+  fluent_pinyin_common
+  wininet
+  wintrust
+  crypt32
+  runtimeobject
+)
 set_target_properties(fluent_pinyin_updater PROPERTIES OUTPUT_NAME "fluent-pinyin-updater")
 if(MSVC)
   target_precompile_headers(fluent_pinyin_updater PRIVATE src/updater/pch.h)
@@ -407,6 +430,17 @@ if(BUILD_TESTING)
     tests/core_unit.cpp
   )
   target_link_libraries(core_unit PRIVATE fluent_pinyin_common fluent_pinyin_core)
+
+  add_executable(core_ipc_protocol_unit
+    tests/core_ipc_protocol_unit.cpp
+  )
+  target_link_libraries(core_ipc_protocol_unit PRIVATE fluent_pinyin_common)
+
+  add_executable(corehost_runtime_smoke
+    tests/corehost_runtime_smoke.cpp
+    src/tsf/rime_core_client.cpp
+  )
+  target_link_libraries(corehost_runtime_smoke PRIVATE fluent_pinyin_common)
 
   add_executable(sync_package_integrity
     tests/sync_package_integrity.cpp
@@ -459,6 +493,8 @@ if(BUILD_TESTING)
     src/updater/release_json.cpp
   )
   target_include_directories(updater_json_unit PRIVATE src)
+  target_include_directories(updater_json_unit PRIVATE "${FP_WINDOWS_SDK_CPPWINRT_INCLUDE}")
+  target_link_libraries(updater_json_unit PRIVATE fluent_pinyin_common runtimeobject)
   add_test(
     NAME updater_json_unit
     COMMAND updater_json_unit
@@ -470,6 +506,14 @@ if(BUILD_TESTING)
   add_test(
     NAME core_unit
     COMMAND core_unit
+  )
+  add_test(
+    NAME core_ipc_protocol_unit
+    COMMAND core_ipc_protocol_unit
+  )
+  add_test(
+    NAME corehost_runtime_smoke
+    COMMAND corehost_runtime_smoke "$<TARGET_FILE:fluent_pinyin_corehost>"
   )
   add_test(
     NAME sync_package_integrity
@@ -487,5 +531,13 @@ if(BUILD_TESTING)
             -File "${CMAKE_SOURCE_DIR}/tests/package_dependency_verify.ps1"
             -ManifestPath "${CMAKE_SOURCE_DIR}/scripts/package_dependencies.json"
             -DownloadsDir "${CMAKE_SOURCE_DIR}/packages/downloads"
+  )
+  add_test(
+    NAME tsf_dependency_verify
+    COMMAND powershell
+            -NoProfile
+            -ExecutionPolicy Bypass
+            -File "${CMAKE_SOURCE_DIR}/tests/tsf_dependency_verify.ps1"
+            -TsfDll "$<TARGET_FILE:fluent_pinyin_tsf>"
   )
 endif()

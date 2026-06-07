@@ -1,6 +1,7 @@
 #include "tsf/tsf_text_service.h"
 
 #include "common/constants.h"
+#include "common/core_ipc_protocol.h"
 #include "common/logging.h"
 #include "common/path_utils.h"
 #include "common/theme.h"
@@ -1424,13 +1425,13 @@ bool AppsUseLightTheme() {
 }
 
 struct CachedIconEntry {
-  bool light = false;
+  int resource_id = 0;
   int width = 0;
   int height = 0;
   HICON icon = nullptr;
 };
 
-HICON CachedFluentPinyinIcon(bool light, int width, int height) {
+HICON CachedFluentPinyinIconResource(int resource_id, int width, int height) {
   if (width <= 0 || height <= 0) {
     return nullptr;
   }
@@ -1439,23 +1440,33 @@ HICON CachedFluentPinyinIcon(bool light, int width, int height) {
   static std::vector<CachedIconEntry> cache;
   std::lock_guard<std::mutex> lock(mutex);
   for (const auto& entry : cache) {
-    if (entry.light == light && entry.width == width && entry.height == height) {
+    if (entry.resource_id == resource_id && entry.width == width && entry.height == height) {
       return entry.icon;
     }
   }
 
   HICON icon =
       static_cast<HICON>(LoadImageW(g_module_instance,
-                                    MAKEINTRESOURCEW(light ? IDI_FLUENT_PINYIN_LIGHT
-                                                           : IDI_FLUENT_PINYIN_DARK),
+                                    MAKEINTRESOURCEW(resource_id),
                                     IMAGE_ICON,
                                     width,
                                     height,
                                     LR_DEFAULTCOLOR));
   if (icon != nullptr) {
-    cache.push_back({light, width, height, icon});
+    cache.push_back({resource_id, width, height, icon});
   }
   return icon;
+}
+
+HICON CachedFluentPinyinIcon(bool light, int width, int height) {
+  return CachedFluentPinyinIconResource(light ? IDI_FLUENT_PINYIN_LIGHT
+                                             : IDI_FLUENT_PINYIN_DARK,
+                                        width,
+                                        height);
+}
+
+HICON CachedFluentPinyinBrandIcon(int width, int height) {
+  return CachedFluentPinyinIconResource(IDI_APP_ICON, width, height);
 }
 
 struct CandidateWindowPalette {
@@ -5194,6 +5205,11 @@ enum class TrayInputIconMode {
   kDisabled,
 };
 
+enum class LangBarItemKind {
+  kBrand,
+  kInputMode,
+};
+
 constexpr int kTrayIconReferenceSize = 36;
 constexpr int kTrayStatusGlyphWidthUnits = 29;
 constexpr int kTrayStatusGlyphHeightUnits = 33;
@@ -5674,7 +5690,8 @@ HICON CreateTrayInputIcon(TrayInputIconMode mode) {
 
 class InputModeLangBarItem final : public ITfLangBarItemButton, public ITfSource {
  public:
-  explicit InputModeLangBarItem(TsfTextService* owner) : owner_(owner) {
+  InputModeLangBarItem(TsfTextService* owner, LangBarItemKind kind)
+      : owner_(owner), kind_(kind) {
     if (owner_ != nullptr) {
       owner_->AddRef();
     }
@@ -5720,11 +5737,19 @@ class InputModeLangBarItem final : public ITfLangBarItemButton, public ITfSource
     }
 
     info->clsidService = kTextServiceClsid;
-    info->guidItem = kInputModeLangBarItemGuid;
-    info->dwStyle = TF_LBI_STYLE_SHOWNINTRAY | TF_LBI_STYLE_BTN_BUTTON |
-                    TF_LBI_STYLE_BTN_MENU | TF_LBI_STYLE_TEXTCOLORICON;
-    info->ulSort = 0;
-    wcsncpy_s(info->szDescription, L"\u4E2D\u82F1\u5207\u6362", _TRUNCATE);
+    if (kind_ == LangBarItemKind::kBrand) {
+      info->guidItem = kBrandLangBarItemGuid;
+      info->dwStyle = TF_LBI_STYLE_SHOWNINTRAY | TF_LBI_STYLE_BTN_BUTTON |
+                      TF_LBI_STYLE_BTN_MENU;
+      info->ulSort = 0;
+      wcsncpy_s(info->szDescription, L"\u6D41\u7545\u62FC\u97F3", _TRUNCATE);
+    } else {
+      info->guidItem = kInputModeLangBarItemGuid;
+      info->dwStyle = TF_LBI_STYLE_SHOWNINTRAY | TF_LBI_STYLE_BTN_BUTTON |
+                      TF_LBI_STYLE_BTN_MENU | TF_LBI_STYLE_TEXTCOLORICON;
+      info->ulSort = 1;
+      wcsncpy_s(info->szDescription, L"\u4E2D\u82F1\u5207\u6362", _TRUNCATE);
+    }
     return S_OK;
   }
 
@@ -5744,12 +5769,17 @@ class InputModeLangBarItem final : public ITfLangBarItemButton, public ITfSource
       return E_POINTER;
     }
 
-    const bool enabled = owner_ != nullptr && owner_->has_input_focus();
-    *tooltip = SysAllocString(!enabled
-                                  ? L"\u8F93\u5165\u6CD5\u672A\u542F\u7528\r\n\r\n\u5355\u51FB\u53F3\u952E\u4EE5\u67E5\u770B\u66F4\u591A\u9009\u9879"
-                                  : owner_->ascii_mode()
-                                        ? L"\u82F1\u6587\u6A21\u5F0F\r\n\r\n\u5355\u51FB\u53F3\u952E\u4EE5\u67E5\u770B\u66F4\u591A\u9009\u9879"
-                                        : L"\u4E2D\u6587\u6A21\u5F0F\r\n\r\n\u5355\u51FB\u53F3\u952E\u4EE5\u67E5\u770B\u66F4\u591A\u9009\u9879");
+    if (kind_ == LangBarItemKind::kBrand) {
+      *tooltip = SysAllocString(
+          L"\u6D41\u7545\u62FC\u97F3\r\n\r\n\u5355\u51FB\u53F3\u952E\u4EE5\u67E5\u770B\u66F4\u591A\u9009\u9879");
+    } else {
+      const bool enabled = owner_ != nullptr && owner_->has_input_focus();
+      *tooltip = SysAllocString(!enabled
+                                    ? L"\u8F93\u5165\u6CD5\u672A\u542F\u7528\r\n\r\n\u5355\u51FB\u53F3\u952E\u4EE5\u67E5\u770B\u66F4\u591A\u9009\u9879"
+                                    : owner_->ascii_mode()
+                                          ? L"\u82F1\u6587\u6A21\u5F0F\r\n\r\n\u5355\u51FB\u53F3\u952E\u4EE5\u67E5\u770B\u66F4\u591A\u9009\u9879"
+                                          : L"\u4E2D\u6587\u6A21\u5F0F\r\n\r\n\u5355\u51FB\u53F3\u952E\u4EE5\u67E5\u770B\u66F4\u591A\u9009\u9879");
+    }
     return *tooltip != nullptr ? S_OK : E_OUTOFMEMORY;
   }
 
@@ -5757,7 +5787,9 @@ class InputModeLangBarItem final : public ITfLangBarItemButton, public ITfSource
     if (owner_ == nullptr) {
       return S_OK;
     }
-    if (click == TF_LBI_CLK_LEFT) {
+    if (kind_ == LangBarItemKind::kBrand) {
+      owner_->ShowContextMenu(point);
+    } else if (click == TF_LBI_CLK_LEFT) {
       if (owner_->has_input_focus()) {
         owner_->ToggleAsciiMode();
       } else {
@@ -5836,13 +5868,23 @@ class InputModeLangBarItem final : public ITfLangBarItemButton, public ITfSource
       return E_POINTER;
     }
 
-    TrayInputIconMode mode = TrayInputIconMode::kDisabled;
-    if (owner_ != nullptr && owner_->has_input_focus() && owner_->ascii_mode()) {
-      mode = TrayInputIconMode::kEnglish;
-    } else if (owner_ != nullptr && owner_->has_input_focus()) {
-      mode = TrayInputIconMode::kChinese;
+    HICON icon_handle = nullptr;
+    if (kind_ == LangBarItemKind::kBrand) {
+      constexpr int kFallbackSize = 16;
+      const int width =
+          GetSystemMetrics(SM_CXSMICON) > 0 ? GetSystemMetrics(SM_CXSMICON) : kFallbackSize;
+      const int height =
+          GetSystemMetrics(SM_CYSMICON) > 0 ? GetSystemMetrics(SM_CYSMICON) : kFallbackSize;
+      icon_handle = CachedFluentPinyinBrandIcon(width, height);
+    } else {
+      TrayInputIconMode mode = TrayInputIconMode::kDisabled;
+      if (owner_ != nullptr && owner_->has_input_focus() && owner_->ascii_mode()) {
+        mode = TrayInputIconMode::kEnglish;
+      } else if (owner_ != nullptr && owner_->has_input_focus()) {
+        mode = TrayInputIconMode::kChinese;
+      }
+      icon_handle = CreateTrayInputIcon(mode);
     }
-    HICON icon_handle = CreateTrayInputIcon(mode);
     *icon = icon_handle;
     return *icon != nullptr ? S_OK : E_FAIL;
   }
@@ -5852,7 +5894,12 @@ class InputModeLangBarItem final : public ITfLangBarItemButton, public ITfSource
       return E_POINTER;
     }
 
-    *text = SysAllocString(L"\u7545");
+    *text = SysAllocString(kind_ == LangBarItemKind::kBrand
+                               ? L"\u7545"
+                               : (owner_ != nullptr && owner_->has_input_focus() &&
+                                          owner_->ascii_mode()
+                                      ? L"\u82F1"
+                                      : L"\u4E2D"));
     return *text != nullptr ? S_OK : E_OUTOFMEMORY;
   }
 
@@ -5954,6 +6001,7 @@ class InputModeLangBarItem final : public ITfLangBarItemButton, public ITfSource
 
   std::atomic<unsigned long> ref_count_{1};
   TsfTextService* owner_ = nullptr;
+  LangBarItemKind kind_ = LangBarItemKind::kInputMode;
   ITfLangBarItemSink* sink_ = nullptr;
   DWORD sink_cookie_ = TF_INVALID_COOKIE;
   static constexpr DWORD kSinkCookie = 1;
@@ -7123,6 +7171,10 @@ std::filesystem::path InstalledSiblingExecutable(std::wstring_view name) {
   return ModuleDirectory() / std::wstring(name);
 }
 
+std::filesystem::path InstalledCoreHostExecutable() {
+  return InstalledSiblingExecutable(fp::coreipc::kCoreHostExecutableName);
+}
+
 std::wstring AsciiToWide(std::string_view value) {
   std::wstring result;
   result.reserve(value.size());
@@ -7520,6 +7572,13 @@ TsfTextService::~TsfTextService() {
     keystroke_mgr_ = nullptr;
   }
 
+  if (lang_bar_item_mgr_ != nullptr && brand_item_ != nullptr) {
+    lang_bar_item_mgr_->RemoveItem(brand_item_);
+  }
+  if (brand_item_ != nullptr) {
+    brand_item_->Release();
+    brand_item_ = nullptr;
+  }
   if (lang_bar_item_mgr_ != nullptr && input_mode_item_ != nullptr) {
     lang_bar_item_mgr_->RemoveItem(input_mode_item_);
   }
@@ -7649,7 +7708,23 @@ STDMETHODIMP TsfTextService::Activate(ITfThreadMgr* thread_mgr, TfClientId clien
   result = thread_mgr_->QueryInterface(IID_ITfLangBarItemMgr,
                                        reinterpret_cast<void**>(&lang_bar_item_mgr_));
   if (SUCCEEDED(result)) {
-      input_mode_item_ = new (std::nothrow) InputModeLangBarItem(this);
+    brand_item_ = new (std::nothrow) InputModeLangBarItem(this, LangBarItemKind::kBrand);
+    if (brand_item_ == nullptr) {
+      fp::LogWarning(L"tsf", L"Failed to allocate brand language bar item.");
+    } else {
+      result = lang_bar_item_mgr_->AddItem(brand_item_);
+      if (FAILED(result)) {
+        wchar_t buffer[96]{};
+        swprintf_s(buffer,
+                   L"Failed to add brand language bar item: 0x%08lX",
+                   static_cast<unsigned long>(result));
+        fp::LogWarning(L"tsf", buffer);
+        brand_item_->Release();
+        brand_item_ = nullptr;
+      }
+    }
+
+    input_mode_item_ = new (std::nothrow) InputModeLangBarItem(this, LangBarItemKind::kInputMode);
     if (input_mode_item_ == nullptr) {
       fp::LogWarning(L"tsf", L"Failed to allocate input mode language bar item.");
     } else {
@@ -7714,6 +7789,13 @@ STDMETHODIMP TsfTextService::Deactivate() {
     keystroke_mgr_ = nullptr;
   }
 
+  if (lang_bar_item_mgr_ != nullptr && brand_item_ != nullptr) {
+    lang_bar_item_mgr_->RemoveItem(brand_item_);
+  }
+  if (brand_item_ != nullptr) {
+    brand_item_->Release();
+    brand_item_ = nullptr;
+  }
   if (lang_bar_item_mgr_ != nullptr && input_mode_item_ != nullptr) {
     lang_bar_item_mgr_->RemoveItem(input_mode_item_);
   }
@@ -8802,9 +8884,8 @@ void TsfTextService::InitializeRime() {
     return;
   }
 
-  auto engine = std::make_unique<fp::core::RimeEngine>();
-  fp::core::RimeEngineOptions options;
-  auto status = engine->Initialize(options);
+  auto engine = std::make_unique<RimeCoreClient>(InstalledCoreHostExecutable());
+  auto status = engine->Initialize();
   if (status.initialized) {
     rime_ = std::move(engine);
   }
@@ -8815,8 +8896,8 @@ void TsfTextService::InitializeRime() {
     ApplyRimeOptionsLocked();
     fp::LogInfo(L"tsf",
                 L"Rime init succeeded in " +
-                    std::to_wstring(GetTickCount64() - init_start_tick) + L" ms: " +
-                    rime_->shared_data_dir().wstring());
+                    std::to_wstring(GetTickCount64() - init_start_tick) +
+                    L" ms via core host.");
   }
 }
 
@@ -10723,7 +10804,7 @@ void TsfTextService::RedeployRime() {
 
   std::lock_guard<std::mutex> lock(rime_mutex_);
   if (rime_ == nullptr) {
-    rime_ = std::make_unique<fp::core::RimeEngine>();
+    rime_ = std::make_unique<RimeCoreClient>(InstalledCoreHostExecutable());
   }
 
   rime_ready_ = false;
@@ -10781,7 +10862,7 @@ void TsfTextService::ShutdownRimeForUninstall() {
 
   std::lock_guard<std::mutex> lock(rime_mutex_);
   if (rime_ != nullptr) {
-    rime_->Shutdown();
+    rime_->ShutdownSharedEngine();
     rime_.reset();
   }
   rime_ready_ = false;
@@ -10796,11 +10877,10 @@ void TsfTextService::ReloadRimeAndAlgorithmService() {
     rime_->Shutdown();
   }
 
-  rime_ = std::make_unique<fp::core::RimeEngine>();
+  rime_ = std::make_unique<RimeCoreClient>(InstalledCoreHostExecutable());
   rime_ready_ = false;
-  fp::core::RimeEngineOptions options;
-  options.force_rebuild_cache = true;
-  auto status = rime_->Initialize(options);
+  const auto redeploy_status = rime_->Redeploy();
+  auto status = redeploy_status.initialized ? rime_->Initialize() : redeploy_status;
   rime_ready_ = status.initialized;
   if (rime_ready_) {
     ApplyRimeOptionsLocked();
@@ -10822,7 +10902,7 @@ void TsfTextService::RestartRimeAndAlgorithmService() {
   if (rime_ != nullptr) {
     rime_->Shutdown();
   }
-  rime_ = std::make_unique<fp::core::RimeEngine>();
+  rime_ = std::make_unique<RimeCoreClient>(InstalledCoreHostExecutable());
   rime_ready_ = false;
   const auto status = rime_->Redeploy();
   rime_ready_ = status.initialized;
