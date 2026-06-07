@@ -2,6 +2,7 @@ import argparse
 import hashlib
 import json
 import shutil
+import ssl
 import subprocess
 import sys
 import time
@@ -143,6 +144,28 @@ def download_file(url, destination):
     temp_path.replace(destination)
 
 
+def download_file_with_powershell(url, destination):
+    temp_path = destination.with_suffix(destination.suffix + ".tmp")
+    temp_path.unlink(missing_ok=True)
+    command = [
+        "powershell",
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        (
+            "$ErrorActionPreference='Stop'; "
+            "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; "
+            "Invoke-WebRequest -Uri $args[0] -OutFile $args[1] "
+            "-Headers @{ 'User-Agent' = 'FluentPinyin-build/1.0' }"
+        ),
+        url,
+        str(temp_path),
+    ]
+    subprocess.run(command, check=True)
+    temp_path.replace(destination)
+
+
 def verify_asset_file(path, dependency):
     if not path.exists():
         raise RuntimeError(f"Missing dependency {dependency['id']}: {path}")
@@ -187,17 +210,28 @@ def get_asset_file(name, url, force, dependencies):
             try:
                 download_file(url, archive)
             except (OSError, urllib.error.URLError) as exc:
-                last_error = exc
-                archive.unlink(missing_ok=True)
-                if attempt >= DOWNLOAD_RETRIES:
-                    raise RuntimeError(
-                        f"Failed to download dependency {dependency['id']} after "
-                        f"{DOWNLOAD_RETRIES} attempts: {exc}"
-                    ) from exc
-                wait_seconds = attempt * 3
-                print(f"Download failed for {archive.name}: {exc}; retrying in {wait_seconds}s.")
-                time.sleep(wait_seconds)
-                continue
+                fallback_error = None
+                if isinstance(exc, urllib.error.URLError) and isinstance(exc.reason, ssl.SSLError):
+                    try:
+                        print(f"Python TLS verification failed for {archive.name}; retrying with PowerShell.")
+                        download_file_with_powershell(url, archive)
+                    except (OSError, subprocess.CalledProcessError) as fallback_exc:
+                        fallback_error = fallback_exc
+                if fallback_error is not None or not archive.exists():
+                    last_error = fallback_error or exc
+                    archive.unlink(missing_ok=True)
+                    if attempt >= DOWNLOAD_RETRIES:
+                        raise RuntimeError(
+                            f"Failed to download dependency {dependency['id']} after "
+                            f"{DOWNLOAD_RETRIES} attempts: {last_error}"
+                        ) from last_error
+                    wait_seconds = attempt * 3
+                    print(
+                        f"Download failed for {archive.name}: {last_error}; "
+                        f"retrying in {wait_seconds}s."
+                    )
+                    time.sleep(wait_seconds)
+                    continue
         else:
             print(f"Using cached {archive}")
         try:
