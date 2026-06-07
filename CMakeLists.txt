@@ -338,6 +338,7 @@ add_custom_target(fluent_pinyin_winui_projection DEPENDS "${FP_WINUI_PROJECTION_
 add_executable(fluent_pinyin_settings WIN32
   src/config_winui/main.cpp
   src/config_winui/app_paths.cpp
+  src/config_winui/fuzzy_pinyin_custom_rules.cpp
   src/config_winui/hotkey_helpers.cpp
   src/config_winui/lexicon_store.cpp
   src/config_winui/settings_binding.cpp
@@ -459,6 +460,12 @@ if(BUILD_TESTING)
   )
   target_link_libraries(config_hotkey_helpers_unit PRIVATE fluent_pinyin_common user32)
 
+  add_executable(config_fuzzy_pinyin_custom_rules_unit
+    tests/config_fuzzy_pinyin_custom_rules_unit.cpp
+    src/config_winui/fuzzy_pinyin_custom_rules.cpp
+  )
+  target_link_libraries(config_fuzzy_pinyin_custom_rules_unit PRIVATE fluent_pinyin_common)
+
   add_executable(config_status_tip_blacklist_unit
     tests/config_status_tip_blacklist_unit.cpp
     src/config_winui/status_tip_blacklist.cpp
@@ -563,6 +570,10 @@ if(BUILD_TESTING)
   add_test(
     NAME config_hotkey_helpers_unit
     COMMAND config_hotkey_helpers_unit
+  )
+  add_test(
+    NAME config_fuzzy_pinyin_custom_rules_unit
+    COMMAND config_fuzzy_pinyin_custom_rules_unit
   )
   add_test(
     NAME config_status_tip_blacklist_unit
