@@ -65,7 +65,7 @@
   {
     "id": "wanxiangGram",
     "name": "wanxiang-lts-zh-hans.gram",
-    "url": "https://github.com/amzxyz/RIME-LMDG/releases/download/LTS/wanxiang-lts-zh-hans.gram",
+    "url": "https://github.com/amzxyz/RIME-LMDG/releases/download/LTS/wanxiang-lts-zh-hans.gram-old",
     "sha256": "3ebdf080f33d4f3618f2679d6f9e34a290bd75906f42b9d753f630e5101e5407",
     "size": 246140972
   },

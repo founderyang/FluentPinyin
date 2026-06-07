@@ -1101,11 +1101,27 @@ void ApplySettingsResources(ResourceDictionary const& resources) {
       Brush(palette.light ? ThemeColor{255, 255, 255} : ThemeColor{0, 0, 0}).as<IInspectable>();
   const auto knob_off = Brush(palette.secondary_text).as<IInspectable>();
   resources.Insert(box_value(L"ContentControlThemeFontFamily"), settings_font);
+  resources.Insert(box_value(L"TextBlockFontFamily"), settings_font);
+  resources.Insert(box_value(L"ButtonFontFamily"), settings_font);
+  resources.Insert(box_value(L"CheckBoxFontFamily"), settings_font);
+  resources.Insert(box_value(L"ComboBoxFontFamily"), settings_font);
+  resources.Insert(box_value(L"ComboBoxItemFontFamily"), settings_font);
+  resources.Insert(box_value(L"ContentDialogFontFamily"), settings_font);
+  resources.Insert(box_value(L"ContentDialogButtonFontFamily"), settings_font);
   resources.Insert(box_value(L"MTCMediaFontFamily"), settings_font);
+  resources.Insert(box_value(L"NavigationViewFontFamily"), settings_font);
+  resources.Insert(box_value(L"NavigationViewItemFontFamily"), settings_font);
+  resources.Insert(box_value(L"PasswordBoxFontFamily"), settings_font);
+  resources.Insert(box_value(L"PhoneFontFamily"), settings_font);
   resources.Insert(box_value(L"PhoneFontFamilyNormal"), settings_font);
   resources.Insert(box_value(L"PhoneFontFamilySemiLight"), settings_font);
   resources.Insert(box_value(L"PivotHeaderItemFontFamily"), settings_font);
   resources.Insert(box_value(L"PivotTitleFontFamily"), settings_font);
+  resources.Insert(box_value(L"TextBoxFontFamily"), settings_font);
+  resources.Insert(box_value(L"TextControlFontFamily"), settings_font);
+  resources.Insert(box_value(L"ToggleSwitchFontFamily"), settings_font);
+  resources.Insert(box_value(L"ToolTipFontFamily"), settings_font);
+  resources.Insert(box_value(L"ToolTipContentThemeFontFamily"), settings_font);
   resources.Insert(box_value(L"KeyTipFontFamily"), settings_font);
   resources.Insert(box_value(L"ApplicationPageBackgroundThemeBrush"), surface);
   resources.Insert(box_value(L"SolidBackgroundFillColorBaseBrush"), surface);
@@ -1269,6 +1285,19 @@ TextBlock Text(std::wstring_view value, double size, int weight = FW_NORMAL) {
     text.FontWeight(FontWeights::SemiBold());
   }
   return text;
+}
+
+ToolTip SettingsToolTip(std::wstring_view value) {
+  ToolTip tooltip;
+  ApplySettingsUIFont(tooltip);
+  tooltip.RequestedTheme(CurrentSettingsElementTheme());
+  tooltip.Content(Text(value, 12));
+  ApplySettingsResources(tooltip.Resources());
+  return tooltip;
+}
+
+void SetSettingsToolTip(DependencyObject const& target, std::wstring_view value) {
+  ToolTipService::SetToolTip(target, SettingsToolTip(value));
 }
 
 void ApplySettingsDialogBase(ContentDialog const& dialog, XamlRoot const& xaml_root) {
@@ -2659,7 +2688,7 @@ Button HotkeyRecorderButton(std::wstring_view key,
     const std::wstring normalized = NormalizeShortcutDisplay(value);
     label.Text(normalized.empty() ? L"未设置" : normalized);
     label.Foreground(normalized.empty() ? SettingsSecondaryTextBrush() : SettingsTextBrush());
-    ToolTipService::SetToolTip(button, box_value(ShortcutConflictTooltip(key, normalized)));
+    SetSettingsToolTip(button, ShortcutConflictTooltip(key, normalized));
   };
 
   (*apply_text)(ReadStringSetting(key, fallback));
@@ -2748,7 +2777,7 @@ void SetHotkeyRecorderDisplay(Button const& button,
     label.Text(normalized.empty() ? L"未设置" : normalized);
     label.Foreground(normalized.empty() ? SettingsSecondaryTextBrush() : SettingsTextBrush());
   }
-  ToolTipService::SetToolTip(button, box_value(ShortcutConflictTooltip(key, normalized)));
+  SetSettingsToolTip(button, ShortcutConflictTooltip(key, normalized));
 }
 
 Button CompactActionButton(std::wstring_view text, std::wstring_view glyph) {
@@ -2946,7 +2975,7 @@ Border StableIconToolButton(std::wstring_view path,
   button.CornerRadius(Radius(8));
   button.UseLayoutRounding(true);
   button.Child(ActionButtonPathIcon(path, scale));
-  ToolTipService::SetToolTip(button, box_value(tooltip));
+  SetSettingsToolTip(button, tooltip);
 
   auto hovered = std::make_shared<bool>(false);
   auto pressed = std::make_shared<bool>(false);
@@ -3018,7 +3047,7 @@ Button IconToolButton(std::wstring_view path, std::wstring_view tooltip, double 
   button.Resources().Insert(box_value(L"ButtonBorderBrushPointerOver"), border_hover);
   button.Resources().Insert(box_value(L"ButtonBorderBrushPressed"), border_hover);
   button.Content(ActionButtonPathIcon(path, scale));
-  ToolTipService::SetToolTip(button, box_value(tooltip));
+  SetSettingsToolTip(button, tooltip);
   return button;
 }
 
@@ -3729,7 +3758,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
       left.HorizontalAlignment(HorizontalAlignment::Stretch);
       left.PlaceholderText(L"拼音 A");
       left.Text(left_value);
-      ToolTipService::SetToolTip(left, box_value(L"例如 n"));
+      SetSettingsToolTip(left, L"例如 n");
       Grid::SetColumn(left, 0);
       row.Children().Append(left);
 
@@ -3748,7 +3777,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
       right.HorizontalAlignment(HorizontalAlignment::Stretch);
       right.PlaceholderText(L"拼音 B");
       right.Text(right_value);
-      ToolTipService::SetToolTip(right, box_value(L"例如 l"));
+      SetSettingsToolTip(right, L"例如 l");
       Grid::SetColumn(right, 2);
       row.Children().Append(right);
 
@@ -4017,7 +4046,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
       process.HorizontalAlignment(HorizontalAlignment::Stretch);
       process.PlaceholderText(L"process.exe 或 *.exe");
       process.Text(process_value);
-      ToolTipService::SetToolTip(process, box_value(L"例如 explorer.exe 或 *.exe"));
+      SetSettingsToolTip(process, L"例如 explorer.exe 或 *.exe");
       Grid::SetColumn(process, 0);
       row.Children().Append(process);
 
@@ -4489,7 +4518,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
       label.TextWrapping(TextWrapping::NoWrap);
       label.TextTrimming(TextTrimming::CharacterEllipsis);
       label.VerticalAlignment(VerticalAlignment::Center);
-      ToolTipService::SetToolTip(label, box_value(fp::Utf8ToWide(name)));
+      SetSettingsToolTip(label, fp::Utf8ToWide(name));
       Grid::SetColumn(label, 0);
       row.Children().Append(label);
 
@@ -4947,7 +4976,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
       frame.HorizontalAlignment(HorizontalAlignment::Stretch);
       frame.Height(kThemePresetCardHeight);
       frame.UseLayoutRounding(true);
-      ToolTipService::SetToolTip(frame, box_value(preset.label));
+      SetSettingsToolTip(frame, preset.label);
       apply_card_visual(preset.id, frame);
 
       frame.Tapped([selected,
@@ -5599,7 +5628,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
           SetHotkeyRecorderDisplay(editor, key, L"");
           RequestInputStateRefreshDeferred(80);
         });
-    ToolTipService::SetToolTip(clear, box_value(L"清除"));
+    SetSettingsToolTip(clear, L"清除");
     controls.Children().Append(clear);
 
     auto reset = StableInlinePathActionButton(
@@ -5611,7 +5640,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
           SetHotkeyRecorderDisplay(editor, key, fallback);
           RequestInputStateRefreshDeferred(80);
         });
-    ToolTipService::SetToolTip(reset, box_value(L"恢复默认"));
+    SetSettingsToolTip(reset, L"恢复默认");
     controls.Children().Append(reset);
 
     return SettingWideRowWithIcon(title,

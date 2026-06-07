@@ -102,19 +102,16 @@ def load_assets(dependencies):
             assets = dict(DEFAULT_ASSETS)
             ASSETS_PATH.write_text(json.dumps(assets, indent=2), encoding="utf-8")
 
+    updated = False
     for dep_id, dependency in dependencies.items():
         name_key = dep_id
         url_key = f"{dep_id}Url"
-        if assets.get(name_key) != dependency["name"]:
-            raise RuntimeError(
-                f"Dependency manifest mismatch for {dep_id}: "
-                f"{name_key}={assets.get(name_key)!r}, expected {dependency['name']!r}"
-            )
-        if assets.get(url_key) != dependency["url"]:
-            raise RuntimeError(
-                f"Dependency manifest mismatch for {dep_id}: "
-                f"{url_key}={assets.get(url_key)!r}, expected {dependency['url']!r}"
-            )
+        if assets.get(name_key) != dependency["name"] or assets.get(url_key) != dependency["url"]:
+            assets[name_key] = dependency["name"]
+            assets[url_key] = dependency["url"]
+            updated = True
+    if updated:
+        ASSETS_PATH.write_text(json.dumps(assets, indent=2), encoding="utf-8")
     return assets
 
 
@@ -163,13 +160,21 @@ def get_asset_file(name, url, force, dependencies):
             f"URL mismatch for {name}: expected {dependency['url']}, got {url}"
         )
     archive = DOWNLOADS_DIR / name
-    if force or not archive.exists():
-        print(f"Downloading {url}")
-        with urllib.request.urlopen(url) as response, archive.open("wb") as output:
-            shutil.copyfileobj(response, output)
-    else:
-        print(f"Using cached {archive}")
-    verify_asset_file(archive, dependency)
+    for attempt in range(2):
+        if force or not archive.exists():
+            print(f"Downloading {url}")
+            with urllib.request.urlopen(url) as response, archive.open("wb") as output:
+                shutil.copyfileobj(response, output)
+        else:
+            print(f"Using cached {archive}")
+        try:
+            verify_asset_file(archive, dependency)
+            break
+        except RuntimeError:
+            if force or attempt > 0:
+                raise
+            print(f"Cached dependency {archive.name} failed verification; downloading again.")
+            archive.unlink(missing_ok=True)
     return archive
 
 
