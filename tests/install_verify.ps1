@@ -1,6 +1,6 @@
 param(
   [string]$InstallDir = "C:\Program Files\FluentPinyin",
-  [string]$ExpectedVersion = "00.00.05",
+  [string]$ExpectedVersion = "00.00.06",
   [string]$ExpectedProductCode = "",
   [switch]$RequireWanxiangPatch
 )
@@ -80,6 +80,8 @@ $runtime = Start-Process -FilePath $devtools -ArgumentList "ensure-winapp-runtim
 Assert-True ($runtime.ExitCode -eq 0) "ensure-winapp-runtime failed with exit code $($runtime.ExitCode)"
 $smoke = Start-Process -FilePath $devtools -ArgumentList "smoke" -Wait -PassThru -WindowStyle Hidden
 Assert-True ($smoke.ExitCode -eq 0) "devtools smoke failed with exit code $($smoke.ExitCode)"
+$langbar = Start-Process -FilePath $devtools -ArgumentList "langbar" -Wait -PassThru -WindowStyle Hidden
+Assert-True ($langbar.ExitCode -eq 0) "devtools langbar verification failed with exit code $($langbar.ExitCode)"
 
 $scriptDir = if (-not [string]::IsNullOrWhiteSpace($PSScriptRoot)) {
   $PSScriptRoot
@@ -101,6 +103,10 @@ if ($RequireWanxiangPatch) {
   $proText = Get-Content -LiteralPath $proPatch -Raw -Encoding UTF8
   Assert-True ($baseText -match "translator/enable_user_dict:\s*true") "Wanxiang base translator tuning is not enabled"
   Assert-True ($proText -match "translator/enable_user_dict:\s*false") "Wanxiang pro translator tuning should remain disabled"
+  Assert-True ($baseText -match "grammar/language:\s*wanxiang-lts-zh-hans") "Wanxiang large grammar model is not enabled"
+  Assert-True ($baseText -match "user_predict/enable_post_predict:\s*true") "Wanxiang post-commit prediction is not enabled"
+  Assert-True ($baseText -match "user_predict/enable_context_reorder:\s*true") "Wanxiang input-time word order learning is not enabled"
+  Assert-True ($baseText -match "user_predict/enable_fallback_reorder:\s*true") "Wanxiang fallback word order learning is not enabled"
 }
 
 Write-Host "Install verification passed for FluentPinyin $ExpectedVersion"

@@ -631,7 +631,7 @@ const std::array<WanxiangModeDefinition, 14>& WanxiangModeDefinitions() {
       {L"自动造词",
        L"启用自动造词和英文造词过滤器。",
        L"wanxiang_auto_phrase_enabled",
-       false,
+       true,
        L"词",
        L""},
       {L"手动造词",

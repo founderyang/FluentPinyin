@@ -24,7 +24,7 @@ void TestReleaseJsonSuccess() {
        "name": "FluentPinyin.msi",
        "extra": [true, false, null, {"escaped": "\u6d41\u7545"}]}
     ],
-    "tag_name": "v00.00.05",
+    "tag_name": "v00.00.06",
     "nested": {"tag_name": "v99.99.99"}
   })";
   const auto release = fp::updater::ParseReleaseInfo(json, "FluentPinyin.msi");
@@ -32,7 +32,7 @@ void TestReleaseJsonSuccess() {
   if (!release) {
     return;
   }
-  Expect(release->tag == "v00.00.05", "ParseReleaseInfo reads root tag_name");
+  Expect(release->tag == "v00.00.06", "ParseReleaseInfo reads root tag_name");
   Expect(release->asset_name == "FluentPinyin.msi", "ParseReleaseInfo preserves requested asset");
   Expect(release->asset_url == "https://example.invalid/FluentPinyin.msi?x=quote%5C%22",
          "ParseReleaseInfo reads matching asset download URL");

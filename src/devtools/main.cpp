@@ -119,6 +119,142 @@ bool IsMicrosoftPinyinProfile(const TF_INPUTPROCESSORPROFILE& profile) {
          IsEqualGUID(profile.guidProfile, kMicrosoftPinyinProfileGuid);
 }
 
+std::wstring FluentPinyinTipProfileKey() {
+  return L"Software\\Microsoft\\CTF\\TIP\\" + GuidToString(fp::tsf::kTextServiceClsid) +
+         L"\\LanguageProfile\\0x00000804\\" + GuidToString(fp::tsf::kProfileGuid);
+}
+
+std::wstring FluentPinyinUserLanguageProfileKey() {
+  return L"Control Panel\\International\\User Profile\\zh-Hans-CN";
+}
+
+std::wstring FluentPinyinUserProfileKey() {
+  return L"Control Panel\\International\\User Profile";
+}
+
+std::wstring FluentPinyinUserLanguageProfileValueName() {
+  return L"0804:" + GuidToString(fp::tsf::kTextServiceClsid) +
+         GuidToString(fp::tsf::kProfileGuid);
+}
+
+bool RegistryDwordEquals(HKEY root,
+                         std::wstring_view subkey,
+                         std::wstring_view name,
+                         DWORD expected) {
+  DWORD value = 0;
+  DWORD size = sizeof(value);
+  const LSTATUS status = RegGetValueW(root,
+                                      std::wstring(subkey).c_str(),
+                                      std::wstring(name).c_str(),
+                                      RRF_RT_REG_DWORD,
+                                      nullptr,
+                                      &value,
+                                      &size);
+  return status == ERROR_SUCCESS && value == expected;
+}
+
+bool RegistryStringEquals(HKEY root,
+                          std::wstring_view subkey,
+                          std::wstring_view name,
+                          std::wstring_view expected) {
+  std::wstring value(32768, L'\0');
+  DWORD size = static_cast<DWORD>(value.size() * sizeof(wchar_t));
+  DWORD type = 0;
+  const LSTATUS status = RegGetValueW(root,
+                                      std::wstring(subkey).c_str(),
+                                      std::wstring(name).c_str(),
+                                      RRF_RT_REG_SZ | RRF_RT_REG_EXPAND_SZ,
+                                      &type,
+                                      value.data(),
+                                      &size);
+  if (status != ERROR_SUCCESS || size == 0) {
+    return false;
+  }
+  value.resize((size / sizeof(wchar_t)) - 1);
+  return _wcsicmp(value.c_str(), std::wstring(expected).c_str()) == 0;
+}
+
+bool SetRegistryDword(HKEY root,
+                      std::wstring_view subkey,
+                      std::wstring_view name,
+                      DWORD value) {
+  HKEY key = nullptr;
+  const LSTATUS open_status = RegCreateKeyExW(root,
+                                              std::wstring(subkey).c_str(),
+                                              0,
+                                              nullptr,
+                                              REG_OPTION_NON_VOLATILE,
+                                              KEY_WRITE,
+                                              nullptr,
+                                              &key,
+                                              nullptr);
+  if (open_status != ERROR_SUCCESS) {
+    return false;
+  }
+  const LSTATUS write_status = RegSetValueExW(key,
+                                              std::wstring(name).c_str(),
+                                              0,
+                                              REG_DWORD,
+                                              reinterpret_cast<const BYTE*>(&value),
+                                              sizeof(value));
+  RegCloseKey(key);
+  return write_status == ERROR_SUCCESS;
+}
+
+bool SetRegistryString(HKEY root,
+                       std::wstring_view subkey,
+                       std::wstring_view name,
+                       std::wstring_view value) {
+  HKEY key = nullptr;
+  const LSTATUS open_status = RegCreateKeyExW(root,
+                                              std::wstring(subkey).c_str(),
+                                              0,
+                                              nullptr,
+                                              REG_OPTION_NON_VOLATILE,
+                                              KEY_WRITE,
+                                              nullptr,
+                                              &key,
+                                              nullptr);
+  if (open_status != ERROR_SUCCESS) {
+    return false;
+  }
+  const std::wstring value_text(value);
+  const LSTATUS write_status =
+      RegSetValueExW(key,
+                     std::wstring(name).c_str(),
+                     0,
+                     REG_SZ,
+                     reinterpret_cast<const BYTE*>(value_text.c_str()),
+                     static_cast<DWORD>((value_text.size() + 1) * sizeof(wchar_t)));
+  RegCloseKey(key);
+  return write_status == ERROR_SUCCESS;
+}
+
+bool EnsureCurrentUserFluentPinyinLanguageProfile() {
+  bool ok = true;
+  ok = SetRegistryDword(HKEY_CURRENT_USER,
+                        FluentPinyinUserLanguageProfileKey(),
+                        FluentPinyinUserLanguageProfileValueName(),
+                        1) &&
+       ok;
+  ok = SetRegistryString(HKEY_CURRENT_USER,
+                         FluentPinyinUserProfileKey(),
+                         L"InputMethodOverride",
+                         FluentPinyinUserLanguageProfileValueName()) &&
+       ok;
+  ok = SetRegistryString(HKEY_CURRENT_USER, L"Keyboard Layout\\Preload", L"1", L"e0200804") &&
+       ok;
+  SendNotifyMessageW(HWND_BROADCAST,
+                     WM_SETTINGCHANGE,
+                     0,
+                     reinterpret_cast<LPARAM>(L"Control Panel\\International\\User Profile"));
+  SendNotifyMessageW(HWND_BROADCAST,
+                     WM_SETTINGCHANGE,
+                     0,
+                     reinterpret_cast<LPARAM>(L"Keyboard Layout"));
+  return ok;
+}
+
 struct FontEntry {
   std::wstring_view file;
   std::wstring_view name;
@@ -1636,6 +1772,10 @@ int ActivateProfile(DWORD scope_flags) {
     std::wcerr << L"ActivateProfile failed: " << HresultToString(result) << L"\n";
     return 1;
   }
+  if (!EnsureCurrentUserFluentPinyinLanguageProfile()) {
+    std::wcerr << L"Failed to refresh current-user FluentPinyin language profile.\n";
+    return 1;
+  }
 
   std::cout << "FluentPinyin profile activation requested";
   if ((scope_flags & TF_IPPMF_FORSESSION) != 0) {
@@ -1841,22 +1981,104 @@ int InspectLangBar() {
     std::cout << "LangBar items: " << count << "\n";
   }
 
-  ComPtr<ITfLangBarItem> input_mode;
-  result = manager->GetItem(fp::tsf::kInputModeLangBarItemGuid, input_mode.put());
-  std::cout << "GetItem(kInputModeLangBarItemGuid): " << fp::WideToUtf8(HresultToString(result))
-            << "\n";
-  if (SUCCEEDED(result) && input_mode) {
+  auto inspect_item = [&](REFGUID guid,
+                          const char* label,
+                          std::wstring_view expected_description,
+                          std::initializer_list<std::wstring_view> expected_texts,
+                          bool expect_text_color_icon) {
+    bool ok = true;
+    ComPtr<ITfLangBarItem> item;
+    const HRESULT get_result = manager->GetItem(guid, item.put());
+    std::cout << "GetItem(" << label << "): "
+              << fp::WideToUtf8(HresultToString(get_result)) << "\n";
+    if (FAILED(get_result) || !item) {
+      return false;
+    }
+
     TF_LANGBARITEMINFO info{};
     DWORD status = 0;
-    if (SUCCEEDED(input_mode->GetInfo(&info))) {
+    if (SUCCEEDED(item->GetInfo(&info))) {
       std::cout << "  clsid: " << fp::WideToUtf8(GuidToString(info.clsidService)) << "\n";
       std::cout << "  desc:  " << fp::WideToUtf8(info.szDescription) << "\n";
       std::cout << "  style: 0x" << std::hex << info.dwStyle << std::dec << "\n";
+      ok = ok && IsEqualGUID(info.guidItem, guid) &&
+           IsEqualCLSID(info.clsidService, fp::tsf::kTextServiceClsid) &&
+           std::wstring_view(info.szDescription) == expected_description &&
+           (info.dwStyle & TF_LBI_STYLE_SHOWNINTRAY) != 0 &&
+           (info.dwStyle & TF_LBI_STYLE_BTN_BUTTON) != 0;
+      const bool text_color_icon = (info.dwStyle & TF_LBI_STYLE_TEXTCOLORICON) != 0;
+      ok = ok && text_color_icon == expect_text_color_icon;
+    } else {
+      ok = false;
     }
-    if (SUCCEEDED(input_mode->GetStatus(&status))) {
+    if (SUCCEEDED(item->GetStatus(&status))) {
       std::cout << "  status: 0x" << std::hex << status << std::dec << "\n";
+    } else {
+      ok = false;
     }
-  }
+
+    ITfLangBarItemButton* button = nullptr;
+    result = item->QueryInterface(IID_ITfLangBarItemButton,
+                                  reinterpret_cast<void**>(&button));
+    if (FAILED(result) || button == nullptr) {
+      std::cout << "  button: unavailable\n";
+      return false;
+    }
+    BSTR text = nullptr;
+    result = button->GetText(&text);
+    if (SUCCEEDED(result) && text != nullptr) {
+      const std::wstring value(text, SysStringLen(text));
+      std::cout << "  text:  " << fp::WideToUtf8(value) << "\n";
+      bool text_ok = false;
+      for (std::wstring_view expected : expected_texts) {
+        text_ok = text_ok || value == expected;
+      }
+      ok = ok && text_ok;
+      SysFreeString(text);
+    } else {
+      ok = false;
+    }
+    HICON icon = nullptr;
+    result = button->GetIcon(&icon);
+    std::cout << "  icon:  " << fp::WideToUtf8(HresultToString(result)) << "\n";
+    ok = ok && SUCCEEDED(result) && icon != nullptr;
+    button->Release();
+    return ok;
+  };
+
+  const bool brand_ok = inspect_item(fp::tsf::kBrandLangBarItemGuid,
+                                     "kBrandLangBarItemGuid",
+                                     L"\u6D41\u7545\u62FC\u97F3",
+                                     {L"\u7545"},
+                                     false);
+  const bool input_mode_ok = inspect_item(fp::tsf::kInputModeLangBarItemGuid,
+                                          "kInputModeLangBarItemGuid",
+                                          L"\u4E2D\u82F1\u5207\u6362",
+                                          {L"\u7545"},
+                                          true);
+  const bool user_profile_ok =
+      RegistryDwordEquals(HKEY_CURRENT_USER,
+                          FluentPinyinUserLanguageProfileKey(),
+                          FluentPinyinUserLanguageProfileValueName(),
+                          1) &&
+      RegistryStringEquals(HKEY_CURRENT_USER,
+                           FluentPinyinUserProfileKey(),
+                           L"InputMethodOverride",
+                           FluentPinyinUserLanguageProfileValueName()) &&
+      RegistryStringEquals(HKEY_CURRENT_USER, L"Keyboard Layout\\Preload", L"1", L"e0200804");
+  std::cout << "Current-user language profile entry: "
+            << (user_profile_ok ? "ok" : "missing") << "\n";
+  const bool layout_text_ok =
+      RegistryStringEquals(HKEY_LOCAL_MACHINE,
+                           L"SYSTEM\\CurrentControlSet\\Control\\Keyboard Layouts\\E0200804",
+                           L"Layout Text",
+                           fp::tsf::kLanguageListLabel) &&
+      RegistryStringEquals(HKEY_LOCAL_MACHINE,
+                           L"SYSTEM\\CurrentControlSet\\Control\\Keyboard Layouts\\E0200804",
+                           L"Layout Display Name",
+                           fp::tsf::kLanguageListLabel);
+  std::cout << "Substitute keyboard layout label: "
+            << (layout_text_ok ? "ok" : "wrong") << "\n";
 
   service->Deactivate();
   const HRESULT deactivate_thread_result = thread_mgr->Deactivate();
@@ -1865,7 +2087,7 @@ int InspectLangBar() {
                << L"\n";
     return 1;
   }
-  return 0;
+  return brand_ok && input_mode_ok && user_profile_ok && layout_text_ok ? 0 : 2;
 }
 
 int ShowToolbarForVerification() {

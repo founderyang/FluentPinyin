@@ -41,6 +41,16 @@ void TestWanxiangTranslatorTuningPatch() {
          "Wanxiang base keeps main translator user dictionary tuning enabled");
   Expect(pro_patch.find("translator/enable_user_dict: false") != std::string::npos,
          "Wanxiang pro keeps main translator user dictionary tuning disabled");
+  Expect(base_patch.find("grammar/language: wanxiang-lts-zh-hans") != std::string::npos,
+         "Wanxiang base enables the LTS grammar model by default");
+  Expect(base_patch.find("user_predict/enable_post_predict: true") != std::string::npos,
+         "Wanxiang base enables post-commit prediction by default");
+  Expect(base_patch.find("user_predict/enable_context_reorder: true") != std::string::npos,
+         "Wanxiang base enables input-time word order learning by default");
+  Expect(base_patch.find("user_predict/enable_fallback_reorder: true") != std::string::npos,
+         "Wanxiang base enables fallback word order learning by default");
+  Expect(base_patch.find("add_user_dict/enable_auto_phrase: true") != std::string::npos,
+         "Wanxiang base enables automatic phrase learning by default");
 
   const std::string base_fingerprint =
       fp::core::detail::BuildWanxiangSettingFingerprintForTesting(false);
@@ -52,6 +62,12 @@ void TestWanxiangTranslatorTuningPatch() {
   Expect(pro_fingerprint.find("main_translator_user_dict_enabled=0") !=
              std::string::npos,
          "Wanxiang pro fingerprint includes tuning disabled");
+  Expect(base_fingerprint.find("wanxiang_large_model_enabled=1") !=
+             std::string::npos,
+         "Wanxiang fingerprint includes large model enabled");
+  Expect(base_fingerprint.find("wanxiang_auto_word_order_enabled=1") !=
+             std::string::npos,
+         "Wanxiang fingerprint includes automatic word order learning enabled");
 }
 
 void TestRimeCandidateSmoke() {

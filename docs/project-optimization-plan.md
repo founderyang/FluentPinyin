@@ -1,6 +1,6 @@
 # 流畅拼音项目优化方案
 
-本文档整合用户反馈、两份外部优化意见、当前代码审计和 00.00.05 已完成优化，作为后续拆分执行、回滚和发布的依据。
+本文档整合用户反馈、两份外部优化意见、当前代码审计和 00.00.06 已完成优化，作为后续拆分执行、回滚和发布的依据。
 
 ## 目标
 
@@ -9,8 +9,8 @@
 - 确保设置页所有功能真实生效，尤其候选框字体大小、字体族、布局、DPI。
 - 字体继续私有加载，卸载后不留下系统字体注册残留。
 - 万象 Base 开启主 `translator` 调频，`wanxiang_pro` 保持关闭；不修改 RIME 和万象上游文件。
-- 版本保持 `00.00.05`，发布物、README、GitHub About 和 Release 文案使用中文。
-- 只维护 `main` 和 `codex/optimization-test` 两个分支；每批完成后推送测试分支，验证通过后合并 `main` 并刷新 Release。
+- 版本保持 `00.00.06`，发布物、README、GitHub About 和 Release 文案使用中文。
+- 只维护 `main` 和 `test` 两个分支；每批完成后推送测试分支，验证通过后合并 `main` 并刷新 Release。
 
 ## 硬约束
 
@@ -23,7 +23,7 @@
 
 ## 当前状态
 
-- `00.00.05` 已完成多轮性能、安全、安装和 QQ/TIM 宿主兼容修复。
+- `00.00.06` 已完成多轮性能、安全、安装和 QQ/TIM 宿主兼容修复。
 - 已加入 Rime warmup/cache、候选窗布局缓存、候选框字体设置即时刷新、多显示器 DPI 适配、Windows App Runtime 安装器、私有字体检查、万象 Base/Pro 调频 patch。
 - 已加入日志文件句柄复用、INFO flush 节流、8MB 日志轮转。
 - README、安装包 README、GitHub About、Release notes 已中文化。
@@ -244,7 +244,7 @@
 - 增加 CI 阈值。
 - 不拆分 `wanxiang-lts-zh-hans.gram` 为可选下载。
 - 不提供“无扩展字体”的基础版安装包。
-- `00.00.05` 必须完整打包包含上游万象模型、词库和当前字体资源，保持离线可用体验。
+- `00.00.06` 必须完整打包包含上游万象模型、词库和当前字体资源，保持离线可用体验。
 - 体积治理只用于发现异常增长、清理重复文件和优化打包流程，不以移除万象模型或字体为目标。
 
 ## 当前执行队列
@@ -253,5 +253,5 @@
 2. 已完成 QQ/TIM 宿主冲突修复：TSF 通过 IPC 访问 `fluent-pinyin-corehost.exe`，宿主进程不再加载 core/Rime。
 3. 已完成 package smoke 对万象 grammar 完整性、上游 patch 污染、私有字体打包、resource manifest 和 `fluent-pinyin-corehost.exe` 的检查。
 4. 已完成本机安装验证：`install_verify.ps1` 会检查版本、ProductCode、中文 README、私有字体、Windows App Runtime、devtools smoke、万象 Base/Pro patch，并运行真实 `settings.ini` 写读恢复验证。
-5. `00.00.05` 发布前必须运行：Release build、CTest、package smoke、安装验证、已安装 corehost smoke、进程模块隔离扫描。
-6. 截至当前版本，`tsf_text_service.cpp` 和 `config_winui/main.cpp` 仍未完全拆分；维护性重构继续按 P2 顺序推进，必须小步验证，不得影响 `00.00.05` 已验证行为，也不得拆分万象模型或移除字体资源。
+5. `00.00.06` 发布前必须运行：Release build、CTest、package smoke、安装验证、已安装 corehost smoke、进程模块隔离扫描。
+6. 截至当前版本，`tsf_text_service.cpp` 和 `config_winui/main.cpp` 仍未完全拆分；维护性重构继续按 P2 顺序推进，必须小步验证，不得影响 `00.00.06` 已验证行为，也不得拆分万象模型或移除字体资源。

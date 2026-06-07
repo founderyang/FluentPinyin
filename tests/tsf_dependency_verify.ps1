@@ -61,10 +61,43 @@ foreach ($required in @(
   "kBrandLangBarItemGuid",
   "kInputModeLangBarItemGuid",
   "AddItem(brand_item_)",
-  "AddItem(input_mode_item_)"
+  "AddItem(input_mode_item_)",
+  "CachedFluentPinyinBrandIcon(width, height)",
+  "CreateTrayInputIcon(mode)",
+  "UserLanguageProfileKeyName()",
+  "UserLanguageProfileKey()",
+  "InputMethodOverride",
+  "KeyboardPreloadKey()",
+  "SubstituteKeyboardLayoutId()"
 )) {
   if ($sourceText -notmatch [regex]::Escape($required)) {
     throw "TSF language bar must keep the tray brand logo and 中/英 input-state item side by side. Missing source marker: $required"
+  }
+}
+
+foreach ($requiredPattern in @(
+  'kind_\s*==\s*LangBarItemKind::kBrand[\s\S]*info->guidItem\s*=\s*kBrandLangBarItemGuid',
+  'kind_\s*==\s*LangBarItemKind::kBrand[\s\S]*CachedFluentPinyinBrandIcon\(width,\s*height\)',
+  'else\s*\{[\s\S]*info->guidItem\s*=\s*kInputModeLangBarItemGuid',
+  'else\s*\{[\s\S]*TF_LBI_STYLE_TEXTCOLORICON',
+  'else\s*\{[\s\S]*CreateTrayInputIcon\(mode\)',
+  'STDMETHODIMP GetText\(BSTR\* text\)[\s\S]*SysAllocString\(L"\\u7545"\)',
+  'SetRegistryDwordIfChanged\(\s*HKEY_CURRENT_USER,\s*UserLanguageProfileKey\(\),\s*UserLanguageProfileKeyName\(\)\.c_str\(\),\s*1\)',
+  'SetRegistryStringIfChanged\(\s*HKEY_CURRENT_USER,\s*UserProfileKey\(\),\s*L"InputMethodOverride",\s*UserLanguageProfileKeyName\(\)\)',
+  'SetRegistryStringIfChanged\(\s*HKEY_CURRENT_USER,\s*KeyboardPreloadKey\(\),\s*L"1",\s*SubstituteKeyboardLayoutId\(\)\)'
+)) {
+  if ($sourceText -notmatch $requiredPattern) {
+    throw "TSF language-bar behavior regression: missing required separated brand/input-mode implementation pattern."
+  }
+}
+
+foreach ($forbiddenPattern in @(
+  'kBrandLangBarItemGuid[\s\S]{0,300}TF_LBI_STYLE_TEXTCOLORICON',
+  'LangBarItemKind::kBrand[\s\S]{0,500}CreateTrayInputIcon',
+  'LangBarItemKind::kInputMode[\s\S]{0,500}CachedFluentPinyinBrandIcon'
+)) {
+  if ($sourceText -match $forbiddenPattern) {
+    throw "TSF language bar mixed brand and input-state behavior; 畅 and 中/英 must remain separate side-by-side items."
   }
 }
 

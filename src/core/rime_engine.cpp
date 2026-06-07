@@ -473,7 +473,7 @@ struct InputSchemaSelection {
   bool wanxiang_english_enabled = true;
   bool wanxiang_mixed_code_enabled = true;
   bool wanxiang_input_statistics_enabled = false;
-  bool wanxiang_auto_phrase_enabled = false;
+  bool wanxiang_auto_phrase_enabled = true;
   bool wanxiang_user_phrase_enabled = false;
   bool wanxiang_schema_shortcuts_enabled = false;
   bool main_translator_user_dict_enabled = true;
@@ -531,7 +531,7 @@ InputSchemaSelection CurrentInputSchemaSelection() {
   selection.wanxiang_input_statistics_enabled =
       WanxiangModeSetting(L"wanxiang_input_statistics_enabled", false);
   selection.wanxiang_auto_phrase_enabled =
-      WanxiangModeSetting(L"wanxiang_auto_phrase_enabled", false);
+      WanxiangModeSetting(L"wanxiang_auto_phrase_enabled", true);
   selection.wanxiang_user_phrase_enabled =
       WanxiangModeSetting(L"wanxiang_user_phrase_enabled", false);
   selection.wanxiang_schema_shortcuts_enabled =
@@ -596,6 +596,8 @@ InputSchemaSelection CurrentInputSchemaSelection() {
                                   (selection.wanxiang_user_phrase_enabled ? "1" : "0") +
                                   "\nwanxiang_schema_shortcuts_enabled=" +
                                   (selection.wanxiang_schema_shortcuts_enabled ? "1" : "0") +
+                                  "\nwanxiang_large_model_enabled=1" +
+                                  "\nwanxiang_auto_word_order_enabled=1" +
                                   "\nfuzzy_pinyin_rules=" + fuzzy_rules_fingerprint +
                                   "\nfuzzy_pinyin_custom_rules=" +
                                   custom_rules_fingerprint + "\n";
@@ -945,7 +947,6 @@ std::string FluentPinyinWanxiangCustomPatch(const InputSchemaSelection& selectio
       "# Stable runtime: keep core pinyin candidates local and avoid Lua userdb locks.\n"
       "patch:\n"
       "  schema/name: \"\\u6d41\\u7545\\u62fc\\u97f3\"\n"
-      "  grammar/language: wanxiang-lts-zh-hans\n"
       "  speller/algebra:\n"
       "    __patch:\n";
   if (selection.fuzzy_pinyin) {
@@ -972,11 +973,12 @@ std::string FluentPinyinWanxiangCustomPatch(const InputSchemaSelection& selectio
       std::string(MainTranslatorUserDictEnabled(selection) ? "true" : "false") + "\n"
       "  translator/enable_correction: " +
       std::string(selection.auto_pinyin_correction ? "true" : "false") + "\n"
+      "  grammar/language: wanxiang-lts-zh-hans\n"
       "  wanxiang_english/enable_user_dict: false\n"
       "  wanxiang_mixedcode/enable_user_dict: false\n"
-      "  user_predict/enable_post_predict: false\n"
-      "  user_predict/enable_context_reorder: false\n"
-      "  user_predict/enable_fallback_reorder: false\n";
+      "  user_predict/enable_post_predict: true\n"
+      "  user_predict/enable_context_reorder: true\n"
+      "  user_predict/enable_fallback_reorder: true\n";
   const bool use_managed_dictionary =
       use_imported_dictionary &&
       (selection.user_lexicon_enabled || selection.imported_lexicons_enabled);
@@ -1329,6 +1331,9 @@ std::string BuildWanxiangSettingFingerprintForTesting(bool pro) {
   selection.setting_fingerprint =
       "input_scheme=" + std::string(pro ? "double_pinyin" : "pinyin") +
       "\ndouble_pinyin_scheme=zrm"
+      "\nwanxiang_auto_phrase_enabled=1"
+      "\nwanxiang_large_model_enabled=1"
+      "\nwanxiang_auto_word_order_enabled=1"
       "\nfuzzy_pinyin_rules="
       "\nfuzzy_pinyin_custom_rules=\n";
   AppendMainTranslatorUserDictFingerprint(&selection);

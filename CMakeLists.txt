@@ -1,6 +1,6 @@
 ﻿cmake_minimum_required(VERSION 3.24)
 
-project(FluentPinyin VERSION 00.00.05 LANGUAGES CXX)
+project(FluentPinyin VERSION 00.00.06 LANGUAGES CXX)
 
 include(CTest)
 

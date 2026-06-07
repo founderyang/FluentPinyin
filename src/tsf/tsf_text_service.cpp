@@ -1574,6 +1574,26 @@ std::wstring TipLanguageProfileKey() {
          L"\\LanguageProfile\\0x00000804\\" + GuidToString(kProfileGuid);
 }
 
+std::wstring UserLanguageProfileKeyName() {
+  return L"0804:" + GuidToString(kTextServiceClsid) + GuidToString(kProfileGuid);
+}
+
+std::wstring UserLanguageProfileKey() {
+  return L"Control Panel\\International\\User Profile\\zh-Hans-CN";
+}
+
+std::wstring UserProfileKey() {
+  return L"Control Panel\\International\\User Profile";
+}
+
+std::wstring KeyboardPreloadKey() {
+  return L"Keyboard Layout\\Preload";
+}
+
+std::wstring SubstituteKeyboardLayoutId() {
+  return L"e0200804";
+}
+
 std::filesystem::path ProfileIconPathForSystemTheme() {
   const auto icon = ModuleDirectory() / L"fluent-pinyin.ico";
   if (GetFileAttributesW(icon.c_str()) != INVALID_FILE_ATTRIBUTES) {
@@ -1601,6 +1621,38 @@ bool RegistryStringEquals(HKEY root,
   }
   existing.resize((size / sizeof(wchar_t)) - 1);
   return _wcsicmp(existing.c_str(), value.c_str()) == 0;
+}
+
+bool SetRegistryStringIfChanged(HKEY root,
+                                const std::wstring& subkey,
+                                const wchar_t* name,
+                                const std::wstring& value) {
+  if (RegistryStringEquals(root, subkey, name, value)) {
+    return false;
+  }
+
+  HKEY key = nullptr;
+  const LSTATUS open_status = RegCreateKeyExW(root,
+                                              subkey.c_str(),
+                                              0,
+                                              nullptr,
+                                              REG_OPTION_NON_VOLATILE,
+                                              KEY_WRITE,
+                                              nullptr,
+                                              &key,
+                                              nullptr);
+  if (open_status != ERROR_SUCCESS) {
+    return false;
+  }
+  const LSTATUS write_status =
+      RegSetValueExW(key,
+                     name,
+                     0,
+                     REG_SZ,
+                     reinterpret_cast<const BYTE*>(value.c_str()),
+                     static_cast<DWORD>((value.size() + 1) * sizeof(wchar_t)));
+  RegCloseKey(key);
+  return write_status == ERROR_SUCCESS;
 }
 
 bool SetRegistryExpandableStringIfChanged(HKEY root,
@@ -1673,19 +1725,25 @@ bool SetRegistryDwordIfChanged(HKEY root,
 
 void RefreshProfileIconForSystemTheme() {
   const auto icon_path = ProfileIconPathForSystemTheme();
-  if (icon_path.empty()) {
-    return;
-  }
-
-  const std::wstring icon_value = icon_path.wstring();
   const std::wstring profile_key = TipLanguageProfileKey();
   bool changed = false;
-  changed |= SetRegistryExpandableStringIfChanged(
-      HKEY_CURRENT_USER, profile_key, L"IconFile", icon_value);
-  changed |= SetRegistryDwordIfChanged(HKEY_CURRENT_USER, profile_key, L"IconIndex", 0);
-  changed |= SetRegistryExpandableStringIfChanged(
-      HKEY_LOCAL_MACHINE, profile_key, L"IconFile", icon_value);
-  changed |= SetRegistryDwordIfChanged(HKEY_LOCAL_MACHINE, profile_key, L"IconIndex", 0);
+  changed |= SetRegistryStringIfChanged(
+      HKEY_CURRENT_USER, profile_key, L"Display Description", kProfileDescription);
+  if (!icon_path.empty()) {
+    const std::wstring icon_value = icon_path.wstring();
+    changed |= SetRegistryExpandableStringIfChanged(
+        HKEY_CURRENT_USER, profile_key, L"IconFile", icon_value);
+    changed |= SetRegistryDwordIfChanged(HKEY_CURRENT_USER, profile_key, L"IconIndex", 0);
+    changed |= SetRegistryExpandableStringIfChanged(
+        HKEY_LOCAL_MACHINE, profile_key, L"IconFile", icon_value);
+    changed |= SetRegistryDwordIfChanged(HKEY_LOCAL_MACHINE, profile_key, L"IconIndex", 0);
+  }
+  changed |= SetRegistryDwordIfChanged(
+      HKEY_CURRENT_USER, UserLanguageProfileKey(), UserLanguageProfileKeyName().c_str(), 1);
+  changed |= SetRegistryStringIfChanged(
+      HKEY_CURRENT_USER, UserProfileKey(), L"InputMethodOverride", UserLanguageProfileKeyName());
+  changed |= SetRegistryStringIfChanged(
+      HKEY_CURRENT_USER, KeyboardPreloadKey(), L"1", SubstituteKeyboardLayoutId());
   if (changed) {
     SendNotifyMessageW(HWND_BROADCAST,
                        WM_SETTINGCHANGE,
@@ -5894,12 +5952,7 @@ class InputModeLangBarItem final : public ITfLangBarItemButton, public ITfSource
       return E_POINTER;
     }
 
-    *text = SysAllocString(kind_ == LangBarItemKind::kBrand
-                               ? L"\u7545"
-                               : (owner_ != nullptr && owner_->has_input_focus() &&
-                                          owner_->ascii_mode()
-                                      ? L"\u82F1"
-                                      : L"\u4E2D"));
+    *text = SysAllocString(L"\u7545");
     return *text != nullptr ? S_OK : E_OUTOFMEMORY;
   }
 
