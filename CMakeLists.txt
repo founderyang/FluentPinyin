@@ -343,6 +343,7 @@ add_executable(fluent_pinyin_settings WIN32
   src/config_winui/lexicon_store.cpp
   src/config_winui/settings_binding.cpp
   src/config_winui/status_tip_blacklist.cpp
+  src/config_winui/theme_helpers.cpp
   src/sync/sync_service.cpp
   src/config_winui/fluent-pinyin-settings.rc
 )
@@ -472,6 +473,13 @@ if(BUILD_TESTING)
   )
   target_link_libraries(config_status_tip_blacklist_unit PRIVATE fluent_pinyin_common)
 
+  add_executable(config_theme_helpers_unit
+    tests/config_theme_helpers_unit.cpp
+    src/config_winui/settings_binding.cpp
+    src/config_winui/theme_helpers.cpp
+  )
+  target_link_libraries(config_theme_helpers_unit PRIVATE fluent_pinyin_common advapi32)
+
   add_executable(config_lexicon_store_unit
     tests/config_lexicon_store_unit.cpp
     src/config_winui/app_paths.cpp
@@ -578,6 +586,10 @@ if(BUILD_TESTING)
   add_test(
     NAME config_status_tip_blacklist_unit
     COMMAND config_status_tip_blacklist_unit
+  )
+  add_test(
+    NAME config_theme_helpers_unit
+    COMMAND config_theme_helpers_unit
   )
   add_test(
     NAME config_lexicon_store_unit
