@@ -344,6 +344,7 @@ add_executable(fluent_pinyin_settings WIN32
   src/config_winui/settings_binding.cpp
   src/config_winui/status_tip_blacklist.cpp
   src/config_winui/theme_helpers.cpp
+  src/config_winui/window_helpers.cpp
   src/sync/sync_service.cpp
   src/config_winui/fluent-pinyin-settings.rc
 )
@@ -480,6 +481,24 @@ if(BUILD_TESTING)
   )
   target_link_libraries(config_theme_helpers_unit PRIVATE fluent_pinyin_common advapi32)
 
+  add_executable(config_window_helpers_unit
+    tests/config_window_helpers_unit.cpp
+    src/config_winui/window_helpers.cpp
+  )
+  target_include_directories(config_window_helpers_unit PRIVATE
+    "${FP_WINUI_GENERATED_DIR}"
+    "${FP_WINDOWS_SDK_CPPWINRT_INCLUDE}"
+    "${FP_WINAPPSDK_FOUNDATION_ROOT}/include"
+    "${FP_WINAPPSDK_WINUI_ROOT}/include"
+  )
+  target_link_libraries(config_window_helpers_unit PRIVATE
+    fluent_pinyin_common
+    ole32
+    runtimeobject
+    user32
+    windowsapp
+  )
+
   add_executable(config_lexicon_store_unit
     tests/config_lexicon_store_unit.cpp
     src/config_winui/app_paths.cpp
@@ -590,6 +609,10 @@ if(BUILD_TESTING)
   add_test(
     NAME config_theme_helpers_unit
     COMMAND config_theme_helpers_unit
+  )
+  add_test(
+    NAME config_window_helpers_unit
+    COMMAND config_window_helpers_unit
   )
   add_test(
     NAME config_lexicon_store_unit
