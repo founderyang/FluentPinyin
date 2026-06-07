@@ -1,8 +1,11 @@
 #include "common/constants.h"
 #include "common/encoding.h"
 #include "common/path_utils.h"
-#include "common/settings_store.h"
 #include "common/theme.h"
+#include "config_winui/app_paths.h"
+#include "config_winui/hotkey_helpers.h"
+#include "config_winui/settings_binding.h"
+#include "config_winui/status_tip_blacklist.h"
 #include "sync/sync_service.h"
 #include "../tsf/resource.h"
 
@@ -72,6 +75,29 @@ using Windows::Graphics::SizeInt32;
 using Windows::UI::Color;
 using Windows::UI::Text::FontWeights;
 using Windows::UI::Xaml::Interop::TypeName;
+using fp::config_winui::ReadBoolSetting;
+using fp::config_winui::ReadBoolSettingMigrated;
+using fp::config_winui::ReadIntSetting;
+using fp::config_winui::ReadStringSetting;
+using fp::config_winui::RimeUserDataPath;
+using fp::config_winui::ResetSettingsCache;
+using fp::config_winui::SettingsPath;
+using fp::config_winui::SiblingExe;
+using fp::config_winui::NormalizeShortcutDisplay;
+using fp::config_winui::ShortcutDisplayForKey;
+using fp::config_winui::IsShortcutModifierKey;
+using fp::config_winui::ShortcutModifierKeyEquals;
+using fp::config_winui::RecordedShortcutFromKey;
+using fp::config_winui::NormalizeStatusTipBlacklistToken;
+using fp::config_winui::ParseStatusTipBlacklistSetting;
+using fp::config_winui::StatusTipBlacklistContains;
+using fp::config_winui::JoinStatusTipBlacklistItems;
+using fp::config_winui::WriteBoolSetting;
+using fp::config_winui::WriteIntSetting;
+using fp::config_winui::WriteStringSetting;
+using fp::config_winui::EnsureUiFontsLoaded;
+using fp::config_winui::ModuleDirectory;
+using fp::config_winui::WindowIconPath;
 
 constexpr int kDefaultCandidateCount = 7;
 constexpr int kMinCandidateCount = 3;
@@ -121,12 +147,6 @@ SizeInt32 g_min_settings_window_size_dips{kMinSettingsWindowWidthDips,
                                           kMinSettingsWindowHeightDips};
 std::vector<ToggleSwitch> g_toolbar_visible_switches;
 bool g_syncing_toolbar_visible_switches = false;
-
-std::wstring ReadStringSetting(std::wstring_view key, std::wstring_view default_value);
-
-std::filesystem::path RimeUserDataPath() {
-  return fp::GetFpRoamingDataPath() / L"Rime";
-}
 
 std::wstring InitialPageValue() {
   const wchar_t* command_line = GetCommandLineW();
@@ -224,126 +244,6 @@ double SettingsHairlineDip() {
 
 Thickness SettingsHairlineThickness() {
   return UniformThickness(SettingsHairlineDip());
-}
-
-std::filesystem::path SettingsPath() {
-  return fp::GetSettingsPath();
-}
-
-fp::SettingsStore& RuntimeSettingsStore();
-
-void ResetSettingsCache() {
-  RuntimeSettingsStore().Reset();
-}
-
-fp::SettingsStore& RuntimeSettingsStore() {
-  static fp::SettingsStore store;
-  static const bool migrated = store.EnsureSchemaVersion();
-  (void)migrated;
-  return store;
-}
-
-std::filesystem::path ModuleDirectory() {
-  std::wstring buffer(32768, L'\0');
-  const DWORD length =
-      GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
-  if (length == 0 || length >= buffer.size()) {
-    return std::filesystem::current_path();
-  }
-  buffer.resize(length);
-  return std::filesystem::path(buffer).parent_path();
-}
-
-std::filesystem::path SiblingExe(std::wstring_view name) {
-  return ModuleDirectory() / std::wstring(name);
-}
-
-std::wstring WindowIconPath() {
-  const auto app_icon = ModuleDirectory() / L"fluent-pinyin.ico";
-  if (std::filesystem::exists(app_icon)) {
-    return app_icon.wstring();
-  }
-  DWORD light_theme = 1;
-  DWORD size = sizeof(light_theme);
-  RegGetValueW(HKEY_CURRENT_USER,
-               L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
-               L"SystemUsesLightTheme",
-               RRF_RT_REG_DWORD,
-               nullptr,
-               &light_theme,
-               &size);
-  const auto preferred_icon =
-      ModuleDirectory() / (light_theme != 0 ? L"fluent-pinyin-light.ico"
-                                            : L"fluent-pinyin-dark.ico");
-  if (std::filesystem::exists(preferred_icon)) {
-    return preferred_icon.wstring();
-  }
-  const auto dark_icon = ModuleDirectory() / L"fluent-pinyin-dark.ico";
-  if (std::filesystem::exists(dark_icon)) {
-    return dark_icon.wstring();
-  }
-  const auto light_icon = ModuleDirectory() / L"fluent-pinyin-light.ico";
-  if (std::filesystem::exists(light_icon)) {
-    return light_icon.wstring();
-  }
-  return {};
-}
-
-void EnsureUiFontsLoaded() {
-  static std::atomic_bool loaded = false;
-  bool expected = false;
-  if (!loaded.compare_exchange_strong(expected, true)) {
-    return;
-  }
-
-  const auto font_dir = ModuleDirectory() / L"fonts";
-  constexpr std::array<std::wstring_view, 11> font_files{
-      L"MiSans-Regular.ttf",
-      L"MiSans-Medium.ttf",
-      L"MiSans-Semibold.ttf",
-      L"MiSansTC-Regular.ttf",
-      L"MiSansTC-Medium.ttf",
-      L"MiSansTC-Semibold.ttf",
-      L"MiSansL3-Regular.ttf",
-      L"SourceHanSansSC-Regular.otf",
-      L"SourceHanSansTC-Regular.otf",
-      L"PlangothicP1-Regular.ttf",
-      L"PlangothicP2-Regular.ttf",
-  };
-  for (const auto file : font_files) {
-    const auto path = font_dir / std::wstring(file);
-    std::error_code error;
-    if (std::filesystem::exists(path, error)) {
-      AddFontResourceExW(path.c_str(), FR_PRIVATE, nullptr);
-    }
-  }
-}
-
-std::wstring ReadStringSetting(std::wstring_view key, std::wstring_view default_value = L"") {
-  return RuntimeSettingsStore().ReadString(key, default_value);
-}
-
-int ReadIntSetting(std::wstring_view key, int default_value, int min_value, int max_value) {
-  try {
-    return std::clamp(std::stoi(ReadStringSetting(key, std::to_wstring(default_value))),
-                      min_value,
-                      max_value);
-  } catch (...) {
-    return default_value;
-  }
-}
-
-bool ReadBoolSetting(std::wstring_view key, bool default_value) {
-  return RuntimeSettingsStore().ReadBool(key, default_value);
-}
-
-bool ReadBoolSettingMigrated(std::wstring_view key,
-                             bool default_value,
-                             std::wstring_view legacy_key) {
-  if (const std::optional<bool> value = RuntimeSettingsStore().ReadOptionalBool(key)) {
-    return *value;
-  }
-  return ReadBoolSetting(legacy_key, default_value);
 }
 
 using ThemeColor = fp::ThemeColor;
@@ -580,185 +480,6 @@ std::wstring ReadCandidateLayoutSetting(std::wstring_view default_value = L"hori
                                                                                 : L"vertical";
 }
 
-std::wstring TrimWhitespace(std::wstring_view value) {
-  size_t first = 0;
-  while (first < value.size() && std::iswspace(value[first])) {
-    ++first;
-  }
-  size_t last = value.size();
-  while (last > first && std::iswspace(value[last - 1])) {
-    --last;
-  }
-  return std::wstring(value.substr(first, last - first));
-}
-
-std::wstring NormalizeShortcutDisplay(std::wstring_view value) {
-  std::wstring text = TrimWhitespace(value);
-  text.erase(std::remove_if(text.begin(), text.end(), [](wchar_t ch) {
-               return std::iswspace(ch) != 0;
-             }),
-             text.end());
-  if (text.empty()) {
-    return {};
-  }
-
-  std::vector<std::wstring> tokens;
-  size_t start = 0;
-  while (start <= text.size()) {
-    const size_t separator = text.find(L'+', start);
-    const size_t end = separator == std::wstring::npos ? text.size() : separator;
-    std::wstring token = text.substr(start, end - start);
-    std::transform(token.begin(), token.end(), token.begin(), [](wchar_t ch) {
-      return static_cast<wchar_t>(std::towlower(ch));
-    });
-
-    if (token == L"control") {
-      token = L"Ctrl";
-    } else if (token == L"ctrl") {
-      token = L"Ctrl";
-    } else if (token == L"shift") {
-      token = L"Shift";
-    } else if (token == L"alt") {
-      token = L"Alt";
-    } else if (token == L"win" || token == L"windows") {
-      token = L"Win";
-    } else if (token == L"tab") {
-      token = L"Tab";
-    } else if (token == L"pgup" || token == L"pageup") {
-      token = L"PgUp";
-    } else if (token == L"pgdn" || token == L"pagedown") {
-      token = L"PgDn";
-    } else if (token == L"esc" || token == L"escape") {
-      token = L"Esc";
-    } else if (token == L"period") {
-      token = L".";
-    } else if (token == L"comma") {
-      token = L",";
-    } else if (token.size() == 1 && token[0] >= L'a' && token[0] <= L'z') {
-      token[0] = static_cast<wchar_t>(std::towupper(token[0]));
-    }
-
-    if (token.empty()) {
-      return {};
-    }
-    tokens.push_back(std::move(token));
-    if (separator == std::wstring::npos) {
-      break;
-    }
-    start = separator + 1;
-  }
-
-  std::wstring normalized;
-  for (size_t index = 0; index < tokens.size(); ++index) {
-    if (index != 0) {
-      normalized += L"+";
-    }
-    normalized += tokens[index];
-  }
-  return normalized;
-}
-
-bool WriteSettingLine(std::wstring_view key, std::wstring_view value) {
-  if (ReadStringSetting(key) == value) {
-    return false;
-  }
-  return RuntimeSettingsStore().WriteString(key, value);
-}
-
-bool WriteStringSetting(std::wstring_view key, std::wstring_view value) {
-  return WriteSettingLine(key, fp::SanitizeSettingValue(value));
-}
-
-bool WriteBoolSetting(std::wstring_view key, bool value) {
-  return WriteSettingLine(key, value ? L"1" : L"0");
-}
-
-bool WriteIntSetting(std::wstring_view key, int value) {
-  return WriteSettingLine(key, std::to_wstring(value));
-}
-
-std::wstring TrimSettingToken(std::wstring_view value) {
-  size_t first = 0;
-  while (first < value.size() && std::iswspace(value[first])) {
-    ++first;
-  }
-  size_t last = value.size();
-  while (last > first && std::iswspace(value[last - 1])) {
-    --last;
-  }
-  return std::wstring(value.substr(first, last - first));
-}
-
-std::wstring ToLowerSettingToken(std::wstring value) {
-  std::transform(value.begin(), value.end(), value.begin(), [](wchar_t ch) {
-    return static_cast<wchar_t>(std::towlower(ch));
-  });
-  return value;
-}
-
-std::wstring NormalizeStatusTipBlacklistToken(std::wstring_view token) {
-  std::wstring normalized = TrimSettingToken(token);
-  if (normalized.size() >= 2 &&
-      ((normalized.front() == L'"' && normalized.back() == L'"') ||
-       (normalized.front() == L'\'' && normalized.back() == L'\''))) {
-    normalized = TrimSettingToken(
-        std::wstring_view(normalized).substr(1, normalized.size() - 2));
-  }
-  if (normalized.empty()) {
-    return {};
-  }
-  if (normalized.find_first_of(L"*?") == std::wstring::npos &&
-      normalized.find_first_of(L"\\/") != std::wstring::npos) {
-    normalized = std::filesystem::path(normalized).filename().wstring();
-  }
-  return TrimSettingToken(normalized);
-}
-
-bool StatusTipBlacklistContains(const std::vector<std::wstring>& items,
-                                std::wstring_view item) {
-  const std::wstring normalized = ToLowerSettingToken(std::wstring(item));
-  return std::any_of(items.begin(), items.end(), [&normalized](const auto& existing) {
-    return ToLowerSettingToken(existing) == normalized;
-  });
-}
-
-std::vector<std::wstring> ParseStatusTipBlacklistSetting(std::wstring_view value) {
-  std::vector<std::wstring> result;
-  std::wstring token;
-  auto append_token = [&]() {
-    const std::wstring normalized = NormalizeStatusTipBlacklistToken(token);
-    if (!normalized.empty() && !StatusTipBlacklistContains(result, normalized)) {
-      result.push_back(normalized);
-    }
-    token.clear();
-  };
-
-  for (const wchar_t ch : value) {
-    if (ch == L',' || ch == L';' || ch == L'|' || ch == L'\r' || ch == L'\n') {
-      append_token();
-    } else {
-      token.push_back(ch);
-    }
-  }
-  append_token();
-  return result;
-}
-
-std::wstring JoinStatusTipBlacklistItems(const std::vector<std::wstring>& items) {
-  std::wstring value;
-  for (const auto& item : items) {
-    const std::wstring normalized = NormalizeStatusTipBlacklistToken(item);
-    if (normalized.empty()) {
-      continue;
-    }
-    if (!value.empty()) {
-      value.push_back(L',');
-    }
-    value += normalized;
-  }
-  return value;
-}
-
 std::vector<std::wstring> CurrentStatusTipBlacklistItems() {
   return ParseStatusTipBlacklistSetting(
       ReadStringSetting(L"status_tip_blacklist", kDefaultStatusTipBlacklist));
@@ -890,7 +611,15 @@ bool IsSafeRimeDictName(std::string_view name) {
 }
 
 bool ContainsIgnoreCase(const std::wstring& value, const std::wstring& needle) {
-  return ToLowerSettingToken(value).find(ToLowerSettingToken(needle)) != std::wstring::npos;
+  std::wstring lower_value = value;
+  std::wstring lower_needle = needle;
+  std::transform(lower_value.begin(), lower_value.end(), lower_value.begin(), [](wchar_t ch) {
+    return static_cast<wchar_t>(std::towlower(ch));
+  });
+  std::transform(lower_needle.begin(), lower_needle.end(), lower_needle.begin(), [](wchar_t ch) {
+    return static_cast<wchar_t>(std::towlower(ch));
+  });
+  return lower_value.find(lower_needle) != std::wstring::npos;
 }
 
 std::wstring FileStemDisplayName(const std::filesystem::path& path) {
@@ -3489,161 +3218,6 @@ Button ActionPathButton(std::wstring_view text,
   content.Children().Append(label);
   button.Content(content);
   return button;
-}
-
-std::wstring ShortcutDisplayForKey(WPARAM virtual_key) {
-  if (virtual_key >= 'A' && virtual_key <= 'Z') {
-    return std::wstring(1, static_cast<wchar_t>(virtual_key));
-  }
-  if (virtual_key >= '0' && virtual_key <= '9') {
-    return std::wstring(1, static_cast<wchar_t>(virtual_key));
-  }
-  if (virtual_key >= VK_F1 && virtual_key <= VK_F12) {
-    return L"F" + std::to_wstring(virtual_key - VK_F1 + 1);
-  }
-
-  switch (virtual_key) {
-    case VK_SHIFT:
-    case VK_LSHIFT:
-    case VK_RSHIFT:
-      return L"Shift";
-    case VK_CONTROL:
-    case VK_LCONTROL:
-    case VK_RCONTROL:
-      return L"Ctrl";
-    case VK_MENU:
-    case VK_LMENU:
-    case VK_RMENU:
-      return L"Alt";
-    case VK_LWIN:
-    case VK_RWIN:
-      return L"Win";
-    case VK_TAB:
-      return L"Tab";
-    case VK_PRIOR:
-      return L"PgUp";
-    case VK_NEXT:
-      return L"PgDn";
-    case VK_ESCAPE:
-      return L"Esc";
-    case VK_BACK:
-      return L"Backspace";
-    case VK_DELETE:
-      return L"Delete";
-    case VK_INSERT:
-      return L"Insert";
-    case VK_HOME:
-      return L"Home";
-    case VK_END:
-      return L"End";
-    case VK_LEFT:
-      return L"Left";
-    case VK_RIGHT:
-      return L"Right";
-    case VK_UP:
-      return L"Up";
-    case VK_DOWN:
-      return L"Down";
-    case VK_SPACE:
-      return L"Space";
-    case VK_RETURN:
-      return L"Enter";
-    case VK_OEM_PERIOD:
-      return L".";
-    case VK_OEM_COMMA:
-      return L",";
-    case VK_OEM_MINUS:
-      return L"-";
-    case VK_OEM_PLUS:
-      return L"=";
-    case VK_OEM_1:
-      return L";";
-    case VK_OEM_2:
-      return L"/";
-    case VK_OEM_3:
-      return L"`";
-    case VK_OEM_4:
-      return L"[";
-    case VK_OEM_5:
-      return L"\\";
-    case VK_OEM_6:
-      return L"]";
-    case VK_OEM_7:
-      return L"'";
-    default:
-      break;
-  }
-  return {};
-}
-
-bool IsShortcutModifierKey(WPARAM virtual_key) {
-  return virtual_key == VK_SHIFT || virtual_key == VK_LSHIFT || virtual_key == VK_RSHIFT ||
-         virtual_key == VK_CONTROL || virtual_key == VK_LCONTROL || virtual_key == VK_RCONTROL ||
-         virtual_key == VK_MENU || virtual_key == VK_LMENU || virtual_key == VK_RMENU ||
-         virtual_key == VK_LWIN || virtual_key == VK_RWIN;
-}
-
-bool ShortcutModifierKeyEquals(WPARAM expected, WPARAM actual) {
-  if (expected == actual) {
-    return true;
-  }
-  if (expected == VK_SHIFT || expected == VK_LSHIFT || expected == VK_RSHIFT) {
-    return actual == VK_SHIFT || actual == VK_LSHIFT || actual == VK_RSHIFT;
-  }
-  if (expected == VK_CONTROL || expected == VK_LCONTROL || expected == VK_RCONTROL) {
-    return actual == VK_CONTROL || actual == VK_LCONTROL || actual == VK_RCONTROL;
-  }
-  if (expected == VK_MENU || expected == VK_LMENU || expected == VK_RMENU) {
-    return actual == VK_MENU || actual == VK_LMENU || actual == VK_RMENU;
-  }
-  if (expected == VK_LWIN || expected == VK_RWIN) {
-    return actual == VK_LWIN || actual == VK_RWIN;
-  }
-  return false;
-}
-
-std::wstring RecordedShortcutFromKey(WPARAM virtual_key) {
-  const bool ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
-  const bool shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
-  const bool alt = (GetKeyState(VK_MENU) & 0x8000) != 0;
-  const bool win = (GetKeyState(VK_LWIN) & 0x8000) != 0 ||
-                   (GetKeyState(VK_RWIN) & 0x8000) != 0;
-
-  if (IsShortcutModifierKey(virtual_key)) {
-    const int modifier_count = (ctrl ? 1 : 0) + (shift ? 1 : 0) + (alt ? 1 : 0) + (win ? 1 : 0);
-    if (modifier_count != 1) {
-      return {};
-    }
-  }
-
-  std::wstring key = ShortcutDisplayForKey(virtual_key);
-  if (key.empty()) {
-    return {};
-  }
-
-  std::vector<std::wstring> parts;
-  if (ctrl && key != L"Ctrl") {
-    parts.push_back(L"Ctrl");
-  }
-  if (shift && key != L"Shift") {
-    parts.push_back(L"Shift");
-  }
-  if (alt && key != L"Alt") {
-    parts.push_back(L"Alt");
-  }
-  if (win && key != L"Win") {
-    parts.push_back(L"Win");
-  }
-  parts.push_back(std::move(key));
-
-  std::wstring display;
-  for (size_t index = 0; index < parts.size(); ++index) {
-    if (index != 0) {
-      display += L"+";
-    }
-    display += parts[index];
-  }
-  return NormalizeShortcutDisplay(display);
 }
 
 std::wstring ShortcutConflictTooltip(std::wstring_view current_key,

@@ -337,6 +337,10 @@ add_custom_target(fluent_pinyin_winui_projection DEPENDS "${FP_WINUI_PROJECTION_
 
 add_executable(fluent_pinyin_settings WIN32
   src/config_winui/main.cpp
+  src/config_winui/app_paths.cpp
+  src/config_winui/hotkey_helpers.cpp
+  src/config_winui/settings_binding.cpp
+  src/config_winui/status_tip_blacklist.cpp
   src/sync/sync_service.cpp
   src/config_winui/fluent-pinyin-settings.rc
 )
@@ -436,6 +440,30 @@ if(BUILD_TESTING)
   )
   target_link_libraries(core_ipc_protocol_unit PRIVATE fluent_pinyin_common)
 
+  add_executable(config_settings_binding_unit
+    tests/config_settings_binding_unit.cpp
+    src/config_winui/settings_binding.cpp
+  )
+  target_link_libraries(config_settings_binding_unit PRIVATE fluent_pinyin_common)
+
+  add_executable(config_app_paths_unit
+    tests/config_app_paths_unit.cpp
+    src/config_winui/app_paths.cpp
+  )
+  target_link_libraries(config_app_paths_unit PRIVATE fluent_pinyin_common user32 gdi32 advapi32)
+
+  add_executable(config_hotkey_helpers_unit
+    tests/config_hotkey_helpers_unit.cpp
+    src/config_winui/hotkey_helpers.cpp
+  )
+  target_link_libraries(config_hotkey_helpers_unit PRIVATE fluent_pinyin_common user32)
+
+  add_executable(config_status_tip_blacklist_unit
+    tests/config_status_tip_blacklist_unit.cpp
+    src/config_winui/status_tip_blacklist.cpp
+  )
+  target_link_libraries(config_status_tip_blacklist_unit PRIVATE fluent_pinyin_common)
+
   add_executable(corehost_runtime_smoke
     tests/corehost_runtime_smoke.cpp
     src/tsf/rime_core_client.cpp
@@ -510,6 +538,22 @@ if(BUILD_TESTING)
   add_test(
     NAME core_ipc_protocol_unit
     COMMAND core_ipc_protocol_unit
+  )
+  add_test(
+    NAME config_settings_binding_unit
+    COMMAND config_settings_binding_unit
+  )
+  add_test(
+    NAME config_app_paths_unit
+    COMMAND config_app_paths_unit
+  )
+  add_test(
+    NAME config_hotkey_helpers_unit
+    COMMAND config_hotkey_helpers_unit
+  )
+  add_test(
+    NAME config_status_tip_blacklist_unit
+    COMMAND config_status_tip_blacklist_unit
   )
   add_test(
     NAME corehost_runtime_smoke
