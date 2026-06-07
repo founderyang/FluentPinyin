@@ -16,6 +16,7 @@
 #include <array>
 #include <chrono>
 #include <cstdint>
+#include <cstdlib>
 #include <cwctype>
 #include <filesystem>
 #include <fstream>
@@ -977,6 +978,24 @@ struct ParsedUrl {
   bool secure = true;
 };
 
+bool PlainHttpDevExceptionEnabled() {
+  wchar_t buffer[16]{};
+  const DWORD length = GetEnvironmentVariableW(L"FLUENT_PINYIN_SYNC_ALLOW_HTTP_LOCAL",
+                                               buffer,
+                                               static_cast<DWORD>(std::size(buffer)));
+  if (length == 0 || length >= std::size(buffer)) {
+    return false;
+  }
+  const std::wstring value = ToLower(std::wstring(buffer, length));
+  return value == L"1" || value == L"true" || value == L"yes";
+}
+
+bool IsLoopbackHost(std::wstring_view host) {
+  const std::wstring normalized = ToLower(std::wstring(host));
+  return normalized == L"localhost" || normalized == L"127.0.0.1" ||
+         normalized == L"::1" || normalized == L"[::1]";
+}
+
 std::optional<ParsedUrl> ParseUrl(std::wstring_view url) {
   std::wstring copy(url);
   URL_COMPONENTSW components{};
@@ -992,6 +1011,10 @@ std::optional<ParsedUrl> ParseUrl(std::wstring_view url) {
   parsed.host.assign(components.lpszHostName, components.dwHostNameLength);
   parsed.port = components.nPort;
   parsed.secure = components.nScheme == INTERNET_SCHEME_HTTPS;
+  if (components.nScheme != INTERNET_SCHEME_HTTP &&
+      components.nScheme != INTERNET_SCHEME_HTTPS) {
+    return std::nullopt;
+  }
   parsed.path.assign(components.lpszUrlPath, components.dwUrlPathLength);
   if (components.dwExtraInfoLength > 0) {
     parsed.path.append(components.lpszExtraInfo, components.dwExtraInfoLength);
@@ -1000,6 +1023,10 @@ std::optional<ParsedUrl> ParseUrl(std::wstring_view url) {
     parsed.path = L"/";
   }
   return parsed;
+}
+
+bool AllowsRemoteTransport(const ParsedUrl& url) {
+  return url.secure || (PlainHttpDevExceptionEnabled() && IsLoopbackHost(url.host));
 }
 
 HttpResult HttpRequest(std::wstring_view method,
@@ -1146,6 +1173,9 @@ SyncResult WebDavUpload(const SyncConfig& config, const std::vector<std::uint8_t
   if (!url) {
     return {false, L"WebDAV 地址无效。"};
   }
+  if (!AllowsRemoteTransport(*url)) {
+    return {false, L"WebDAV 地址必须使用 HTTPS。"};
+  }
   std::vector<std::wstring> headers{
       L"Content-Type: application/octet-stream",
       L"User-Agent: FluentPinyin Sync",
@@ -1166,6 +1196,10 @@ std::optional<std::vector<std::uint8_t>> WebDavDownload(const SyncConfig& config
   const auto url = ParseUrl(url_text);
   if (!url) {
     *error = L"WebDAV 地址无效。";
+    return std::nullopt;
+  }
+  if (!AllowsRemoteTransport(*url)) {
+    *error = L"WebDAV 地址必须使用 HTTPS。";
     return std::nullopt;
   }
   std::vector<std::wstring> headers{L"User-Agent: FluentPinyin Sync"};
@@ -1210,6 +1244,9 @@ std::optional<S3Request> BuildS3Request(const SyncConfig& config,
   const std::wstring url_text = endpoint + path;
   const auto url = ParseUrl(url_text);
   if (!url) {
+    return std::nullopt;
+  }
+  if (!AllowsRemoteTransport(*url)) {
     return std::nullopt;
   }
 
@@ -1397,6 +1434,11 @@ std::wstring NewTimestampedBackupName() {
   return L"fluent-pinyin-backup-" + TimestampText() + L".fpsync";
 }
 
+bool IsSecureRemoteUrl(std::wstring_view url) {
+  const auto parsed = ParseUrl(Trim(url));
+  return parsed.has_value() && AllowsRemoteTransport(*parsed);
+}
+
 std::wstring ReadSetting(const std::filesystem::path& settings_path,
                          std::wstring_view key,
                          std::wstring_view default_value) {
@@ -1517,11 +1559,17 @@ SyncResult ValidateRemoteConfig(const SyncConfig& config) {
     if (Trim(config.webdav_url).empty()) {
       return {false, L"请先配置 WebDAV 地址。"};
     }
+    if (!IsSecureRemoteUrl(config.webdav_url)) {
+      return {false, L"WebDAV 地址必须使用 HTTPS。"};
+    }
     return {true, L""};
   }
   if (Trim(config.object_endpoint).empty() || Trim(config.object_bucket).empty() ||
       Trim(config.object_access_key).empty() || Trim(config.object_secret_key).empty()) {
     return {false, L"请先配置对象存储 Endpoint、Bucket、Access Key 和 Secret Key。"};
+  }
+  if (!IsSecureRemoteUrl(config.object_endpoint)) {
+    return {false, L"对象存储 Endpoint 必须使用 HTTPS。"};
   }
   return {true, L""};
 }

@@ -64,6 +64,7 @@ std::optional<std::wstring> ProtectSecretText(std::wstring_view plaintext);
 std::optional<std::wstring> UnprotectSecretText(std::wstring_view protected_text);
 
 SyncConfig LoadConfig(const std::filesystem::path& settings_path = DefaultSettingsPath());
+bool IsSecureRemoteUrl(std::wstring_view url);
 SyncResult ValidateRemoteConfig(const SyncConfig& config);
 SyncResult ValidateCryptoConfig(const SyncConfig& config);
 

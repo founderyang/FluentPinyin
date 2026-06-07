@@ -96,6 +96,43 @@ void TestProviderNormalization() {
          "NormalizeProviderValue defaults empty values to object");
 }
 
+void TestHttpsOnlyRemoteValidation() {
+  fp::sync::SyncConfig webdav;
+  webdav.provider = fp::sync::SyncProvider::WebDav;
+  webdav.webdav_url = L"http://example.invalid/dav";
+  Expect(!fp::sync::ValidateRemoteConfig(webdav).success,
+         "ValidateRemoteConfig rejects plaintext WebDAV URLs");
+
+  webdav.webdav_url = L"https://example.invalid/dav";
+  Expect(fp::sync::ValidateRemoteConfig(webdav).success,
+         "ValidateRemoteConfig accepts HTTPS WebDAV URLs");
+
+  fp::sync::SyncConfig object;
+  object.provider = fp::sync::SyncProvider::ObjectStorage;
+  object.object_endpoint = L"http://s3.example.invalid";
+  object.object_bucket = L"bucket";
+  object.object_access_key = L"access";
+  object.object_secret_key = L"secret";
+  Expect(!fp::sync::ValidateRemoteConfig(object).success,
+         "ValidateRemoteConfig rejects plaintext object storage endpoints");
+
+  object.object_endpoint = L"https://s3.example.invalid";
+  Expect(fp::sync::ValidateRemoteConfig(object).success,
+         "ValidateRemoteConfig accepts HTTPS object storage endpoints");
+}
+
+void TestLoopbackHttpDevelopmentException() {
+  SetEnvironmentVariableW(L"FLUENT_PINYIN_SYNC_ALLOW_HTTP_LOCAL", nullptr);
+  Expect(!fp::sync::IsSecureRemoteUrl(L"http://localhost:8080/sync"),
+         "Loopback HTTP is rejected unless the development exception is enabled");
+  SetEnvironmentVariableW(L"FLUENT_PINYIN_SYNC_ALLOW_HTTP_LOCAL", L"1");
+  Expect(fp::sync::IsSecureRemoteUrl(L"http://127.0.0.1:8080/sync"),
+         "Loopback HTTP is accepted with the explicit development exception");
+  Expect(!fp::sync::IsSecureRemoteUrl(L"http://example.invalid/sync"),
+         "Non-loopback HTTP is rejected even with the development exception");
+  SetEnvironmentVariableW(L"FLUENT_PINYIN_SYNC_ALLOW_HTTP_LOCAL", nullptr);
+}
+
 }  // namespace
 
 int wmain(int argc, wchar_t** argv) {
@@ -115,6 +152,8 @@ int wmain(int argc, wchar_t** argv) {
 
   const auto settings_path = work_dir / L"settings.ini";
   TestProviderNormalization();
+  TestHttpsOnlyRemoteValidation();
+  TestLoopbackHttpDevelopmentException();
   TestReadWriteSettings(settings_path);
   TestSettingValueSanitization(settings_path);
   TestLoadConfig(settings_path);

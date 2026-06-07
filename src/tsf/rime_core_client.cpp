@@ -4,8 +4,12 @@
 #include "common/logging.h"
 
 #include <windows.h>
+#include <psapi.h>
+#include <softpub.h>
+#include <wintrust.h>
 
 #include <algorithm>
+#include <cwctype>
 #include <cstdio>
 #include <string>
 #include <system_error>
@@ -17,6 +21,19 @@ constexpr DWORD kCoreHostConnectTimeoutMs = 2500;
 constexpr DWORD kCoreHostInitializeTimeoutMs = 120000;
 constexpr DWORD kCoreHostPipeBufferLimit = 1024 * 1024;
 constexpr DWORD kCoreHostPipeRetryIntervalMs = 25;
+
+std::wstring NormalizePathForCompare(const std::filesystem::path& path) {
+  std::error_code error;
+  auto weak = std::filesystem::weakly_canonical(path, error);
+  if (error) {
+    weak = std::filesystem::absolute(path, error);
+  }
+  std::wstring text = (error ? path : weak).wstring();
+  std::transform(text.begin(), text.end(), text.begin(), [](wchar_t ch) {
+    return static_cast<wchar_t>(std::towlower(ch));
+  });
+  return text;
+}
 
 std::wstring LastErrorMessage(const wchar_t* prefix, DWORD error) {
   std::wstring message(prefix);
@@ -124,6 +141,77 @@ bool ReadMessage(HANDLE pipe, std::string* payload) {
   return size == 0 || ReadExact(pipe, payload->data(), size);
 }
 
+std::optional<std::filesystem::path> ProcessImagePath(DWORD process_id) {
+  HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, process_id);
+  if (process == nullptr) {
+    return std::nullopt;
+  }
+  std::wstring path(32768, L'\0');
+  DWORD size = static_cast<DWORD>(path.size());
+  if (!QueryFullProcessImageNameW(process, 0, path.data(), &size) || size == 0) {
+    CloseHandle(process);
+    return std::nullopt;
+  }
+  CloseHandle(process);
+  path.resize(size);
+  return std::filesystem::path(path);
+}
+
+bool IsTrustedSignedFile(const std::filesystem::path& path) {
+  WINTRUST_FILE_INFO file_info{};
+  file_info.cbStruct = sizeof(file_info);
+  const std::wstring path_text = path.wstring();
+  file_info.pcwszFilePath = path_text.c_str();
+
+  WINTRUST_DATA trust_data{};
+  trust_data.cbStruct = sizeof(trust_data);
+  trust_data.dwUIChoice = WTD_UI_NONE;
+  trust_data.fdwRevocationChecks = WTD_REVOKE_WHOLECHAIN;
+  trust_data.dwUnionChoice = WTD_CHOICE_FILE;
+  trust_data.dwStateAction = WTD_STATEACTION_VERIFY;
+  trust_data.dwProvFlags = WTD_REVOCATION_CHECK_CHAIN_EXCLUDE_ROOT;
+  trust_data.pFile = &file_info;
+
+  GUID policy = WINTRUST_ACTION_GENERIC_VERIFY_V2;
+  const LONG status = WinVerifyTrust(nullptr, &policy, &trust_data);
+  trust_data.dwStateAction = WTD_STATEACTION_CLOSE;
+  WinVerifyTrust(nullptr, &policy, &trust_data);
+  return status == ERROR_SUCCESS;
+}
+
+bool VerifyCoreHostServer(HANDLE pipe, const std::filesystem::path& expected_corehost_path) {
+  ULONG server_process_id = 0;
+  if (!GetNamedPipeServerProcessId(pipe, &server_process_id) || server_process_id == 0) {
+    const DWORD error = GetLastError();
+    fp::LogWarning(L"tsf",
+                   LastErrorMessage(L"Failed to query FluentPinyin core host pipe server.",
+                                    error));
+    return false;
+  }
+  const auto server_path = ProcessImagePath(server_process_id);
+  if (!server_path) {
+    fp::LogWarning(L"tsf",
+                   L"Failed to query FluentPinyin core host process image path.");
+    return false;
+  }
+
+  const std::wstring actual = NormalizePathForCompare(*server_path);
+  const std::wstring expected = NormalizePathForCompare(expected_corehost_path);
+  if (actual != expected) {
+    fp::LogWarning(L"tsf",
+                   L"FluentPinyin core host pipe server path mismatch. actual=" +
+                       server_path->wstring() + L", expected=" + expected_corehost_path.wstring());
+    return false;
+  }
+
+  const bool signed_ok = IsTrustedSignedFile(*server_path);
+  if (!signed_ok) {
+    fp::LogInfo(L"tsf",
+                L"FluentPinyin core host is not Authenticode-signed; accepted by path.");
+  }
+  return true;
+}
+
 }  // namespace
 
 RimeCoreClient::RimeCoreClient(std::filesystem::path corehost_path)
@@ -169,9 +257,10 @@ bool RimeCoreClient::EnsureHostRunning() {
                                       &startup,
                                       &process);
   if (!created) {
-    IpcTrace(L"CreateProcess corehost failed", GetLastError());
+    const DWORD error = GetLastError();
+    IpcTrace(L"CreateProcess corehost failed", error);
     fp::LogError(L"tsf",
-                 LastErrorMessage(L"Failed to start FluentPinyin core host.", GetLastError()));
+                 LastErrorMessage(L"Failed to start FluentPinyin core host.", error));
     return false;
   }
   CloseHandle(process.hThread);
@@ -214,6 +303,10 @@ std::optional<std::string> RimeCoreClient::SendRequest(std::string_view request,
                        nullptr);
     if (pipe != INVALID_HANDLE_VALUE) {
       IpcTrace(L"CreateFile pipe opened");
+      if (!VerifyCoreHostServer(pipe, corehost_path_)) {
+        CloseHandle(pipe);
+        return std::nullopt;
+      }
       break;
     }
 
@@ -242,10 +335,10 @@ std::optional<std::string> RimeCoreClient::SendRequest(std::string_view request,
     IpcTrace(L"request completed");
     response = std::move(payload);
   } else {
-    IpcTrace(L"request write/read failed", GetLastError());
+    const DWORD error = GetLastError();
+    IpcTrace(L"request write/read failed", error);
     fp::LogWarning(L"tsf",
-                   LastErrorMessage(L"FluentPinyin core host request failed.",
-                                    GetLastError()));
+                   LastErrorMessage(L"FluentPinyin core host request failed.", error));
   }
   CloseHandle(pipe);
   return response;

@@ -9,6 +9,10 @@ on:
     branches:
       - main
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   windows-release:
     runs-on: windows-latest
@@ -16,6 +20,19 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            packages/downloads
+            packages/licenses
+            packages/winui
+            third_party/librime
+            schemas/wanxiang/current
+          key: fluent-pinyin-deps-${{ runner.os }}-${{ hashFiles('scripts/package_dependencies.json') }}
+          restore-keys: |
+            fluent-pinyin-deps-${{ runner.os }}-
 
       - name: Check environment
         run: python scripts/check_env.py
@@ -30,7 +47,7 @@ jobs:
         run: cmake --build build-release --config Release --parallel
 
       - name: Test
-        run: ctest --test-dir build-release -C Release --output-on-failure
+        run: ctest --test-dir build-release -C Release --output-on-failure --output-junit build-release/ctest-release.xml
 
       - name: Package payload smoke
         run: python scripts/package_release.py --skip-installers
@@ -39,12 +56,40 @@ jobs:
         shell: pwsh
         run: tests/package_smoke.ps1 -PayloadDir dist/FluentPinyin -ReleaseDir dist/release -MaxPayloadMb 700
 
+      - name: Upload release test report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ctest-release
+          path: build-release/ctest-release.xml
+
+      - name: Upload release package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: FluentPinyin-release
+          path: |
+            dist/release
+            dist/FluentPinyin
+
   windows-debug:
     runs-on: windows-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            packages/downloads
+            packages/licenses
+            packages/winui
+            third_party/librime
+            schemas/wanxiang/current
+          key: fluent-pinyin-deps-${{ runner.os }}-${{ hashFiles('scripts/package_dependencies.json') }}
+          restore-keys: |
+            fluent-pinyin-deps-${{ runner.os }}-
 
       - name: Check environment
         run: python scripts/check_env.py
@@ -59,4 +104,11 @@ jobs:
         run: cmake --build build-debug --config Debug --parallel
 
       - name: Test
-        run: ctest --test-dir build-debug -C Debug --output-on-failure
+        run: ctest --test-dir build-debug -C Debug --output-on-failure --output-junit build-debug/ctest-debug.xml
+
+      - name: Upload debug test report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ctest-debug
+          path: build-debug/ctest-debug.xml

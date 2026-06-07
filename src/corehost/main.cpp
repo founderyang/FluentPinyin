@@ -8,10 +8,12 @@
 #include <sddl.h>
 
 #include <array>
+#include <cstddef>
 #include <exception>
 #include <filesystem>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -19,12 +21,6 @@ namespace {
 
 constexpr DWORD kPipeBufferSize = 1024 * 1024;
 constexpr DWORD kPipeDefaultTimeoutMs = 120000;
-constexpr wchar_t kPipeSecuritySddl[] =
-    L"D:P"
-    L"(A;;GA;;;SY)"
-    L"(A;;GA;;;BA)"
-    L"(A;;GA;;;IU)"
-    L"(A;;GA;;;AU)";
 
 bool ReadExact(HANDLE pipe, void* buffer, DWORD bytes) {
   auto* cursor = static_cast<unsigned char*>(buffer);
@@ -108,6 +104,11 @@ class CoreHostState {
         return HandleSelectCandidate(fields);
       case fp::coreipc::Command::kRedeploy:
         return HandleRedeploy();
+      case fp::coreipc::Command::kHandshake:
+        if (fields.size() != 1) {
+          return fp::coreipc::EncodeErrorResponse(L"Invalid handshake request.");
+        }
+        return fp::coreipc::EncodeHandshakeResponse(fields[0]);
       default:
         return fp::coreipc::EncodeErrorResponse(L"Unknown core host command.");
     }
@@ -236,13 +237,65 @@ void ServePipe(CoreHostState* state, HANDLE pipe) {
   }
 }
 
+std::optional<std::wstring> CurrentUserSidString() {
+  HANDLE token = nullptr;
+  if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token)) {
+    fp::LogError(L"corehost", L"OpenProcessToken failed while building pipe ACL.");
+    return std::nullopt;
+  }
+
+  DWORD required = 0;
+  GetTokenInformation(token, TokenUser, nullptr, 0, &required);
+  if (required == 0) {
+    CloseHandle(token);
+    fp::LogError(L"corehost", L"GetTokenInformation failed while sizing pipe ACL.");
+    return std::nullopt;
+  }
+
+  std::vector<std::byte> buffer(required);
+  if (!GetTokenInformation(token, TokenUser, buffer.data(), required, &required)) {
+    const DWORD error = GetLastError();
+    CloseHandle(token);
+    fp::LogError(L"corehost",
+                 L"GetTokenInformation failed while building pipe ACL: " +
+                     std::to_wstring(error));
+    return std::nullopt;
+  }
+  CloseHandle(token);
+
+  const auto* user = reinterpret_cast<const TOKEN_USER*>(buffer.data());
+  LPWSTR sid_text = nullptr;
+  if (!ConvertSidToStringSidW(user->User.Sid, &sid_text) || sid_text == nullptr) {
+    fp::LogError(L"corehost", L"ConvertSidToStringSid failed while building pipe ACL.");
+    return std::nullopt;
+  }
+  std::wstring result(sid_text);
+  LocalFree(sid_text);
+  return result;
+}
+
 class LocalSecurityDescriptor {
  public:
   LocalSecurityDescriptor() {
-    ConvertStringSecurityDescriptorToSecurityDescriptorW(kPipeSecuritySddl,
-                                                         SDDL_REVISION_1,
-                                                         &descriptor_,
-                                                         nullptr);
+    const auto user_sid = CurrentUserSidString();
+    if (!user_sid) {
+      return;
+    }
+    const std::wstring sddl =
+        L"D:P"
+        L"(A;;GA;;;SY)"
+        L"(A;;GA;;;BA)"
+        L"(A;;GA;;;" +
+        *user_sid + L")";
+    if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl.c_str(),
+                                                              SDDL_REVISION_1,
+                                                              &descriptor_,
+                                                              nullptr)) {
+      const DWORD error = GetLastError();
+      fp::LogError(L"corehost",
+                   L"ConvertStringSecurityDescriptorToSecurityDescriptor failed: " +
+                       std::to_wstring(error));
+    }
   }
   LocalSecurityDescriptor(const LocalSecurityDescriptor&) = delete;
   LocalSecurityDescriptor& operator=(const LocalSecurityDescriptor&) = delete;
@@ -260,6 +313,10 @@ class LocalSecurityDescriptor {
     attributes_.lpSecurityDescriptor = descriptor_;
     attributes_.bInheritHandle = FALSE;
     return &attributes_;
+  }
+
+  [[nodiscard]] bool valid() const noexcept {
+    return descriptor_ != nullptr;
   }
 
  private:
@@ -308,6 +365,11 @@ int RunCoreHost() {
   fp::LogInfo(L"corehost", L"FluentPinyin core host started.");
   CoreHostState state(ParseOptions());
   LocalSecurityDescriptor pipe_security;
+  if (!pipe_security.valid()) {
+    fp::LogError(L"corehost", L"Core host pipe security descriptor is invalid.");
+    CloseHandle(mutex);
+    return 1;
+  }
   for (;;) {
     const std::wstring pipe_name = fp::coreipc::PipeName();
     HANDLE pipe = CreateNamedPipeW(pipe_name.c_str(),
@@ -319,13 +381,17 @@ int RunCoreHost() {
                                    kPipeDefaultTimeoutMs,
                                    pipe_security.attributes());
     if (pipe == INVALID_HANDLE_VALUE) {
-      fp::LogError(L"corehost", L"CreateNamedPipe failed.");
+      const DWORD error = GetLastError();
+      fp::LogError(L"corehost", L"CreateNamedPipe failed: " + std::to_wstring(error));
       return 1;
     }
 
-    const BOOL connected =
-        ConnectNamedPipe(pipe, nullptr) ? TRUE : (GetLastError() == ERROR_PIPE_CONNECTED);
-    if (!connected) {
+    const BOOL connected = ConnectNamedPipe(pipe, nullptr);
+    const DWORD connect_error = connected ? ERROR_SUCCESS : GetLastError();
+    const BOOL usable = connected ? TRUE : (connect_error == ERROR_PIPE_CONNECTED);
+    if (!usable) {
+      fp::LogWarning(L"corehost",
+                     L"ConnectNamedPipe failed: " + std::to_wstring(connect_error));
       CloseHandle(pipe);
       continue;
     }

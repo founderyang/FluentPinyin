@@ -57,11 +57,31 @@ void TestCommandRoundTrip() {
   }
 }
 
+void TestHandshakeRoundTrip() {
+  constexpr std::string_view nonce = "nonce-123";
+  const std::string request = fp::coreipc::EncodeHandshakeRequest(nonce);
+  fp::coreipc::Command command{};
+  std::vector<std::string> fields;
+  Expect(fp::coreipc::DecodeCommand(request, &command, &fields),
+         "handshake command decodes");
+  Expect(command == fp::coreipc::Command::kHandshake,
+         "handshake command id round trips");
+  Expect(fields.size() == 1 && fields[0] == nonce,
+         "handshake nonce round trips in request");
+
+  const std::string response = fp::coreipc::EncodeHandshakeResponse(nonce);
+  Expect(fp::coreipc::DecodeHandshakeResponse(response, nonce),
+         "handshake response accepts matching nonce");
+  Expect(!fp::coreipc::DecodeHandshakeResponse(response, "wrong"),
+         "handshake response rejects mismatched nonce");
+}
+
 }  // namespace
 
 int main() {
   TestCandidatePageRoundTrip();
   TestCommandRoundTrip();
+  TestHandshakeRoundTrip();
   if (g_failures != 0) {
     std::cerr << g_failures << " core IPC protocol unit test failure(s)\n";
     return 1;

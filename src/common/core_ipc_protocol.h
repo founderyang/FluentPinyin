@@ -23,6 +23,7 @@ enum class Command : std::uint32_t {
   kGetCandidatePage = 5,
   kSelectCandidate = 6,
   kRedeploy = 7,
+  kHandshake = 8,
 };
 
 enum class Status : std::uint32_t {
@@ -40,6 +41,7 @@ std::string EncodeSelectCandidateRequest(std::string_view input,
                                          int page_size,
                                          size_t candidate_index);
 std::string EncodeRedeployRequest();
+std::string EncodeHandshakeRequest(std::string_view nonce);
 
 bool DecodeCommand(std::string_view payload, Command* command, std::vector<std::string>* fields);
 
@@ -54,5 +56,7 @@ bool DecodeCandidateCommitResponse(std::string_view payload, fp::core::RimeCandi
 
 std::string EncodeErrorResponse(std::wstring_view message);
 std::wstring DecodeErrorMessage(std::string_view payload);
+std::string EncodeHandshakeResponse(std::string_view nonce);
+bool DecodeHandshakeResponse(std::string_view payload, std::string_view expected_nonce);
 
 }  // namespace fp::coreipc

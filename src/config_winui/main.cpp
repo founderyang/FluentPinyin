@@ -148,6 +148,7 @@ constexpr int kDefaultCandidateFontSizeLevel = 0;
 constexpr int kMinCandidateFontSizeLevel = 0;
 constexpr int kMaxCandidateFontSizeLevel = 3;
 constexpr std::array<std::wstring_view, 4> kCandidateFontSizeLabels{L"小", L"中", L"大", L"特大"};
+constexpr std::wstring_view kSettingsUiFontFamily = L"MiSans";
 constexpr std::wstring_view kDefaultCandidateFontFamily = L"misans";
 constexpr std::wstring_view kDefaultStatusTipBlacklist =
     L"explorer.exe,fluent-pinyin-settings.exe,ShellExperienceHost.exe,StartMenuExperienceHost.exe";
@@ -256,6 +257,22 @@ SolidColorBrush Brush(uint8_t alpha, uint8_t red, uint8_t green, uint8_t blue) {
 
 SolidColorBrush TransparentBrush() {
   return SolidColorBrush(Windows::UI::Colors::Transparent());
+}
+
+FontFamily SettingsUiFontFamily() {
+  return FontFamily(kSettingsUiFontFamily);
+}
+
+void ApplySettingsUIFont(Control const& control) {
+  control.FontFamily(SettingsUiFontFamily());
+}
+
+void ApplySettingsUIFont(TextBlock const& text) {
+  text.FontFamily(SettingsUiFontFamily());
+}
+
+void ApplySettingsUIFont(CheckBox const& check) {
+  check.FontFamily(SettingsUiFontFamily());
 }
 
 IReference<Color> ColorReference(uint8_t red, uint8_t green, uint8_t blue) {
@@ -1068,6 +1085,7 @@ void ApplyDwmWindowFrame(Window const& window) {
 void ApplySettingsResources(ResourceDictionary const& resources) {
   const auto palette = CurrentSettingsPalette();
   const Thickness hairline = SettingsHairlineThickness();
+  const auto settings_font = SettingsUiFontFamily().as<IInspectable>();
   const auto border = SettingsBorderBrush().as<IInspectable>();
   const auto border_hover = SettingsBorderHoverBrush().as<IInspectable>();
   const auto surface = Brush(palette.background).as<IInspectable>();
@@ -1082,6 +1100,13 @@ void ApplySettingsResources(ResourceDictionary const& resources) {
   const auto knob_on =
       Brush(palette.light ? ThemeColor{255, 255, 255} : ThemeColor{0, 0, 0}).as<IInspectable>();
   const auto knob_off = Brush(palette.secondary_text).as<IInspectable>();
+  resources.Insert(box_value(L"ContentControlThemeFontFamily"), settings_font);
+  resources.Insert(box_value(L"MTCMediaFontFamily"), settings_font);
+  resources.Insert(box_value(L"PhoneFontFamilyNormal"), settings_font);
+  resources.Insert(box_value(L"PhoneFontFamilySemiLight"), settings_font);
+  resources.Insert(box_value(L"PivotHeaderItemFontFamily"), settings_font);
+  resources.Insert(box_value(L"PivotTitleFontFamily"), settings_font);
+  resources.Insert(box_value(L"KeyTipFontFamily"), settings_font);
   resources.Insert(box_value(L"ApplicationPageBackgroundThemeBrush"), surface);
   resources.Insert(box_value(L"SolidBackgroundFillColorBaseBrush"), surface);
   resources.Insert(box_value(L"SolidBackgroundFillColorSecondaryBrush"), surface);
@@ -1236,7 +1261,7 @@ void ApplySettingsResources(ResourceDictionary const& resources) {
 TextBlock Text(std::wstring_view value, double size, int weight = FW_NORMAL) {
   TextBlock text;
   text.Text(value);
-  text.FontFamily(FontFamily(L"MiSans"));
+  ApplySettingsUIFont(text);
   text.FontSize(size);
   text.Foreground(SettingsTextBrush());
   text.TextWrapping(TextWrapping::Wrap);
@@ -1244,6 +1269,14 @@ TextBlock Text(std::wstring_view value, double size, int weight = FW_NORMAL) {
     text.FontWeight(FontWeights::SemiBold());
   }
   return text;
+}
+
+void ApplySettingsDialogBase(ContentDialog const& dialog, XamlRoot const& xaml_root) {
+  dialog.XamlRoot(xaml_root);
+  dialog.RequestedTheme(CurrentSettingsElementTheme());
+  dialog.Title(nullptr);
+  dialog.FontFamily(SettingsUiFontFamily());
+  ApplySettingsResources(dialog.Resources());
 }
 
 void PrepareIconElement(FrameworkElement const& element,
@@ -2039,6 +2072,7 @@ Border SettingWideRow(std::wstring_view title,
 }
 
 void ConfigureSettingCombo(ComboBox const& combo) {
+  ApplySettingsUIFont(combo);
   combo.Width(120);
   combo.MinWidth(120);
   combo.HorizontalAlignment(HorizontalAlignment::Right);
@@ -2052,6 +2086,7 @@ void ConfigureSettingCombo(ComboBox const& combo) {
 ComboBoxItem ThemeComboItem(std::wstring_view label) {
   const auto palette = CurrentSettingsPalette();
   ComboBoxItem item;
+  ApplySettingsUIFont(item);
   auto text = Text(label, 13, FW_SEMIBOLD);
   text.Foreground(SettingsTextBrush());
   text.TextWrapping(TextWrapping::NoWrap);
@@ -2364,6 +2399,7 @@ TextBox SettingTextBox(std::wstring_view key,
                        double min_width = 220,
                        std::wstring_view default_value = L"") {
   TextBox box;
+  ApplySettingsUIFont(box);
   box.MinWidth(min_width);
   box.HorizontalAlignment(HorizontalAlignment::Right);
   box.Text(ReadStringSetting(key, default_value));
@@ -2391,6 +2427,7 @@ ToggleSwitch SettingSwitch(std::wstring_view key,
                            bool default_value,
                            std::function<void(bool)> on_change = {}) {
   ToggleSwitch toggle;
+  ApplySettingsUIFont(toggle);
   toggle.MinWidth(0);
   toggle.HorizontalAlignment(HorizontalAlignment::Right);
   toggle.IsOn(ReadBoolSetting(key, default_value));
@@ -2405,6 +2442,7 @@ ToggleSwitch SettingSwitch(std::wstring_view key,
 
 ToggleSwitch ToolbarVisibleSwitch(std::function<void(bool)> on_change = {}) {
   ToggleSwitch toggle;
+  ApplySettingsUIFont(toggle);
   toggle.MinWidth(0);
   toggle.HorizontalAlignment(HorizontalAlignment::Right);
   toggle.IsOn(ReadBoolSettingMigrated(kToolbarVisibleSetting,
@@ -2469,6 +2507,7 @@ ToggleSwitch RimeConfigSwitch(std::wstring_view key, bool default_value) {
 
 ToggleSwitch WanxiangModeSwitch(const WanxiangModeDefinition& mode) {
   ToggleSwitch toggle;
+  ApplySettingsUIFont(toggle);
   toggle.MinWidth(0);
   toggle.HorizontalAlignment(HorizontalAlignment::Right);
   toggle.IsOn(mode.legacy_key.empty()
@@ -2485,6 +2524,7 @@ ToggleSwitch WanxiangModeSwitch(const WanxiangModeDefinition& mode) {
 
 Button ActionButton(std::wstring_view text, std::wstring_view glyph) {
   Button button;
+  ApplySettingsUIFont(button);
   button.MinWidth(108);
   button.HorizontalAlignment(HorizontalAlignment::Right);
   StackPanel content;
@@ -2502,6 +2542,7 @@ Button ActionPathButton(std::wstring_view text,
                         double view_box_size = 20.0) {
   const auto palette = CurrentSettingsPalette();
   Button button;
+  ApplySettingsUIFont(button);
   button.MinWidth(108);
   button.HorizontalAlignment(HorizontalAlignment::Right);
   button.Background(Brush(palette.button));
@@ -2583,6 +2624,7 @@ Button HotkeyRecorderButton(std::wstring_view key,
                             std::wstring_view fallback) {
   const auto palette = CurrentSettingsPalette();
   Button button;
+  ApplySettingsUIFont(button);
   button.MinWidth(160);
   button.HorizontalAlignment(HorizontalAlignment::Right);
   button.Padding(Thickness{12, 6, 12, 7});
@@ -2711,6 +2753,7 @@ void SetHotkeyRecorderDisplay(Button const& button,
 
 Button CompactActionButton(std::wstring_view text, std::wstring_view glyph) {
   Button button;
+  ApplySettingsUIFont(button);
   button.MinWidth(86);
   button.Padding(Thickness{10, 6, 10, 7});
   button.HorizontalAlignment(HorizontalAlignment::Right);
@@ -2727,6 +2770,7 @@ Button CompactPathActionButton(std::wstring_view text,
                                std::wstring_view path,
                                double scale = 0.82) {
   Button button;
+  ApplySettingsUIFont(button);
   button.MinWidth(74);
   button.Padding(Thickness{8, 5, 9, 6});
   button.HorizontalAlignment(HorizontalAlignment::Right);
@@ -2757,6 +2801,7 @@ Button InlinePathActionButton(std::wstring_view text,
                               double scale = 0.68) {
   const auto palette = CurrentSettingsPalette();
   Button button;
+  ApplySettingsUIFont(button);
   button.MinWidth(50);
   button.Height(28);
   button.MinHeight(28);
@@ -2950,6 +2995,7 @@ Border StableIconToolButton(std::wstring_view path,
 Button IconToolButton(std::wstring_view path, std::wstring_view tooltip, double scale = 1.0) {
   const auto palette = CurrentSettingsPalette();
   Button button;
+  ApplySettingsUIFont(button);
   button.Width(36);
   button.Height(36);
   button.MinWidth(36);
@@ -2980,6 +3026,7 @@ NavigationViewItem NavItem(std::wstring_view title,
                            std::wstring_view tag,
                            std::wstring_view glyph) {
   NavigationViewItem item;
+  ApplySettingsUIFont(item);
   auto label = Text(title, 16, FW_SEMIBOLD);
   label.Foreground(SettingsTextBrush());
   label.TextWrapping(TextWrapping::NoWrap);
@@ -3134,6 +3181,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
     root_ = root;
 
     nav_ = NavigationView();
+    ApplySettingsUIFont(nav_);
     nav_.RequestedTheme(CurrentSettingsElementTheme());
     nav_.Background(SettingsSurfaceBrush());
     nav_.UseLayoutRounding(true);
@@ -3252,9 +3300,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
                                   bool require_enabled,
                                   std::shared_ptr<bool> suppress_toggle_dialog) {
     ContentDialog dialog;
-    dialog.XamlRoot(window_.Content().as<FrameworkElement>().XamlRoot());
-    dialog.RequestedTheme(CurrentSettingsElementTheme());
-    dialog.Title(nullptr);
+    ApplySettingsDialogBase(dialog, window_.Content().as<FrameworkElement>().XamlRoot());
     dialog.PrimaryButtonText(L"完成");
     dialog.CloseButtonText(L"取消");
     dialog.DefaultButton(ContentDialogButton::Primary);
@@ -3547,6 +3593,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
       rule_cell.ColumnDefinitions().Append(example_column);
 
       CheckBox check;
+      ApplySettingsUIFont(check);
       check.MinWidth(0);
       check.MinHeight(0);
       check.Width(24);
@@ -3675,6 +3722,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
       row.ColumnDefinitions().Append(remove_column);
 
       TextBox left;
+      ApplySettingsUIFont(left);
       left.MinWidth(88);
       left.MinHeight(32);
       left.Height(32);
@@ -3693,6 +3741,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
       row.Children().Append(separator);
 
       TextBox right;
+      ApplySettingsUIFont(right);
       right.MinWidth(88);
       right.MinHeight(32);
       right.Height(32);
@@ -3853,9 +3902,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
 
   void ShowStatusTipBlacklistDialog(TextBlock const& count_icon) {
     ContentDialog dialog;
-    dialog.XamlRoot(window_.Content().as<FrameworkElement>().XamlRoot());
-    dialog.RequestedTheme(CurrentSettingsElementTheme());
-    dialog.Title(nullptr);
+    ApplySettingsDialogBase(dialog, window_.Content().as<FrameworkElement>().XamlRoot());
     dialog.PrimaryButtonText(L"完成");
     dialog.CloseButtonText(L"取消");
     dialog.DefaultButton(ContentDialogButton::Primary);
@@ -3963,6 +4010,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
       row.ColumnDefinitions().Append(remove_column);
 
       TextBox process;
+      ApplySettingsUIFont(process);
       process.MinWidth(220);
       process.MinHeight(32);
       process.Height(32);
@@ -4147,6 +4195,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
                             bool password = false) {
     (void)password;
     TextBox box;
+    ApplySettingsUIFont(box);
     box.MinWidth(260);
     box.HorizontalAlignment(HorizontalAlignment::Stretch);
     box.Text(text);
@@ -4157,6 +4206,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
   PasswordBox SyncDialogPasswordBox(std::wstring_view text,
                                     std::wstring_view placeholder) {
     PasswordBox box;
+    ApplySettingsUIFont(box);
     box.MinWidth(260);
     box.HorizontalAlignment(HorizontalAlignment::Stretch);
     box.Password(text);
@@ -4198,9 +4248,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
 
   void ShowSyncProviderDialog() {
     ContentDialog dialog;
-    dialog.XamlRoot(window_.Content().as<FrameworkElement>().XamlRoot());
-    dialog.RequestedTheme(CurrentSettingsElementTheme());
-    dialog.Title(nullptr);
+    ApplySettingsDialogBase(dialog, window_.Content().as<FrameworkElement>().XamlRoot());
     dialog.PrimaryButtonText(L"保存");
     dialog.CloseButtonText(L"取消");
     dialog.DefaultButton(ContentDialogButton::Primary);
@@ -4226,6 +4274,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
     content.Children().Append(description);
 
     ComboBox provider_combo;
+    ApplySettingsUIFont(provider_combo);
     provider_combo.MinWidth(220);
     provider_combo.HorizontalAlignment(HorizontalAlignment::Left);
     provider_combo.Items().Append(box_value(L"对象存储"));
@@ -4360,9 +4409,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
 
   void ShowManagedDictionariesDialog(Grid const& state_icon) {
     ContentDialog dialog;
-    dialog.XamlRoot(window_.Content().as<FrameworkElement>().XamlRoot());
-    dialog.RequestedTheme(CurrentSettingsElementTheme());
-    dialog.Title(nullptr);
+    ApplySettingsDialogBase(dialog, window_.Content().as<FrameworkElement>().XamlRoot());
     dialog.PrimaryButtonText(L"完成");
     dialog.CloseButtonText(L"取消");
     dialog.DefaultButton(ContentDialogButton::Primary);
@@ -4447,6 +4494,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
       row.Children().Append(label);
 
       ToggleSwitch toggle;
+      ApplySettingsUIFont(toggle);
       toggle.MinWidth(0);
       toggle.IsOn(enabled);
       toggle.HorizontalAlignment(HorizontalAlignment::Right);
@@ -4602,9 +4650,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
                                bool user_lexicon,
                                Grid const& state_icon) {
     ContentDialog dialog;
-    dialog.XamlRoot(window_.Content().as<FrameworkElement>().XamlRoot());
-    dialog.RequestedTheme(CurrentSettingsElementTheme());
-    dialog.Title(nullptr);
+    ApplySettingsDialogBase(dialog, window_.Content().as<FrameworkElement>().XamlRoot());
     dialog.PrimaryButtonText(L"完成");
     dialog.CloseButtonText(L"取消");
     dialog.DefaultButton(ContentDialogButton::Primary);
@@ -4675,6 +4721,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
       }
 
       TextBox phrase;
+      ApplySettingsUIFont(phrase);
       phrase.MinWidth(130);
       phrase.MinHeight(32);
       phrase.Height(32);
@@ -4685,6 +4732,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
       row.Children().Append(phrase);
 
       TextBox code;
+      ApplySettingsUIFont(code);
       code.MinWidth(96);
       code.MinHeight(32);
       code.Height(32);
@@ -4695,6 +4743,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
       row.Children().Append(code);
 
       TextBox weight;
+      ApplySettingsUIFont(weight);
       weight.MinWidth(58);
       weight.MinHeight(32);
       weight.Height(32);
@@ -4838,9 +4887,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
     constexpr double kThemePresetListHeight = 232.0;
 
     ContentDialog dialog;
-    dialog.XamlRoot(window_.Content().as<FrameworkElement>().XamlRoot());
-    dialog.RequestedTheme(CurrentSettingsElementTheme());
-    dialog.Title(nullptr);
+    ApplySettingsDialogBase(dialog, window_.Content().as<FrameworkElement>().XamlRoot());
     dialog.PrimaryButtonText(L"完成");
     dialog.CloseButtonText(L"取消");
     dialog.DefaultButton(ContentDialogButton::Primary);
@@ -5176,6 +5223,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
                  FuzzyPinyinRulesStateIcon(ReadBoolSetting(L"fuzzy_pinyin", false)));
     auto suppress_fuzzy_dialog = std::make_shared<bool>(false);
     ToggleSwitch fuzzy_rules_switch;
+    ApplySettingsUIFont(fuzzy_rules_switch);
     fuzzy_rules_switch.MinWidth(0);
     fuzzy_rules_switch.HorizontalAlignment(HorizontalAlignment::Right);
     fuzzy_rules_switch.IsOn(ReadBoolSetting(L"fuzzy_pinyin", false));
@@ -5426,6 +5474,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
     SetIconChild(user_icon,
                  UserLexiconStateIcon(ReadBoolSetting(L"user_lexicon_enabled", true)));
     ToggleSwitch user_switch;
+    ApplySettingsUIFont(user_switch);
     user_switch.MinWidth(0);
     user_switch.HorizontalAlignment(HorizontalAlignment::Right);
     user_switch.IsOn(ReadBoolSetting(L"user_lexicon_enabled", true));
@@ -5462,6 +5511,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
     SetIconChild(phrase_icon,
                  CustomPhrasesStateIcon(ReadBoolSetting(L"custom_phrases_enabled", true)));
     ToggleSwitch phrase_switch;
+    ApplySettingsUIFont(phrase_switch);
     phrase_switch.MinWidth(0);
     phrase_switch.HorizontalAlignment(HorizontalAlignment::Right);
     phrase_switch.IsOn(ReadBoolSetting(L"custom_phrases_enabled", true));
@@ -5497,6 +5547,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
     SetIconChild(import_icon,
                  ImportedLexiconsStateIcon(ReadBoolSetting(L"imported_lexicons_enabled", true)));
     ToggleSwitch import_switch;
+    ApplySettingsUIFont(import_switch);
     import_switch.MinWidth(0);
     import_switch.HorizontalAlignment(HorizontalAlignment::Right);
     import_switch.IsOn(ReadBoolSetting(L"imported_lexicons_enabled", true));

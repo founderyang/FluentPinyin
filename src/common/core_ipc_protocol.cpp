@@ -195,6 +195,10 @@ std::string EncodeRedeployRequest() {
   return EncodeMessage(Command::kRedeploy, {});
 }
 
+std::string EncodeHandshakeRequest(std::string_view nonce) {
+  return EncodeMessage(Command::kHandshake, {nonce});
+}
+
 bool DecodeCommand(std::string_view payload, Command* command, std::vector<std::string>* fields) {
   if (command == nullptr || fields == nullptr) {
     return false;
@@ -324,6 +328,17 @@ std::wstring DecodeErrorMessage(std::string_view payload) {
     return L"Invalid core host response.";
   }
   return Utf8ToWide(fields[0]);
+}
+
+std::string EncodeHandshakeResponse(std::string_view nonce) {
+  return EncodeResponse(Status::kOk, {nonce});
+}
+
+bool DecodeHandshakeResponse(std::string_view payload, std::string_view expected_nonce) {
+  Status status = Status::kError;
+  std::vector<std::string> fields;
+  return DecodeResponse(payload, &status, &fields) && status == Status::kOk &&
+         fields.size() == 1 && fields[0] == expected_nonce;
 }
 
 }  // namespace fp::coreipc

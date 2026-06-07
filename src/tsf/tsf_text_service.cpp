@@ -8637,6 +8637,10 @@ bool TsfTextService::IsKeyHandled(WPARAM wparam, LPARAM lparam) const {
     return false;
   }
 
+  if (!IsComposing() && IsCapsLockOn() && IsAlphabetVirtualKey(wparam)) {
+    return false;
+  }
+
   if (chinese_punctuation_mode_ && IsPrintableAsciiPunctuation(wparam)) {
     return true;
   }

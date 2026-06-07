@@ -9,8 +9,11 @@
 #include <softpub.h>
 #include <wininet.h>
 #include <wintrust.h>
+#include <mscat.h>
 
 #include <algorithm>
+#include <array>
+#include <cwctype>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -27,6 +30,10 @@ using fp::updater::ReleaseInfo;
 constexpr DWORD kHttpConnectTimeoutMs = 10000;
 constexpr DWORD kHttpSendTimeoutMs = 15000;
 constexpr DWORD kHttpReceiveTimeoutMs = 30000;
+constexpr std::wstring_view kExpectedPublisherSubject = L"FluentPinyin";
+constexpr std::array<std::wstring_view, 1> kExpectedPublisherThumbprints{
+    L""
+};
 
 bool SetInternetTimeouts(HINTERNET handle) {
   if (handle == nullptr) {
@@ -151,6 +158,136 @@ bool LaunchInstaller(const std::filesystem::path& installer_path, std::string_vi
              ShellExecuteW(nullptr, L"runas", L"msiexec.exe", params.c_str(), nullptr, SW_SHOWNORMAL)) > 32;
 }
 
+std::wstring CertificateThumbprint(PCCERT_CONTEXT cert) {
+  if (cert == nullptr) {
+    return {};
+  }
+  DWORD size = 0;
+  if (!CertGetCertificateContextProperty(cert, CERT_SHA1_HASH_PROP_ID, nullptr, &size) ||
+      size == 0) {
+    return {};
+  }
+  std::vector<BYTE> hash(size);
+  if (!CertGetCertificateContextProperty(cert,
+                                         CERT_SHA1_HASH_PROP_ID,
+                                         hash.data(),
+                                         &size)) {
+    return {};
+  }
+  constexpr wchar_t hex[] = L"0123456789ABCDEF";
+  std::wstring text;
+  text.reserve(hash.size() * 2);
+  for (const BYTE byte : hash) {
+    text.push_back(hex[(byte >> 4) & 0x0F]);
+    text.push_back(hex[byte & 0x0F]);
+  }
+  return text;
+}
+
+std::wstring CertificateSubject(PCCERT_CONTEXT cert) {
+  if (cert == nullptr) {
+    return {};
+  }
+  DWORD required = CertGetNameStringW(cert,
+                                      CERT_NAME_SIMPLE_DISPLAY_TYPE,
+                                      0,
+                                      nullptr,
+                                      nullptr,
+                                      0);
+  if (required <= 1) {
+    return {};
+  }
+  std::wstring subject(required, L'\0');
+  CertGetNameStringW(cert,
+                     CERT_NAME_SIMPLE_DISPLAY_TYPE,
+                     0,
+                     nullptr,
+                     subject.data(),
+                     required);
+  subject.resize(subject.size() > 0 && subject.back() == L'\0' ? subject.size() - 1
+                                                               : subject.size());
+  return subject;
+}
+
+std::wstring NormalizeThumbprint(std::wstring_view value) {
+  std::wstring normalized;
+  normalized.reserve(value.size());
+  for (const wchar_t ch : value) {
+    if (ch == L' ' || ch == L':' || ch == L'-') {
+      continue;
+    }
+    normalized.push_back(static_cast<wchar_t>(std::towupper(ch)));
+  }
+  return normalized;
+}
+
+PCCERT_CONTEXT PrimarySignerCertificate(const WINTRUST_DATA& trust_data) {
+  CRYPT_PROVIDER_DATA* provider =
+      WTHelperProvDataFromStateData(trust_data.hWVTStateData);
+  if (provider == nullptr) {
+    return nullptr;
+  }
+  CRYPT_PROVIDER_SGNR* signer = WTHelperGetProvSignerFromChain(provider, 0, FALSE, 0);
+  if (signer == nullptr) {
+    return nullptr;
+  }
+  CRYPT_PROVIDER_CERT* cert = WTHelperGetProvCertFromChain(signer, 0);
+  return cert == nullptr ? nullptr : cert->pCert;
+}
+
+bool ExpectedThumbprintsConfigured() {
+  return std::any_of(kExpectedPublisherThumbprints.begin(),
+                     kExpectedPublisherThumbprints.end(),
+                     [](std::wstring_view thumbprint) {
+                       return !thumbprint.empty();
+                     });
+}
+
+bool VerifyInstallerPublisher(const WINTRUST_DATA& trust_data,
+                              const std::filesystem::path& installer_path) {
+  PCCERT_CONTEXT cert = PrimarySignerCertificate(trust_data);
+  if (cert == nullptr) {
+    fp::LogWarning(L"updater",
+                   L"Installer publisher certificate was not available: " +
+                       installer_path.wstring());
+    return false;
+  }
+
+  const std::wstring thumbprint = CertificateThumbprint(cert);
+  const std::wstring subject = CertificateSubject(cert);
+  const bool thumbprints_configured = ExpectedThumbprintsConfigured();
+  if (thumbprints_configured) {
+    const std::wstring actual_thumbprint = NormalizeThumbprint(thumbprint);
+    const bool matched = std::any_of(
+        kExpectedPublisherThumbprints.begin(),
+        kExpectedPublisherThumbprints.end(),
+        [&actual_thumbprint](std::wstring_view expected) {
+          return !expected.empty() &&
+                 actual_thumbprint == NormalizeThumbprint(expected);
+        });
+    if (!matched) {
+      fp::LogWarning(L"updater",
+                     L"Installer publisher thumbprint mismatch. subject=" + subject +
+                         L", thumbprint=" + thumbprint);
+      return false;
+    }
+    fp::LogInfo(L"updater",
+                L"Installer publisher thumbprint verified: " + thumbprint);
+    return true;
+  }
+
+  if (subject.find(kExpectedPublisherSubject) == std::wstring::npos) {
+    fp::LogWarning(L"updater",
+                   L"Installer publisher subject mismatch. subject=" + subject +
+                       L", thumbprint=" + thumbprint);
+    return false;
+  }
+  fp::LogInfo(L"updater",
+              L"Installer publisher subject verified without thumbprint pin: " +
+                  subject);
+  return true;
+}
+
 bool VerifyInstallerSignature(const std::filesystem::path& installer_path) {
   WINTRUST_FILE_INFO file_info{};
   file_info.cbStruct = sizeof(file_info);
@@ -167,16 +304,22 @@ bool VerifyInstallerSignature(const std::filesystem::path& installer_path) {
   trust_data.pFile = &file_info;
 
   GUID policy = WINTRUST_ACTION_GENERIC_VERIFY_V2;
-  LONG status = WinVerifyTrust(nullptr, &policy, &trust_data);
+  const LONG status = WinVerifyTrust(nullptr, &policy, &trust_data);
+
+  if (status == ERROR_SUCCESS) {
+    const bool publisher_ok = VerifyInstallerPublisher(trust_data, installer_path);
+    trust_data.dwStateAction = WTD_STATEACTION_CLOSE;
+    WinVerifyTrust(nullptr, &policy, &trust_data);
+    if (publisher_ok) {
+      fp::LogInfo(L"updater",
+                  L"Installer signature and publisher verified: " + installer_path.wstring());
+      return true;
+    }
+    return false;
+  }
 
   trust_data.dwStateAction = WTD_STATEACTION_CLOSE;
   WinVerifyTrust(nullptr, &policy, &trust_data);
-
-  if (status == ERROR_SUCCESS) {
-    fp::LogInfo(L"updater", L"Installer signature verified: " + installer_path.wstring());
-    return true;
-  }
-
   fp::LogWarning(L"updater",
                  L"Installer signature verification failed (" +
                      std::to_wstring(static_cast<unsigned long>(status)) + L"): " +

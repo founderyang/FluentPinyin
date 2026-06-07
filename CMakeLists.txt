@@ -1,6 +1,6 @@
 ﻿cmake_minimum_required(VERSION 3.24)
 
-project(FluentPinyin VERSION 00.00.06 LANGUAGES CXX)
+project(FluentPinyin VERSION 00.00.07 LANGUAGES CXX)
 
 include(CTest)
 
@@ -15,10 +15,15 @@ endif()
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
-set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded")
 
 if(MSVC)
   add_compile_options(/utf-8)
+  add_compile_options(/sdl)
+  add_compile_definitions($<$<CONFIG:Debug>:_ITERATOR_DEBUG_LEVEL=0>)
+  add_link_options($<$<CONFIG:Release>:/guard:cf>)
+  add_compile_options($<$<CONFIG:Release>:/Z7>)
+  add_link_options($<$<CONFIG:Release>:/DEBUG:FULL> $<$<CONFIG:Release>:/OPT:REF> $<$<CONFIG:Release>:/OPT:ICF>)
 endif()
 
 set(FP_ICON_FILES
@@ -179,6 +184,7 @@ target_link_libraries(fluent_pinyin_tsf PRIVATE
   shlwapi
   user32
   uuid
+  wintrust
 )
 
 if(FP_WITH_LIBRIME)
@@ -515,7 +521,7 @@ if(BUILD_TESTING)
     tests/corehost_runtime_smoke.cpp
     src/tsf/rime_core_client.cpp
   )
-  target_link_libraries(corehost_runtime_smoke PRIVATE fluent_pinyin_common)
+  target_link_libraries(corehost_runtime_smoke PRIVATE fluent_pinyin_common wintrust)
 
   add_executable(sync_package_integrity
     tests/sync_package_integrity.cpp
