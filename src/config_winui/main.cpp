@@ -232,6 +232,7 @@ using fp::config_winui::WriteIntSetting;
 using fp::config_winui::WriteStringSetting;
 using fp::config_winui::EnsureUiFontsLoaded;
 using fp::config_winui::ModuleDirectory;
+using fp::config_winui::NavItem;
 using fp::config_winui::ActivateExistingSettingsWindow;
 using fp::config_winui::HasCommandLineSwitch;
 using fp::config_winui::InitialPageTagFromProcess;
@@ -1020,23 +1021,6 @@ void SetHotkeyRecorderDisplay(Button const& button,
     label.Foreground(normalized.empty() ? SettingsSecondaryTextBrush() : SettingsTextBrush());
   }
   SetSettingsToolTip(button, ShortcutConflictTooltip(key, normalized));
-}
-
-NavigationViewItem NavItem(std::wstring_view title,
-                           std::wstring_view tag,
-                           std::wstring_view glyph) {
-  NavigationViewItem item;
-  ApplySettingsUIFont(item);
-  auto label = Text(title, 16, FW_SEMIBOLD);
-  label.Foreground(SettingsTextBrush());
-  label.TextWrapping(TextWrapping::NoWrap);
-  item.Content(label);
-  item.Tag(box_value(tag));
-  auto nav_icon = Icon(glyph, 20);
-  nav_icon.Foreground(SettingsIconBrush());
-  item.Icon(nav_icon);
-  item.Foreground(SettingsTextBrush());
-  return item;
 }
 
 class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvider> {

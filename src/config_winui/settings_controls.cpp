@@ -614,4 +614,21 @@ Button IconToolButton(std::wstring_view path, std::wstring_view tooltip, double 
   return button;
 }
 
+NavigationViewItem NavItem(std::wstring_view title,
+                           std::wstring_view tag,
+                           std::wstring_view glyph) {
+  NavigationViewItem item;
+  ApplySettingsUIFont(item);
+  auto label = Text(title, 16, FW_SEMIBOLD);
+  label.Foreground(SettingsTextBrush());
+  label.TextWrapping(TextWrapping::NoWrap);
+  item.Content(label);
+  item.Tag(box_value(tag));
+  auto nav_icon = Icon(glyph, 20);
+  nav_icon.Foreground(SettingsIconBrush());
+  item.Icon(nav_icon);
+  item.Foreground(SettingsTextBrush());
+  return item;
+}
+
 }  // namespace fp::config_winui

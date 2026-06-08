@@ -87,5 +87,9 @@ winrt::Microsoft::UI::Xaml::Controls::Button IconToolButton(
     std::wstring_view path,
     std::wstring_view tooltip,
     double scale = 1.0);
+winrt::Microsoft::UI::Xaml::Controls::NavigationViewItem NavItem(
+    std::wstring_view title,
+    std::wstring_view tag,
+    std::wstring_view glyph);
 
 }  // namespace fp::config_winui
