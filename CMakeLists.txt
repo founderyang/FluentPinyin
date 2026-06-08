@@ -598,6 +598,10 @@ if(BUILD_TESTING)
 
   add_executable(config_window_helpers_unit
     tests/config_window_helpers_unit.cpp
+    src/config_winui/app_paths.cpp
+    src/config_winui/settings_binding.cpp
+    src/config_winui/settings_ui_helpers.cpp
+    src/config_winui/theme_helpers.cpp
     src/config_winui/window_helpers.cpp
   )
   target_include_directories(config_window_helpers_unit PRIVATE
@@ -618,6 +622,7 @@ if(BUILD_TESTING)
     tests/config_lexicon_store_unit.cpp
     src/config_winui/app_paths.cpp
     src/config_winui/lexicon_store.cpp
+    src/config_winui/settings_binding.cpp
   )
   target_link_libraries(config_lexicon_store_unit PRIVATE
     fluent_pinyin_common

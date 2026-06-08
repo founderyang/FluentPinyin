@@ -2,7 +2,6 @@
 #include "common/constants.h"
 #include "common/candidate_font.h"
 #include "common/encoding.h"
-#include "common/path_utils.h"
 #include "common/svg_icons.h"
 #include "common/theme.h"
 #include "config_winui/app_paths.h"
@@ -172,18 +171,20 @@ using fp::config_winui::RunTool;
 using fp::config_winui::CurrentCustomPhraseCount;
 using fp::config_winui::CurrentManagedDictionaryCount;
 using fp::config_winui::CurrentUserLexiconCount;
+using fp::config_winui::FileStemDisplayName;
+using fp::config_winui::ImportManagedDictionary;
 using fp::config_winui::IsSafeRimeDictName;
+using fp::config_winui::LexiconCountText;
 using fp::config_winui::ManagedDictionaryEntry;
 using fp::config_winui::NormalizePhraseWeight;
 using fp::config_winui::PhraseEntry;
 using fp::config_winui::ReadCustomPhraseEntries;
-using fp::config_winui::ReadFileUtf8;
 using fp::config_winui::ReadManagedDictionaryManifest;
 using fp::config_winui::ReadUserLexiconEntries;
 using fp::config_winui::RemoveManagedDictionaryFile;
 using fp::config_winui::TrimLexiconText;
 using fp::config_winui::WriteCustomPhraseEntries;
-using fp::config_winui::WriteFileUtf8;
+using fp::config_winui::WriteManagedDictionaryIntegrationFiles;
 using fp::config_winui::WriteUserLexiconEntries;
 using fp::config_winui::SetSettingsPaletteOverride;
 using fp::config_winui::SettingsThemePalette;
@@ -238,76 +239,6 @@ bool g_syncing_toolbar_visible_switches = false;
 std::wstring InitialPageTagFromProcess() {
   const wchar_t* command_line = GetCommandLineW();
   return InitialSettingsPageTag(command_line != nullptr ? command_line : L"");
-}
-
-std::wstring FileStemDisplayName(const std::filesystem::path& path) {
-  std::wstring name = path.filename().wstring();
-  constexpr std::wstring_view suffix = L".dict.yaml";
-  if (name.size() > suffix.size() &&
-      name.substr(name.size() - suffix.size()) == suffix) {
-    name.resize(name.size() - suffix.size());
-    return name;
-  }
-  return path.stem().wstring();
-}
-
-bool WriteManagedDictionaryIntegrationFiles(
-    const std::vector<ManagedDictionaryEntry>& entries) {
-  return fp::config_winui::WriteManagedDictionaryIntegrationFiles(
-      entries,
-      ReadBoolSetting(fp::kUserLexiconEnabledSetting, true),
-      ReadBoolSetting(fp::kImportedLexiconsEnabledSetting, true));
-}
-
-bool ImportManagedDictionary(const std::filesystem::path& source_path,
-                             std::wstring* error_message) {
-  const auto yaml = ReadFileUtf8(source_path);
-  if (!yaml) {
-    if (error_message) {
-      *error_message = L"无法读取所选文件。";
-    }
-    return false;
-  }
-
-  const auto dict_name = fp::config_winui::ParseRimeDictName(*yaml);
-  if (!dict_name || !IsSafeRimeDictName(*dict_name)) {
-    if (error_message) {
-      *error_message = L"请选择带有合法 name 字段的 .dict.yaml 词库。";
-    }
-    return false;
-  }
-
-  const auto user_data_dir = RimeUserDataPath();
-  fp::EnsureDirectory(user_data_dir);
-  const auto target_path = user_data_dir / (fp::Utf8ToWide(*dict_name) + L".dict.yaml");
-  if (!WriteFileUtf8(target_path, *yaml)) {
-    if (error_message) {
-      *error_message = L"写入用户词库目录失败。";
-    }
-    return false;
-  }
-
-  auto entries = ReadManagedDictionaryManifest();
-  auto found = std::find_if(entries.begin(), entries.end(), [&](const auto& entry) {
-    return entry.name == *dict_name;
-  });
-  if (found == entries.end()) {
-    entries.push_back({*dict_name, true});
-  } else {
-    found->enabled = true;
-  }
-
-  if (!WriteManagedDictionaryIntegrationFiles(entries)) {
-    if (error_message) {
-      *error_message = L"更新词库清单失败。";
-    }
-    return false;
-  }
-  return true;
-}
-
-std::wstring LexiconCountText(int count) {
-  return count > 99 ? L"99+" : std::to_wstring(std::max(0, count));
 }
 
 std::vector<std::wstring> CurrentFuzzyPinyinRules(bool default_to_all = false) {

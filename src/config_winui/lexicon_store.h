@@ -29,6 +29,8 @@ bool WriteFileUtf8(const std::filesystem::path& path, std::string_view content);
 std::string ParseYamlScalar(std::string value);
 std::optional<std::string> ParseRimeDictName(std::string_view yaml);
 bool IsSafeRimeDictName(std::string_view name);
+std::wstring FileStemDisplayName(const std::filesystem::path& path);
+std::wstring LexiconCountText(int count);
 
 bool ManagedDictionaryContains(const std::vector<ManagedDictionaryEntry>& entries,
                                std::string_view name);
@@ -45,6 +47,10 @@ bool WriteManagedDictionaryIntegrationFiles(
     const std::vector<ManagedDictionaryEntry>& entries,
     bool user_lexicon_enabled,
     bool imported_lexicons_enabled);
+bool WriteManagedDictionaryIntegrationFiles(
+    const std::vector<ManagedDictionaryEntry>& entries);
+bool ImportManagedDictionary(const std::filesystem::path& source_path,
+                             std::wstring* error_message);
 bool RemoveManagedDictionaryFile(std::string_view name);
 std::vector<PhraseEntry> ReadCustomPhraseEntries();
 bool WriteCustomPhraseEntries(const std::vector<PhraseEntry>& entries);

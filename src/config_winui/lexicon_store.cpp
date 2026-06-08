@@ -3,6 +3,8 @@
 #include "common/encoding.h"
 #include "common/path_utils.h"
 #include "config_winui/app_paths.h"
+#include "config_winui/settings_binding.h"
+#include "common/constants.h"
 
 #include <algorithm>
 #include <cwctype>
@@ -134,6 +136,21 @@ bool IsSafeRimeDictName(std::string_view name) {
     }
   }
   return true;
+}
+
+std::wstring FileStemDisplayName(const std::filesystem::path& path) {
+  std::wstring name = path.filename().wstring();
+  constexpr std::wstring_view suffix = L".dict.yaml";
+  if (name.size() > suffix.size() &&
+      name.substr(name.size() - suffix.size()) == suffix) {
+    name.resize(name.size() - suffix.size());
+    return name;
+  }
+  return path.stem().wstring();
+}
+
+std::wstring LexiconCountText(int count) {
+  return count > 99 ? L"99+" : std::to_wstring(std::max(0, count));
 }
 
 bool ManagedDictionaryContains(const std::vector<ManagedDictionaryEntry>& entries,
@@ -354,6 +371,62 @@ bool WriteManagedDictionaryIntegrationFiles(
                                   "fp_wanxiang_pro",
                                   "wanxiang_pro",
                                   enabled_names);
+}
+
+bool WriteManagedDictionaryIntegrationFiles(
+    const std::vector<ManagedDictionaryEntry>& entries) {
+  return WriteManagedDictionaryIntegrationFiles(
+      entries,
+      ReadBoolSetting(fp::kUserLexiconEnabledSetting, true),
+      ReadBoolSetting(fp::kImportedLexiconsEnabledSetting, true));
+}
+
+bool ImportManagedDictionary(const std::filesystem::path& source_path,
+                             std::wstring* error_message) {
+  const auto yaml = ReadFileUtf8(source_path);
+  if (!yaml) {
+    if (error_message) {
+      *error_message = L"\u65e0\u6cd5\u8bfb\u53d6\u6240\u9009\u6587\u4ef6\u3002";
+    }
+    return false;
+  }
+
+  const auto dict_name = ParseRimeDictName(*yaml);
+  if (!dict_name || !IsSafeRimeDictName(*dict_name)) {
+    if (error_message) {
+      *error_message = L"\u8bf7\u9009\u62e9\u5e26\u6709\u5408\u6cd5 name "
+                       L"\u5b57\u6bb5\u7684 .dict.yaml \u8bcd\u5e93\u3002";
+    }
+    return false;
+  }
+
+  const auto user_data_dir = RimeUserDataPath();
+  fp::EnsureDirectory(user_data_dir);
+  const auto target_path = user_data_dir / (fp::Utf8ToWide(*dict_name) + L".dict.yaml");
+  if (!WriteFileUtf8(target_path, *yaml)) {
+    if (error_message) {
+      *error_message = L"\u5199\u5165\u7528\u6237\u8bcd\u5e93\u76ee\u5f55\u5931\u8d25\u3002";
+    }
+    return false;
+  }
+
+  auto entries = ReadManagedDictionaryManifest();
+  auto found = std::find_if(entries.begin(), entries.end(), [&](const auto& entry) {
+    return entry.name == *dict_name;
+  });
+  if (found == entries.end()) {
+    entries.push_back({*dict_name, true});
+  } else {
+    found->enabled = true;
+  }
+
+  if (!WriteManagedDictionaryIntegrationFiles(entries)) {
+    if (error_message) {
+      *error_message = L"\u66f4\u65b0\u8bcd\u5e93\u6e05\u5355\u5931\u8d25\u3002";
+    }
+    return false;
+  }
+  return true;
 }
 
 bool RemoveManagedDictionaryFile(std::string_view name) {
