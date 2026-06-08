@@ -384,6 +384,7 @@ add_executable(fluent_pinyin_settings WIN32
   src/config_winui/file_dialogs.cpp
   src/config_winui/fuzzy_pinyin_custom_rules.cpp
   src/config_winui/fuzzy_pinyin_rules.cpp
+  src/config_winui/fuzzy_pinyin_rules_dialog.cpp
   src/config_winui/hotkey_helpers.cpp
   src/config_winui/hotkey_recorder_controls.cpp
   src/config_winui/lexicon_dialogs.cpp
