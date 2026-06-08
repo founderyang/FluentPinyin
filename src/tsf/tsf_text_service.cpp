@@ -4273,25 +4273,6 @@ CandidateLayoutMetrics CalculateCandidateLayout(HWND window,
   return layout;
 }
 
-bool IsSelectableCandidateRect(const RECT& rect) {
-  return rect.right > rect.left && rect.bottom > rect.top;
-}
-
-int CandidatePageSizeLimit(bool horizontal, bool expanded, int compact_count);
-
-std::vector<size_t> SelectableCandidateIndices(const CandidateLayoutMetrics& layout,
-                                               size_t candidate_count) {
-  std::vector<size_t> indices;
-  const size_t count = std::min(candidate_count, layout.candidate_rects.size());
-  indices.reserve(count);
-  for (size_t index = 0; index < count; ++index) {
-    if (IsSelectableCandidateRect(layout.candidate_rects[index])) {
-      indices.push_back(index);
-    }
-  }
-  return indices;
-}
-
 std::vector<size_t> ContiguousCandidateIndices(size_t candidate_count, size_t limit) {
   const size_t count = std::min(candidate_count, limit);
   std::vector<size_t> indices;
@@ -4527,15 +4508,6 @@ std::vector<size_t> SelectableCandidateIndicesForWindow(
     *layout_out = layout;
   }
   return SelectableCandidateIndices(layout, candidates.size());
-}
-
-int CandidatePageSizeLimit(bool horizontal, bool expanded, int compact_count) {
-  return expanded ? ExpandedCandidatePageSize(horizontal, compact_count)
-                  : CompactCandidateCount(compact_count);
-}
-
-int CandidatePageSizeLimit(bool expanded, int compact_count) {
-  return CandidatePageSizeLimit(true, expanded, compact_count);
 }
 
 size_t CalculateVisibleCandidateCountForWindow(

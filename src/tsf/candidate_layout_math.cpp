@@ -49,4 +49,30 @@ int ScaleCandidateSelectionMark(int base_pixels, int item_height, UINT dpi) {
   return MulDiv(base_pixels, std::max(1, item_height), std::max(1, base_item_height));
 }
 
+bool IsSelectableCandidateRect(const RECT& rect) {
+  return rect.right > rect.left && rect.bottom > rect.top;
+}
+
+std::vector<size_t> SelectableCandidateIndices(const CandidateLayoutMetrics& layout,
+                                               size_t candidate_count) {
+  std::vector<size_t> indices;
+  const size_t count = std::min(candidate_count, layout.candidate_rects.size());
+  indices.reserve(count);
+  for (size_t index = 0; index < count; ++index) {
+    if (IsSelectableCandidateRect(layout.candidate_rects[index])) {
+      indices.push_back(index);
+    }
+  }
+  return indices;
+}
+
+int CandidatePageSizeLimit(bool horizontal, bool expanded, int compact_count) {
+  return expanded ? ExpandedCandidatePageSize(horizontal, compact_count)
+                  : CompactCandidateCount(compact_count);
+}
+
+int CandidatePageSizeLimit(bool expanded, int compact_count) {
+  return CandidatePageSizeLimit(true, expanded, compact_count);
+}
+
 }  // namespace fp::tsf

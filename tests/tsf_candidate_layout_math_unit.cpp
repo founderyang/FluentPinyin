@@ -41,6 +41,22 @@ int main() {
          "larger candidate font increases row step");
   Expect(fp::tsf::ScaleCandidateSelectionMark(10, 33, 96) == 10,
          "selection mark keeps base scale at 96 dpi");
+  Expect(fp::tsf::CandidatePageSizeLimit(true, false, 0) == fp::kMinCandidateCount,
+         "compact page size clamps low values");
+  Expect(fp::tsf::CandidatePageSizeLimit(false, true, 5) ==
+             fp::tsf::ExpandedCandidatePageSize(false, 5),
+         "expanded page size delegates to expanded sizing");
+
+  fp::tsf::CandidateLayoutMetrics layout;
+  layout.candidate_rects = {
+      RECT{0, 0, 10, 10},
+      RECT{10, 0, 10, 10},
+      RECT{20, 0, 30, 10},
+  };
+  const auto indices = fp::tsf::SelectableCandidateIndices(layout, 3);
+  Expect(indices.size() == 2, "selectable indices skip empty rectangles");
+  Expect(indices[0] == 0 && indices[1] == 2,
+         "selectable indices preserve candidate order");
 
   return g_failures == 0 ? 0 : 1;
 }
