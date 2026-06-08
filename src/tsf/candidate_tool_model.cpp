@@ -1,17 +1,10 @@
 #include "tsf/candidate_tool_model.h"
 
+#include "common/dpi.h"
 #include "common/win32_geometry.h"
 
 namespace fp::tsf {
 namespace {
-
-int ScaleForDpi(int value, UINT dpi) {
-  return MulDiv(value, static_cast<int>(dpi), 96);
-}
-
-int ScaleHalfDipForDpi(int half_dips, UINT dpi) {
-  return MulDiv(half_dips, static_cast<int>(dpi), 192);
-}
 
 }  // namespace
 
@@ -95,7 +88,7 @@ bool IsCandidateToolEnabled(int tool, bool has_previous_page, bool has_next_page
 
 RECT CandidateToolFeedbackRect(RECT rect, int tool, UINT dpi, bool centered_tools) {
   if (tool == kCandidateToolBrand) {
-    const int vertical_padding = ScaleForDpi(5, dpi);
+    const int vertical_padding = fp::ScaleForDpi(5, dpi);
     const int horizontal_padding = 0;
     RECT feedback{rect.left - horizontal_padding,
                   rect.top - vertical_padding,
@@ -107,15 +100,15 @@ RECT CandidateToolFeedbackRect(RECT rect, int tool, UINT dpi, bool centered_tool
     }
     return feedback;
   }
-  const int side = ScaleHalfDipForDpi(kCandidateToolFeedbackSize * 2 - 1, dpi);
+  const int side = fp::ScaleHalfDipForDpi(kCandidateToolFeedbackSize * 2 - 1, dpi);
   if (centered_tools && tool >= kCandidateToolPrevious && tool <= kCandidateToolExpand) {
     const int rect_width = rect.right - rect.left;
     const int rect_height = rect.bottom - rect.top;
-    if (rect_width <= rect_height + ScaleForDpi(4, dpi)) {
+    if (rect_width <= rect_height + fp::ScaleForDpi(4, dpi)) {
       return rect;
     }
-    const int vertical_inset = ScaleHalfDipForDpi(3, dpi);
-    const int bottom_inset = ScaleHalfDipForDpi(7, dpi);
+    const int vertical_inset = fp::ScaleHalfDipForDpi(3, dpi);
+    const int bottom_inset = fp::ScaleHalfDipForDpi(7, dpi);
     RECT feedback{rect.left,
                   rect.top + vertical_inset,
                   rect.right,
@@ -132,13 +125,13 @@ RECT CandidateToolFeedbackRect(RECT rect, int tool, UINT dpi, bool centered_tool
   if (!centered_tools) {
     switch (tool) {
       case kCandidateToolPrevious:
-        visual_offset_x = -ScaleHalfDipForDpi(4, dpi);
+        visual_offset_x = -fp::ScaleHalfDipForDpi(4, dpi);
         break;
       case kCandidateToolEmoji:
-        visual_offset_x = -ScaleHalfDipForDpi(3, dpi);
+        visual_offset_x = -fp::ScaleHalfDipForDpi(3, dpi);
         break;
       case kCandidateToolExpand:
-        visual_offset_x = -ScaleHalfDipForDpi(6, dpi);
+        visual_offset_x = -fp::ScaleHalfDipForDpi(6, dpi);
         break;
       case kCandidateToolSettings:
         break;
@@ -146,29 +139,29 @@ RECT CandidateToolFeedbackRect(RECT rect, int tool, UINT dpi, bool centered_tool
         break;
     }
   }
-  const int left = center_x + visual_offset_x - side / 2 + ScaleHalfDipForDpi(1, dpi);
-  const int top = center_y - side / 2 + ScaleHalfDipForDpi(1, dpi);
+  const int left = center_x + visual_offset_x - side / 2 + fp::ScaleHalfDipForDpi(1, dpi);
+  const int top = center_y - side / 2 + fp::ScaleHalfDipForDpi(1, dpi);
   return RECT{left, top, left + side, top + side};
 }
 
 int CandidateToolTooltipHorizontalPadding(UINT dpi) {
-  return ScaleForDpi(kCandidateToolTooltipPaddingDips, dpi);
+  return fp::ScaleForDpi(kCandidateToolTooltipPaddingDips, dpi);
 }
 
 int CandidateToolTooltipOverhangGuard(UINT dpi) {
-  return ScaleForDpi(kCandidateToolTooltipOverhangGuardDips, dpi);
+  return fp::ScaleForDpi(kCandidateToolTooltipOverhangGuardDips, dpi);
 }
 
 int CandidateToolTooltipHeight(UINT dpi) {
-  return ScaleForDpi(kCandidateToolTooltipHeightDips, dpi);
+  return fp::ScaleForDpi(kCandidateToolTooltipHeightDips, dpi);
 }
 
 int CandidateToolTooltipOverlap(UINT dpi) {
-  return ScaleForDpi(kCandidateToolTooltipOverlapDips, dpi);
+  return fp::ScaleForDpi(kCandidateToolTooltipOverlapDips, dpi);
 }
 
 int CandidateToolTooltipCornerRadius(UINT dpi) {
-  return ScaleHalfDipForDpi(kCandidateToolTooltipCornerRadiusHalfDips, dpi);
+  return fp::ScaleHalfDipForDpi(kCandidateToolTooltipCornerRadiusHalfDips, dpi);
 }
 
 }  // namespace fp::tsf

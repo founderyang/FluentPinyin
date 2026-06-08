@@ -5,6 +5,7 @@
 #include "common/candidate_font.h"
 #include "common/constants.h"
 #include "common/core_ipc_protocol.h"
+#include "common/dpi.h"
 #include "common/encoding.h"
 #include "common/logging.h"
 #include "common/path_utils.h"
@@ -316,11 +317,11 @@ UINT DpiForWindow(HWND window) {
 }
 
 int ScaleForDpi(int value, UINT dpi) {
-  return MulDiv(value, static_cast<int>(dpi), 96);
+  return fp::ScaleForDpi(value, dpi);
 }
 
 int ScaleHalfDipForDpi(int half_dips, UINT dpi) {
-  return MulDiv(half_dips, static_cast<int>(dpi), 192);
+  return fp::ScaleHalfDipForDpi(half_dips, dpi);
 }
 
 int HairlineForDpi(UINT dpi) {

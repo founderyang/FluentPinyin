@@ -1,5 +1,6 @@
 #include "tsf/toolbar_model.h"
 
+#include "common/dpi.h"
 #include "common/encoding.h"
 #include "common/win32_geometry.h"
 
@@ -30,7 +31,7 @@ struct ToolbarItemVisualDips {
 };
 
 int ScaleForDpi(int value, UINT dpi) {
-  return MulDiv(value, static_cast<int>(dpi), 96);
+  return fp::ScaleForDpi(value, dpi);
 }
 
 ToolbarItemVisualDips ToolbarItemVisualMetricsDips(int item) {
@@ -152,7 +153,7 @@ std::vector<int> VisibleToolbarItemsWithSettings(const std::vector<int>& items) 
 }
 
 int ScaleToolbarHalfDipsFloor(int half_dips, UINT dpi) {
-  return static_cast<int>((static_cast<long long>(half_dips) * static_cast<long long>(dpi)) / 192);
+  return fp::ScaleHalfDipFloorForDpi(half_dips, dpi);
 }
 
 int ToolbarThicknessPixels(UINT dpi) {

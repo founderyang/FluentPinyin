@@ -530,6 +530,11 @@ if(BUILD_TESTING)
   )
   target_link_libraries(common_status_tip_blacklist_unit PRIVATE fluent_pinyin_common)
 
+  add_executable(common_dpi_unit
+    tests/common_dpi_unit.cpp
+  )
+  target_link_libraries(common_dpi_unit PRIVATE fluent_pinyin_common)
+
   add_executable(common_win32_geometry_unit
     tests/common_win32_geometry_unit.cpp
   )
@@ -806,6 +811,10 @@ if(BUILD_TESTING)
   add_test(
     NAME common_status_tip_blacklist_unit
     COMMAND common_status_tip_blacklist_unit
+  )
+  add_test(
+    NAME common_dpi_unit
+    COMMAND common_dpi_unit
   )
   add_test(
     NAME common_win32_geometry_unit
