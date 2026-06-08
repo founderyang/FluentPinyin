@@ -199,6 +199,7 @@ add_library(fluent_pinyin_tsf SHARED
   src/tsf/class_factory.cpp
   src/tsf/context_menu_model.cpp
   src/tsf/dllmain.cpp
+  src/tsf/font_model.cpp
   src/tsf/input_mode_state.cpp
   src/tsf/rime_core_client.cpp
   src/tsf/shortcut_model.cpp
@@ -561,6 +562,12 @@ if(BUILD_TESTING)
   )
   target_link_libraries(tsf_context_menu_model_unit PRIVATE fluent_pinyin_common)
 
+  add_executable(tsf_font_model_unit
+    tests/tsf_font_model_unit.cpp
+    src/tsf/font_model.cpp
+  )
+  target_link_libraries(tsf_font_model_unit PRIVATE fluent_pinyin_common)
+
   add_executable(tsf_shortcut_model_unit
     tests/tsf_shortcut_model_unit.cpp
     src/tsf/shortcut_model.cpp
@@ -798,6 +805,10 @@ if(BUILD_TESTING)
   add_test(
     NAME tsf_context_menu_model_unit
     COMMAND tsf_context_menu_model_unit
+  )
+  add_test(
+    NAME tsf_font_model_unit
+    COMMAND tsf_font_model_unit
   )
   add_test(
     NAME tsf_shortcut_model_unit
