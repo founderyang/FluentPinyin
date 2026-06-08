@@ -126,14 +126,11 @@ constexpr int kVerticalCompactToolIconRightInsetDips = 13;
 constexpr int kVerticalExpandedColumnGapDips = 7;
 constexpr int kVerticalCompactMinItemWidthDips = 44;
 constexpr int kVerticalExpandedMinColumnWidthDips = 82;
-constexpr int kToolbarWidthDips = 216;
 constexpr int kToolbarHeightDips = 38;
 constexpr int kToolbarCornerRadiusDips = 8;
 constexpr int kToolbarOuterInsetPixels = 2;
 constexpr int kToolbarBorderPixels = 2;
 constexpr int kToolbarDragWidthDips = 24;
-constexpr int kToolbarItemSlotDips = 32;
-constexpr int kToolbarTailPaddingHalfDips = 4;
 constexpr int kToolbarSeparatorTopDips = 0;
 constexpr int kToolbarSeparatorBottomDips = 0;
 constexpr int kToolbarGripLeftDips = 11;
@@ -142,9 +139,6 @@ constexpr int kToolbarGripWidthDips = 3;
 constexpr int kToolbarGripHeightDips = 16;
 constexpr int kToolbarTextPointSize = 16;
 constexpr int kToolbarTextVerticalOffsetHalfDips = 0;
-constexpr int kToolbarFeedbackWidthDips = 24;
-constexpr int kToolbarFeedbackHeightDips = 28;
-constexpr int kToolbarFeedbackEdgeInsetDips = 4;
 constexpr int kToolbarTooltipMinWidthDips = 0;
 constexpr int kToolbarTooltipFontPointSize = 9;
 constexpr int kToolbarTooltipHeightDips = 30;
@@ -2855,147 +2849,6 @@ bool PtInRectInclusive(const RECT& rect, int x, int y) {
   return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
 }
 
-struct ToolbarItemMetrics {
-  int id;
-  RECT hit_rect;
-  RECT visual_rect;
-  RECT feedback_rect;
-};
-
-int ToolbarWindowWidthPixels(bool vertical, size_t item_count, UINT dpi);
-int ToolbarWindowHeightPixels(bool vertical, size_t item_count, UINT dpi);
-
-struct ToolbarItemVisualDips {
-  int left_offset;
-  int top;
-  int width;
-  int height;
-};
-
-ToolbarItemVisualDips ToolbarItemVisualMetricsDips(int item) {
-  switch (item) {
-    case kToolbarItemInputMode:
-      return {6, 3, 20, 30};
-    case kToolbarItemShape:
-      return {7, 2, 19, 32};
-    case kToolbarItemPunctuation:
-      return {-1, 3, 29, 30};
-    case kToolbarItemCharset:
-      return {3, 3, 24, 30};
-    case kToolbarItemEmoji:
-      return {6, 3, 21, 30};
-    case kToolbarItemSettings:
-      return {4, 3, 22, 30};
-    default:
-      return {4, 3, 24, 30};
-  }
-}
-
-std::vector<ToolbarItemMetrics> ToolbarItemsForDpi(UINT dpi,
-                                                   bool vertical,
-                                                   const std::vector<int>& visible_items) {
-  auto s = [dpi](int value) { return ScaleForDpi(value, dpi); };
-  const std::vector<int> items = VisibleToolbarItemsWithSettings(visible_items);
-  const auto item = [&](int id, size_t index) {
-    const ToolbarItemVisualDips visual = ToolbarItemVisualMetricsDips(id);
-    RECT visual_rect{};
-    RECT slot_rect{};
-    if (vertical) {
-      const int slot_top = kToolbarDragWidthDips + static_cast<int>(index) * kToolbarItemSlotDips;
-      const int visual_left = (kToolbarHeightDips - visual.height) / 2;
-      const int visual_top = slot_top + (kToolbarItemSlotDips - visual.width) / 2;
-      slot_rect = RECT{s(0), s(slot_top), s(kToolbarHeightDips), s(slot_top + kToolbarItemSlotDips)};
-      visual_rect = RECT{s(visual_left),
-                         s(visual_top),
-                         s(visual_left + visual.height),
-                         s(visual_top + visual.width)};
-    } else {
-      const int slot_left = kToolbarDragWidthDips + static_cast<int>(index) * kToolbarItemSlotDips;
-      slot_rect = RECT{s(slot_left), s(0), s(slot_left + kToolbarItemSlotDips), s(kToolbarHeightDips)};
-      visual_rect = RECT{s(slot_left + visual.left_offset),
-                         s(visual.top),
-                         s(slot_left + visual.left_offset + visual.width),
-                         s(visual.top + visual.height)};
-    }
-    const int feedback_width =
-        vertical ? s(kToolbarFeedbackHeightDips) : s(kToolbarFeedbackWidthDips);
-    const int feedback_height =
-        vertical ? s(kToolbarFeedbackWidthDips) : s(kToolbarFeedbackHeightDips);
-    const int toolbar_width = ToolbarWindowWidthPixels(vertical, items.size(), dpi);
-    const int toolbar_height = ToolbarWindowHeightPixels(vertical, items.size(), dpi);
-    const int edge_inset = s(kToolbarFeedbackEdgeInsetDips);
-    const int slot_width = std::max(1, static_cast<int>(slot_rect.right - slot_rect.left));
-    const int slot_height = std::max(1, static_cast<int>(slot_rect.bottom - slot_rect.top));
-    const int centered_feedback_left =
-        slot_rect.left + (slot_width - feedback_width) / 2;
-    const int feedback_left =
-        std::clamp(centered_feedback_left,
-                   edge_inset,
-                   std::max(edge_inset, toolbar_width - edge_inset - feedback_width));
-    const int feedback_top = slot_rect.top + (slot_height - feedback_height) / 2;
-    const int clamped_feedback_top =
-        std::clamp(feedback_top,
-                   edge_inset,
-                   std::max(edge_inset, toolbar_height - edge_inset - feedback_height));
-    const RECT feedback_rect{feedback_left,
-                             clamped_feedback_top,
-                             feedback_left + feedback_width,
-                             clamped_feedback_top + feedback_height};
-    if (id == kToolbarItemCharset || id == kToolbarItemSettings) {
-      const int visual_width =
-          std::max(1, static_cast<int>(visual_rect.right - visual_rect.left));
-      const int visual_height =
-          std::max(1, static_cast<int>(visual_rect.bottom - visual_rect.top));
-      const int visual_left = (feedback_rect.left + feedback_rect.right - visual_width) / 2;
-      const int visual_top = (feedback_rect.top + feedback_rect.bottom - visual_height) / 2;
-      visual_rect = RECT{visual_left,
-                         visual_top,
-                         visual_left + visual_width,
-                         visual_top + visual_height};
-    }
-    return ToolbarItemMetrics{
-        id,
-        feedback_rect,
-        visual_rect,
-        feedback_rect,
-    };
-  };
-
-  std::vector<ToolbarItemMetrics> metrics;
-  metrics.reserve(items.size());
-  for (size_t index = 0; index < items.size(); ++index) {
-    metrics.push_back(item(items[index], index));
-  }
-  return metrics;
-}
-
-RECT ToolbarItemIconRect(const ToolbarItemMetrics& item, UINT dpi, int inset_dips = 1) {
-  const int inset = ScaleForDpi(inset_dips, dpi);
-  RECT rect{item.visual_rect.left + inset,
-            item.visual_rect.top + inset,
-            item.visual_rect.right - inset,
-            item.visual_rect.bottom - inset};
-  if (rect.right <= rect.left || rect.bottom <= rect.top) {
-    return item.visual_rect;
-  }
-  return rect;
-}
-
-int ToolbarItemAtPoint(UINT dpi, bool vertical, const std::vector<int>& visible_items, int x, int y) {
-  if ((!vertical && x < ScaleForDpi(kToolbarDragWidthDips, dpi)) ||
-      (vertical && y < ScaleForDpi(kToolbarDragWidthDips, dpi))) {
-    return kToolbarItemDrag;
-  }
-  const std::vector<ToolbarItemMetrics> items =
-      ToolbarItemsForDpi(dpi, vertical, visible_items);
-  for (const auto& item : items) {
-    if (PtInRectInclusive(item.hit_rect, x, y)) {
-      return item.id;
-    }
-  }
-  return kToolbarItemNone;
-}
-
 std::wstring ToolbarTooltipText(int item,
                                 bool ascii_mode,
                                 bool full_shape_mode,
@@ -3033,32 +2886,6 @@ std::wstring ToolbarTooltipText(int item,
 
 int ToolbarTooltipCornerRadius(UINT dpi) {
   return ScaleHalfDipForDpi(kToolbarTooltipCornerRadiusHalfDips, dpi);
-}
-
-int ScaleToolbarHalfDipsFloor(int half_dips, UINT dpi) {
-  return static_cast<int>((static_cast<long long>(half_dips) * static_cast<long long>(dpi)) / 192);
-}
-
-int ToolbarThicknessPixels(UINT dpi) {
-  return ScaleToolbarHalfDipsFloor(kToolbarHeightDips * 2, dpi);
-}
-
-int ToolbarWindowWidthPixels(bool vertical, size_t item_count, UINT dpi) {
-  if (vertical) {
-    return ToolbarThicknessPixels(dpi);
-  }
-  const int base_dips =
-      kToolbarDragWidthDips + static_cast<int>(item_count) * kToolbarItemSlotDips;
-  return ScaleForDpi(base_dips, dpi) + ScaleToolbarHalfDipsFloor(kToolbarTailPaddingHalfDips, dpi);
-}
-
-int ToolbarWindowHeightPixels(bool vertical, size_t item_count, UINT dpi) {
-  if (!vertical) {
-    return ToolbarThicknessPixels(dpi);
-  }
-  const int base_dips =
-      kToolbarDragWidthDips + static_cast<int>(item_count) * kToolbarItemSlotDips;
-  return ScaleForDpi(base_dips, dpi) + ScaleToolbarHalfDipsFloor(kToolbarTailPaddingHalfDips, dpi);
 }
 
 bool IsUsableScreenPoint(POINT point) {

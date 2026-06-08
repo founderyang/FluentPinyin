@@ -48,5 +48,30 @@ int main() {
   Expect(visible[2] == fp::tsf::kToolbarItemSettings,
          "visible items append settings");
 
+  Expect(fp::tsf::ToolbarWindowWidthPixels(false, visible.size(), 96) == 122,
+         "horizontal toolbar width follows item count");
+  Expect(fp::tsf::ToolbarWindowHeightPixels(false, visible.size(), 96) == 38,
+         "horizontal toolbar height is fixed thickness");
+  Expect(fp::tsf::ToolbarWindowWidthPixels(true, visible.size(), 96) == 38,
+         "vertical toolbar width is fixed thickness");
+  Expect(fp::tsf::ToolbarWindowHeightPixels(true, visible.size(), 96) == 122,
+         "vertical toolbar height follows item count");
+
+  const auto metrics = fp::tsf::ToolbarItemsForDpi(96, false, visible);
+  Expect(metrics.size() == 3, "toolbar metrics follow visible item count");
+  Expect(metrics[0].id == fp::tsf::kToolbarItemInputMode,
+         "toolbar metrics preserve visible order");
+  Expect(fp::tsf::ToolbarItemAtPoint(96, false, visible, 1, 1) ==
+             fp::tsf::kToolbarItemDrag,
+         "toolbar hit test returns drag zone");
+  Expect(fp::tsf::ToolbarItemAtPoint(96, false, visible, metrics[1].hit_rect.left, 10) ==
+             fp::tsf::kToolbarItemEmoji,
+         "toolbar hit test returns item on inclusive edge");
+
+  const RECT icon_rect = fp::tsf::ToolbarItemIconRect(metrics[0], 96, 1);
+  Expect(icon_rect.left > metrics[0].visual_rect.left &&
+             icon_rect.right < metrics[0].visual_rect.right,
+         "toolbar icon rect applies inset");
+
   return g_failures == 0 ? 0 : 1;
 }
