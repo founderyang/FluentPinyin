@@ -16,7 +16,9 @@
 #include "config_winui/settings_binding.h"
 #include "config_winui/settings_navigation.h"
 #include "config_winui/settings_options.h"
+#include "config_winui/settings_refresh.h"
 #include "config_winui/settings_ui_helpers.h"
+#include "config_winui/shell_actions.h"
 #include "config_winui/status_tip_blacklist.h"
 #include "config_winui/theme_helpers.h"
 #include "config_winui/wanxiang_modes.h"
@@ -25,7 +27,6 @@
 #include "../tsf/resource.h"
 
 #include <windows.h>
-#include <shellapi.h>
 #include <MddBootstrap.h>
 #include <microsoft.ui.xaml.window.h>
 
@@ -51,7 +52,6 @@
 #include <winrt/Windows.UI.h>
 
 #include <algorithm>
-#include <atomic>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -99,6 +99,8 @@ using fp::config_winui::InitialSettingsPageTag;
 using fp::config_winui::NormalizeSettingsPageTag;
 using fp::config_winui::CandidateLayoutChoices;
 using fp::config_winui::ReadCandidateLayoutSetting;
+using fp::config_winui::OpenPath;
+using fp::config_winui::OpenUrl;
 using fp::config_winui::ClearSettingsPaletteOverride;
 using fp::config_winui::CurrentSettingsPalette;
 using fp::config_winui::CurrentThemeModeSetting;
@@ -160,6 +162,15 @@ using fp::config_winui::StatusTipBlacklistContains;
 using fp::config_winui::JoinStatusTipBlacklistItems;
 using fp::config_winui::SyncAutoIntervalChoices;
 using fp::config_winui::SyncAutoIntervalMinutesFromValue;
+using fp::config_winui::RequestApplyInputConfig;
+using fp::config_winui::RequestApplyInputConfigDeferred;
+using fp::config_winui::RequestCandidateWindowVisualRefresh;
+using fp::config_winui::RequestCandidateWindowVisualRefreshDeferred;
+using fp::config_winui::RequestInputStateRefresh;
+using fp::config_winui::RequestInputStateRefreshDeferred;
+using fp::config_winui::RequestToolbarHostRefresh;
+using fp::config_winui::RequestToolbarHostShutdown;
+using fp::config_winui::RunTool;
 using fp::config_winui::CurrentCustomPhraseCount;
 using fp::config_winui::CurrentManagedDictionaryCount;
 using fp::config_winui::CurrentUserLexiconCount;
@@ -366,27 +377,6 @@ void SetFuzzyPinyinRuleChecks(
   }
 }
 
-void OpenPath(const std::filesystem::path& path) {
-  fp::EnsureDirectory(path);
-  ShellExecuteW(nullptr, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-}
-
-void OpenUrl(std::wstring_view url) {
-  const std::wstring target(url);
-  ShellExecuteW(nullptr, L"open", target.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-}
-
-void RunTool(std::wstring_view exe_name, std::wstring_view parameters = L"") {
-  const auto exe = SiblingExe(exe_name);
-  const std::wstring params(parameters);
-  ShellExecuteW(nullptr,
-                L"open",
-                exe.c_str(),
-                params.empty() ? nullptr : params.c_str(),
-                nullptr,
-                SW_SHOWNORMAL);
-}
-
 void ShowWindowsAppRuntimeMissingMessage(HRESULT result) {
   const auto installer = ModuleDirectory() / std::wstring(kWindowsAppRuntimeInstallerName);
   std::wstring message =
@@ -400,63 +390,6 @@ void ShowWindowsAppRuntimeMissingMessage(HRESULT result) {
   swprintf_s(code, L"\n\n错误代码：0x%08lX", static_cast<unsigned long>(result));
   message += code;
   MessageBoxW(nullptr, message.c_str(), L"流畅拼音 设置", MB_ICONERROR);
-}
-
-void RequestToolbarHostRefresh() {
-  fp::PostRegisteredBroadcastMessage(fp::kToolbarRefreshMessageName);
-}
-
-void RequestToolbarHostShutdown() {
-  fp::PostRegisteredBroadcastMessage(fp::kToolbarHostShutdownMessageName);
-}
-
-void RequestApplyInputConfig() {
-  fp::PostRegisteredBroadcastMessage(fp::kApplyInputConfigMessageName);
-}
-
-void RequestInputStateRefresh() {
-  fp::PostRegisteredBroadcastMessage(fp::kRefreshInputStateMessageName);
-}
-
-void RequestCandidateWindowVisualRefresh() {
-  fp::PostRegisteredBroadcastMessage(fp::kRefreshCandidateWindowVisualsMessageName);
-  RequestInputStateRefresh();
-}
-
-void RequestApplyInputConfigDeferred(DWORD delay_ms = 360) {
-  static std::atomic<unsigned long> generation{0};
-  const unsigned long request_generation = ++generation;
-  std::thread([request_generation, delay_ms]() {
-    Sleep(delay_ms);
-    if (generation.load() != request_generation) {
-      return;
-    }
-    RequestApplyInputConfig();
-  }).detach();
-}
-
-void RequestInputStateRefreshDeferred(DWORD delay_ms = 260) {
-  static std::atomic<unsigned long> generation{0};
-  const unsigned long request_generation = ++generation;
-  std::thread([request_generation, delay_ms]() {
-    Sleep(delay_ms);
-    if (generation.load() != request_generation) {
-      return;
-    }
-    RequestInputStateRefresh();
-  }).detach();
-}
-
-void RequestCandidateWindowVisualRefreshDeferred(DWORD delay_ms = 120) {
-  static std::atomic<unsigned long> generation{0};
-  const unsigned long request_generation = ++generation;
-  std::thread([request_generation, delay_ms]() {
-    Sleep(delay_ms);
-    if (generation.load() != request_generation) {
-      return;
-    }
-    RequestCandidateWindowVisualRefresh();
-  }).detach();
 }
 
 bool HasCommandLineSwitch(std::wstring_view switch_name) {
