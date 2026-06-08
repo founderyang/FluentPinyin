@@ -88,4 +88,16 @@ std::wstring TrimWhitespace(std::wstring_view value) {
   return std::wstring(value.substr(first, last - first));
 }
 
+bool EqualsInsensitive(std::wstring_view left, std::wstring_view right) {
+  return ToLowerInvariant(std::wstring(left)) == ToLowerInvariant(std::wstring(right));
+}
+
+bool ContainsInsensitive(std::wstring_view value, std::wstring_view needle) {
+  if (needle.empty()) {
+    return true;
+  }
+  return ToLowerInvariant(std::wstring(value)).find(ToLowerInvariant(std::wstring(needle))) !=
+         std::wstring::npos;
+}
+
 }  // namespace fp

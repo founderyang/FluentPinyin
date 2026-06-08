@@ -6,6 +6,7 @@
 #include "common/logging.h"
 #include "common/path_utils.h"
 #include "core/rime_engine.h"
+#include "devtools/cleanup_utils.h"
 
 #include <ctffunc.h>
 #include <msctf.h>
@@ -259,7 +260,6 @@ bool EnsureCurrentUserFluentPinyinLanguageProfile() {
 }
 
 constexpr std::wstring_view kTaskName = L"FluentPinyinAutoSync";
-constexpr std::wstring_view kInstallDirName = L"FluentPinyin";
 constexpr wchar_t kSettingsProcessName[] = L"fluent-pinyin-settings.exe";
 constexpr wchar_t kUninstallRegistryRoot[] =
     L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall";
@@ -275,19 +275,6 @@ constexpr std::wstring_view kWindowsAppRuntimePackageFamily =
     L"Microsoft.WindowsAppRuntime.1.8_8wekyb3d8bbwe";
 constexpr std::wstring_view kWindowsAppRuntimeRequiredVersion =
     L"8000.806.2252.0";
-
-bool EqualsInsensitive(std::wstring_view left, std::wstring_view right) {
-  return fp::ToLowerInvariant(std::wstring(left)) ==
-         fp::ToLowerInvariant(std::wstring(right));
-}
-
-bool ContainsInsensitive(std::wstring_view value, std::wstring_view needle) {
-  if (needle.empty()) {
-    return true;
-  }
-  return fp::ToLowerInvariant(std::wstring(value))
-             .find(fp::ToLowerInvariant(std::wstring(needle))) != std::wstring::npos;
-}
 
 bool HasOptionPrefix(std::wstring_view arg) {
   return arg.starts_with(L"--") || arg.starts_with(L"/");
@@ -313,7 +300,7 @@ std::filesystem::path DefaultInstallDir() {
   if (program_files.empty()) {
     program_files = L"C:\\Program Files";
   }
-  return program_files / std::wstring(kInstallDirName);
+  return program_files / L"FluentPinyin";
 }
 
 void BroadcastFontChange() {
@@ -524,14 +511,14 @@ void RemoveRegistryValuesMatching(HKEY root,
     const std::wstring value = RegistryDataToString(type, data);
     bool matched = false;
     for (const auto needle : name_needles) {
-      if (!needle.empty() && ContainsInsensitive(name, needle)) {
+      if (!needle.empty() && fp::ContainsInsensitive(name, needle)) {
         matched = true;
         break;
       }
     }
     if (!matched) {
       for (const auto needle : value_needles) {
-        if (!needle.empty() && ContainsInsensitive(value, needle)) {
+        if (!needle.empty() && fp::ContainsInsensitive(value, needle)) {
           matched = true;
           break;
         }
@@ -618,7 +605,7 @@ void RemoveStalePendingDeletes() {
     return std::any_of(fp::kBundledFontEntries.begin(),
                        fp::kBundledFontEntries.end(),
                        [&](const auto& font) {
-                         return ContainsInsensitive(value, font.file);
+                         return fp::ContainsInsensitive(value, font.file);
                        });
   };
   std::vector<std::wstring> filtered;
@@ -628,8 +615,8 @@ void RemoveStalePendingDeletes() {
     const std::wstring target = index + 1 < entries.size() ? entries[index + 1] : L"";
     bool remove = false;
     const bool install_dir_match =
-        ContainsInsensitive(source, kInstallDirNeedle) ||
-        ContainsInsensitive(target, kInstallDirNeedle);
+        fp::ContainsInsensitive(source, kInstallDirNeedle) ||
+        fp::ContainsInsensitive(target, kInstallDirNeedle);
     if (install_dir_match || font_match(source) || font_match(target)) {
       remove = true;
       changed = true;
@@ -667,115 +654,6 @@ void RemoveStalePendingDeletes() {
   RegCloseKey(key);
 }
 
-void LogDeferredDeleteSkipped(const std::filesystem::path& path) {
-  if (path.empty()) {
-    return;
-  }
-  fp::LogWarning(L"installer",
-                 L"cleanup left path in place to avoid Windows restart prompts: " +
-                     path.wstring());
-}
-
-bool RemoveFileNow(const std::filesystem::path& path) {
-  if (path.empty()) {
-    return true;
-  }
-
-  std::error_code error;
-  if (!std::filesystem::exists(path, error)) {
-    return true;
-  }
-
-  std::filesystem::permissions(path,
-                               std::filesystem::perms::owner_all,
-                               std::filesystem::perm_options::add,
-                               error);
-  error.clear();
-
-  for (int attempt = 0; attempt < 8; ++attempt) {
-    std::filesystem::remove(path, error);
-    if (!std::filesystem::exists(path, error)) {
-      return true;
-    }
-    DeleteFileW(path.c_str());
-    if (!std::filesystem::exists(path, error)) {
-      return true;
-    }
-    Sleep(250);
-    error.clear();
-  }
-
-  LogDeferredDeleteSkipped(path);
-  return false;
-}
-
-void RemovePathTree(const std::filesystem::path& path) {
-  if (path.empty()) {
-    return;
-  }
-
-  std::error_code error;
-  if (!std::filesystem::exists(path, error)) {
-    return;
-  }
-
-  for (auto iterator =
-           std::filesystem::recursive_directory_iterator(path,
-                                                        std::filesystem::directory_options::
-                                                            skip_permission_denied,
-                                                        error);
-       !error && iterator != std::filesystem::recursive_directory_iterator();
-       iterator.increment(error)) {
-    std::filesystem::permissions(iterator->path(),
-                                 std::filesystem::perms::owner_all,
-                                 std::filesystem::perm_options::add,
-                                 error);
-    error.clear();
-  }
-
-  for (int attempt = 0; attempt < 6; ++attempt) {
-    std::filesystem::remove_all(path, error);
-    if (!std::filesystem::exists(path, error)) {
-      return;
-    }
-    Sleep(250);
-    error.clear();
-  }
-
-  std::vector<std::filesystem::path> remaining;
-  error.clear();
-  for (auto iterator =
-           std::filesystem::recursive_directory_iterator(path,
-                                                        std::filesystem::directory_options::
-                                                            skip_permission_denied,
-                                                        error);
-       !error && iterator != std::filesystem::recursive_directory_iterator();
-       iterator.increment(error)) {
-    remaining.push_back(iterator->path());
-  }
-  std::sort(remaining.begin(),
-            remaining.end(),
-            [](const auto& left, const auto& right) {
-              return left.native().size() > right.native().size();
-            });
-  for (const auto& child : remaining) {
-    if (std::filesystem::is_regular_file(child, error)) {
-      RemoveFileNow(child);
-    } else {
-      LogDeferredDeleteSkipped(child);
-    }
-    error.clear();
-  }
-  LogDeferredDeleteSkipped(path);
-}
-
-bool IsSafeInstallDirectory(const std::filesystem::path& path) {
-  if (path.empty() || !path.has_root_path()) {
-    return false;
-  }
-  return EqualsInsensitive(path.filename().wstring(), kInstallDirName);
-}
-
 struct FontCleanupSummary {
   int resource_remove_attempts = 0;
   int registry_values_deleted = 0;
@@ -806,7 +684,7 @@ FontCleanupSummary RemoveFontFilesAndRegistry() {
             fp::BundledFontRegistryValueName(font, fp::kOpenTypeFontRegistryKind))) {
       ++summary.registry_values_deleted;
     }
-    RemoveFileNow(target);
+    fp::devtools::RemoveFileNow(target);
     ++summary.file_delete_requests;
   }
   BroadcastFontChange();
@@ -882,7 +760,7 @@ std::vector<DWORD> FindProcessIds(std::wstring_view process_name) {
   entry.dwSize = sizeof(entry);
   if (Process32FirstW(snapshot, &entry)) {
     do {
-      if (EqualsInsensitive(entry.szExeFile, process_name)) {
+      if (fp::EqualsInsensitive(entry.szExeFile, process_name)) {
         ids.push_back(entry.th32ProcessID);
       }
     } while (Process32NextW(snapshot, &entry));
@@ -927,7 +805,7 @@ std::vector<DWORD> FindProcessIdsLoadingModules(
     if (Module32FirstW(snapshot, &module)) {
       do {
         for (std::wstring_view name : module_names) {
-          if (EqualsInsensitive(module.szModule, name)) {
+          if (fp::EqualsInsensitive(module.szModule, name)) {
             matched = true;
             break;
           }
@@ -1578,24 +1456,24 @@ int CleanupInstall(const std::filesystem::path& install_dir,
       {normalized_install_dir, L"FluentPinyin", L"fluent-pinyin"});
 
   if (!keep_user_data) {
-    RemovePathTree(fp::GetRoamingAppDataPath() / L"FluentPinyin");
-    RemovePathTree(fp::GetLocalAppDataPath() / L"FluentPinyin");
-    RemovePathTree(fp::GetProgramDataPath() / L"FluentPinyin");
+    fp::devtools::RemovePathTree(fp::GetRoamingAppDataPath() / L"FluentPinyin");
+    fp::devtools::RemovePathTree(fp::GetLocalAppDataPath() / L"FluentPinyin");
+    fp::devtools::RemovePathTree(fp::GetProgramDataPath() / L"FluentPinyin");
     const auto temp = EnvironmentPath(L"TEMP");
     if (!temp.empty()) {
-      RemovePathTree(temp / L"FluentPinyin-update");
+      fp::devtools::RemovePathTree(temp / L"FluentPinyin-update");
     }
   }
 
   if (!skip_install_dir) {
-    if (!IsSafeInstallDirectory(install_dir)) {
+    if (!fp::devtools::IsSafeInstallDirectory(install_dir)) {
       fp::LogError(L"installer",
                    L"cleanup refused unexpected install directory: " + install_dir.wstring());
       std::wcerr << L"Refusing to remove unexpected install directory: "
                  << install_dir.wstring() << L"\n";
       return 1;
     }
-    RemovePathTree(install_dir);
+    fp::devtools::RemovePathTree(install_dir);
   }
 
   const ULONGLONG elapsed_ms = GetTickCount64() - start_tick;
