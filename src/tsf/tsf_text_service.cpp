@@ -94,7 +94,6 @@ constexpr DWORD kStatusTipSettingsRefreshMs = 1500;
 constexpr int kCandidateWindowClassExtraLastWidth = 0;
 constexpr int kCandidateWindowClassExtraLastHeight = sizeof(LONG_PTR);
 constexpr int kCandidateToolTooltipFontPointSize = 11;
-constexpr int kCandidateToolTooltipOverhangGuardDips = 2;
 constexpr int kHorizontalExpandedFooterGapDips = 2;
 constexpr int kHorizontalExpandedFooterHeightDips = 41;
 constexpr int kHorizontalExpandedHeaderSeparatorInsetDips = 5;
@@ -11257,7 +11256,7 @@ void TsfTextService::PositionCandidateTooltip(int tool) {
     ReleaseDC(candidate_tooltip_window_, dc);
   }
   const int horizontal_padding = CandidateToolTooltipHorizontalPadding(dpi);
-  const int text_overhang_guard = s(kCandidateToolTooltipOverhangGuardDips);
+  const int text_overhang_guard = CandidateToolTooltipOverhangGuard(dpi);
   const int width =
       std::max(s(54),
                static_cast<int>(text_size.cx) + horizontal_padding * 2 + text_overhang_guard);

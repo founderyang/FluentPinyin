@@ -157,6 +157,10 @@ int CandidateToolTooltipHorizontalPadding(UINT dpi) {
   return ScaleForDpi(kCandidateToolTooltipPaddingDips, dpi);
 }
 
+int CandidateToolTooltipOverhangGuard(UINT dpi) {
+  return ScaleForDpi(kCandidateToolTooltipOverhangGuardDips, dpi);
+}
+
 int CandidateToolTooltipHeight(UINT dpi) {
   return ScaleForDpi(kCandidateToolTooltipHeightDips, dpi);
 }

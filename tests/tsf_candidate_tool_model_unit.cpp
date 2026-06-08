@@ -78,6 +78,8 @@ int main() {
          "brand feedback expands vertically");
   Expect(fp::tsf::CandidateToolTooltipHorizontalPadding(96) == 10,
          "tooltip padding scales at base dpi");
+  Expect(fp::tsf::CandidateToolTooltipOverhangGuard(192) == 4,
+         "tooltip overhang guard scales with dpi");
   Expect(fp::tsf::CandidateToolTooltipHeight(96) == 33,
          "tooltip height scales at base dpi");
   Expect(fp::tsf::CandidateToolTooltipOverlap(192) == 12,
