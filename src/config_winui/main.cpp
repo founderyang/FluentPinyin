@@ -11,6 +11,7 @@
 #include "config_winui/fuzzy_pinyin_rules.h"
 #include "config_winui/hotkey_helpers.h"
 #include "config_winui/lexicon_store.h"
+#include "config_winui/settings_app_lifecycle.h"
 #include "config_winui/settings_binding.h"
 #include "config_winui/settings_controls.h"
 #include "config_winui/settings_navigation.h"
@@ -231,6 +232,13 @@ using fp::config_winui::WriteIntSetting;
 using fp::config_winui::WriteStringSetting;
 using fp::config_winui::EnsureUiFontsLoaded;
 using fp::config_winui::ModuleDirectory;
+using fp::config_winui::ActivateExistingSettingsWindow;
+using fp::config_winui::HasCommandLineSwitch;
+using fp::config_winui::InitialPageTagFromProcess;
+using fp::config_winui::kSettingsAppTitle;
+using fp::config_winui::kSettingsSingleInstanceMutexName;
+using fp::config_winui::RunAutoSyncCommand;
+using fp::config_winui::ShowWindowsAppRuntimeMissingMessage;
 using fp::config_winui::Card;
 using fp::config_winui::ChoiceCombo;
 using fp::config_winui::ActionButton;
@@ -350,9 +358,6 @@ using fp::config_winui::ToolbarVisibleIcon;
 using fp::config_winui::TriangleStatusIcon;
 using fp::config_winui::UserLexiconStateIcon;
 
-constexpr std::wstring_view kSettingsAppTitle = L"流畅拼音输入法设置";
-constexpr std::wstring_view kSettingsSingleInstanceMutexName =
-    L"Local\\FluentPinyinSettingsSingleInstance";
 constexpr double kNavigationOpenPaneLength = 248.0;
 constexpr double kTitleBarDragHeight = 40.0;
 constexpr double kTitleBarCaptionButtonReservedWidth = 150.0;
@@ -360,8 +365,6 @@ constexpr double kContentFrameLeftInset = 12.0;
 constexpr double kContentFrameTopInset = 48.0;
 constexpr double kContentFrameRightInset = 24.0;
 constexpr double kContentFrameBottomInset = 22.0;
-constexpr std::wstring_view kWindowsAppRuntimeInstallerName =
-    L"windowsappruntimeinstall-x64.exe";
 constexpr int kMinSettingsWindowWidthDips = 860;
 constexpr int kMinSettingsWindowHeightDips = 480;
 
@@ -370,11 +373,6 @@ SizeInt32 g_min_settings_window_size_dips{kMinSettingsWindowWidthDips,
                                           kMinSettingsWindowHeightDips};
 std::vector<ToggleSwitch> g_toolbar_visible_switches;
 bool g_syncing_toolbar_visible_switches = false;
-
-std::wstring InitialPageTagFromProcess() {
-  const wchar_t* command_line = GetCommandLineW();
-  return InitialSettingsPageTag(command_line != nullptr ? command_line : L"");
-}
 
 IReference<bool> NullableBool(bool value) {
   return box_value(value).as<IReference<bool>>();
@@ -419,39 +417,6 @@ void SetFuzzyPinyinRuleChecks(
   for (const auto& [id, check] : checks) {
     check.IsChecked(NullableBool(FuzzyPinyinRuleSelected(enabled_rules, id)));
   }
-}
-
-void ShowWindowsAppRuntimeMissingMessage(HRESULT result) {
-  const auto installer = ModuleDirectory() / std::wstring(kWindowsAppRuntimeInstallerName);
-  std::wstring message =
-      L"无法启动设置面板，因为系统缺少 Windows App Runtime 1.8。\n\n"
-      L"请重新运行 FluentPinyin 安装包修复运行时依赖。";
-  std::error_code error;
-  if (std::filesystem::exists(installer, error)) {
-    message += L"\n\n也可以运行安装目录中的 windowsappruntimeinstall-x64.exe 后再打开设置。";
-  }
-  wchar_t code[32]{};
-  swprintf_s(code, L"\n\n错误代码：0x%08lX", static_cast<unsigned long>(result));
-  message += code;
-  MessageBoxW(nullptr, message.c_str(), L"流畅拼音 设置", MB_ICONERROR);
-}
-
-bool HasCommandLineSwitch(std::wstring_view switch_name) {
-  const std::wstring command = GetCommandLineW() != nullptr ? GetCommandLineW() : L"";
-  return command.find(std::wstring(switch_name)) != std::wstring::npos;
-}
-
-int RunAutoSyncCommand() {
-  const auto result = fp::sync::RunAutoSync();
-  if (result.success) {
-    RequestApplyInputConfig();
-    return 0;
-  }
-  return 1;
-}
-
-bool ActivateExistingSettingsWindow(int attempts = 1) {
-  return fp::config_winui::ActivateWindowByTitle(kSettingsAppTitle, attempts);
 }
 
 SizeInt32 SettingsMinimumWindowSize(HWND hwnd) {
