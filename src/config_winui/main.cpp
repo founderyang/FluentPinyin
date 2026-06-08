@@ -22,6 +22,7 @@
 #include "config_winui/shell_actions.h"
 #include "config_winui/status_tip_blacklist.h"
 #include "config_winui/theme_helpers.h"
+#include "config_winui/toolbar_visibility_state.h"
 #include "config_winui/wanxiang_modes.h"
 #include "config_winui/window_helpers.h"
 #include "sync/sync_service.h"
@@ -233,6 +234,7 @@ using fp::config_winui::WriteStringSetting;
 using fp::config_winui::EnsureUiFontsLoaded;
 using fp::config_winui::ModuleDirectory;
 using fp::config_winui::NavItem;
+using fp::config_winui::ClearToolbarVisibleSwitches;
 using fp::config_winui::ActivateExistingSettingsWindow;
 using fp::config_winui::HasCommandLineSwitch;
 using fp::config_winui::InitialPageTagFromProcess;
@@ -351,10 +353,13 @@ using fp::config_winui::SmartFuzzyPinyinIcon;
 using fp::config_winui::StatusTipBlacklistIcon;
 using fp::config_winui::StatusTipEnabledIcon;
 using fp::config_winui::SuperAbbrevIcon;
+using fp::config_winui::RegisterToolbarVisibleSwitch;
+using fp::config_winui::SyncToolbarVisibleSwitchesFromSettings;
 using fp::config_winui::ThemeModeIcon;
 using fp::config_winui::ThemePresetLabel;
 using fp::config_winui::ThemePresetRowIcon;
 using fp::config_winui::ThemePreviewArtwork;
+using fp::config_winui::ToolbarVisibleSwitch;
 using fp::config_winui::ToolbarVisibleIcon;
 using fp::config_winui::TriangleStatusIcon;
 using fp::config_winui::UserLexiconStateIcon;
@@ -372,9 +377,6 @@ constexpr int kMinSettingsWindowHeightDips = 480;
 WNDPROC g_settings_window_proc = nullptr;
 SizeInt32 g_min_settings_window_size_dips{kMinSettingsWindowWidthDips,
                                           kMinSettingsWindowHeightDips};
-std::vector<ToggleSwitch> g_toolbar_visible_switches;
-bool g_syncing_toolbar_visible_switches = false;
-
 IReference<bool> NullableBool(bool value) {
   return box_value(value).as<IReference<bool>>();
 }
@@ -429,21 +431,7 @@ LRESULT CALLBACK SettingsWindowProc(HWND hwnd, UINT message, WPARAM wparam, LPAR
   const UINT toolbar_refresh_message =
       fp::RegisteredBroadcastMessage(fp::kToolbarRefreshMessageName);
   if (toolbar_refresh_message != 0 && message == toolbar_refresh_message) {
-    ResetSettingsCache();
-    const bool visible =
-        ReadBoolSettingMigrated(fp::kToolbarVisibleSetting,
-                                false,
-                                fp::kLegacyToolbarVisibleSetting);
-    g_syncing_toolbar_visible_switches = true;
-    for (auto it = g_toolbar_visible_switches.begin(); it != g_toolbar_visible_switches.end();) {
-      if (*it == nullptr) {
-        it = g_toolbar_visible_switches.erase(it);
-        continue;
-      }
-      it->IsOn(visible);
-      ++it;
-    }
-    g_syncing_toolbar_visible_switches = false;
+    SyncToolbarVisibleSwitchesFromSettings();
   }
   if (message == WM_GETMINMAXINFO) {
     auto info = reinterpret_cast<MINMAXINFO*>(lparam);
@@ -795,28 +783,6 @@ ToggleSwitch SettingSwitch(std::wstring_view key,
   toggle.IsOn(ReadBoolSetting(key, default_value));
   toggle.Toggled([toggle, key = std::wstring(key), on_change](auto const&, auto const&) {
     WriteBoolSetting(key, toggle.IsOn());
-    if (on_change) {
-      on_change(toggle.IsOn());
-    }
-  });
-  return toggle;
-}
-
-ToggleSwitch ToolbarVisibleSwitch(std::function<void(bool)> on_change = {}) {
-  ToggleSwitch toggle;
-  ApplySettingsUIFont(toggle);
-  toggle.MinWidth(0);
-  toggle.HorizontalAlignment(HorizontalAlignment::Right);
-  toggle.IsOn(ReadBoolSettingMigrated(fp::kToolbarVisibleSetting,
-                                      false,
-                                      fp::kLegacyToolbarVisibleSetting));
-  toggle.Toggled([toggle, on_change](auto const&, auto const&) {
-    if (g_syncing_toolbar_visible_switches) {
-      return;
-    }
-    WriteBoolSetting(fp::kToolbarVisibleSetting, toggle.IsOn());
-    WriteBoolSetting(fp::kLegacyToolbarVisibleSetting, false);
-    RequestInputStateRefresh();
     if (on_change) {
       on_change(toggle.IsOn());
     }
@@ -3209,7 +3175,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
       RequestInputStateRefresh();
       RequestToolbarHostRefresh();
       RequestApplyInputConfigDeferred();
-      g_toolbar_visible_switches.clear();
+      ClearToolbarVisibleSwitches();
       page_cache_.clear();
       SelectNavItem(L"general");
       SetPage(hstring(L"general"));
@@ -3285,7 +3251,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
     toolbar_switch.Toggled([toolbar_switch, toolbar_icon](auto const&, auto const&) {
       SetIconChild(toolbar_icon, ToolbarVisibleIcon(toolbar_switch.IsOn()));
     });
-    g_toolbar_visible_switches.push_back(toolbar_switch);
+    RegisterToolbarVisibleSwitch(toolbar_switch);
     page.Children().Append(SettingRowWithIcon(L"输入法工具栏",
                                               L"在桌面显示可拖动的输入法工具栏。",
                                               toolbar_switch,
