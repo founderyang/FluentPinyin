@@ -6128,14 +6128,7 @@ void LogAnchorPoint(const wchar_t* source, POINT point) {
 }
 
 std::filesystem::path ModuleDirectory() {
-  std::wstring buffer(32768, L'\0');
-  const DWORD length =
-      GetModuleFileNameW(g_module_instance, buffer.data(), static_cast<DWORD>(buffer.size()));
-  if (length == 0 || length >= buffer.size()) {
-    return std::filesystem::current_path();
-  }
-  buffer.resize(length);
-  return std::filesystem::path(buffer).parent_path();
+  return fp::GetModuleDirectory(g_module_instance);
 }
 
 std::wstring CurrentProcessImageName() {

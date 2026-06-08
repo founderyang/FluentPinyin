@@ -2,6 +2,7 @@
 
 #include "common/constants.h"
 #include "common/logging.h"
+#include "common/path_utils.h"
 #include "tsf/guids.h"
 
 #include <msctf.h>
@@ -59,14 +60,7 @@ HRESULT DeleteRegistryTree(HKEY root, const std::wstring& subkey) {
 }
 
 std::wstring ModulePath() {
-  std::wstring module_path(32768, L'\0');
-  const DWORD length = GetModuleFileNameW(
-      g_module_instance, module_path.data(), static_cast<DWORD>(module_path.size()));
-  if (length == 0 || length >= module_path.size()) {
-    return {};
-  }
-  module_path.resize(length);
-  return module_path;
+  return fp::GetModulePath(g_module_instance).wstring();
 }
 
 bool SystemUsesLightTheme() {

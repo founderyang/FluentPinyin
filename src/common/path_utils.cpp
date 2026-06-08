@@ -65,11 +65,11 @@ std::filesystem::path GetFpLogDirectory() {
   return GetFpLocalDataPath() / L"Logs";
 }
 
-std::filesystem::path GetModuleExecutablePath() {
+std::filesystem::path GetModulePath(HMODULE module) {
   std::wstring buffer(MAX_PATH, L'\0');
   DWORD size = 0;
   for (;;) {
-    size = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
+    size = GetModuleFileNameW(module, buffer.data(), static_cast<DWORD>(buffer.size()));
     if (size == 0) {
       return {};
     }
@@ -82,6 +82,15 @@ std::filesystem::path GetModuleExecutablePath() {
   return std::filesystem::path(buffer);
 }
 
+std::filesystem::path GetModuleDirectory(HMODULE module) {
+  const auto path = GetModulePath(module);
+  return path.empty() ? std::filesystem::current_path() : path.parent_path();
+}
+
+std::filesystem::path GetModuleExecutablePath() {
+  return GetModulePath(nullptr);
+}
+
 bool EnsureDirectory(const std::filesystem::path& path) {
   std::error_code error;
   if (std::filesystem::exists(path, error)) {
@@ -92,8 +101,7 @@ bool EnsureDirectory(const std::filesystem::path& path) {
 }
 
 std::filesystem::path GetModuleDirectory() {
-  const auto executable = GetModuleExecutablePath();
-  return executable.empty() ? std::filesystem::current_path() : executable.parent_path();
+  return GetModuleDirectory(nullptr);
 }
 
 std::filesystem::path GetSiblingExecutablePath(std::wstring_view name) {
