@@ -196,6 +196,7 @@ endif()
 add_library(fluent_pinyin_tsf SHARED
   src/tsf/candidate_layout_math.cpp
   src/tsf/class_factory.cpp
+  src/tsf/context_menu_model.cpp
   src/tsf/dllmain.cpp
   src/tsf/input_mode_state.cpp
   src/tsf/rime_core_client.cpp
@@ -546,6 +547,12 @@ if(BUILD_TESTING)
   )
   target_link_libraries(tsf_toolbar_model_unit PRIVATE fluent_pinyin_common)
 
+  add_executable(tsf_context_menu_model_unit
+    tests/tsf_context_menu_model_unit.cpp
+    src/tsf/context_menu_model.cpp
+  )
+  target_link_libraries(tsf_context_menu_model_unit PRIVATE fluent_pinyin_common)
+
   add_executable(config_settings_binding_unit
     tests/config_settings_binding_unit.cpp
     src/config_winui/settings_binding.cpp
@@ -769,6 +776,10 @@ if(BUILD_TESTING)
   add_test(
     NAME tsf_toolbar_model_unit
     COMMAND tsf_toolbar_model_unit
+  )
+  add_test(
+    NAME tsf_context_menu_model_unit
+    COMMAND tsf_context_menu_model_unit
   )
   add_test(
     NAME config_settings_binding_unit

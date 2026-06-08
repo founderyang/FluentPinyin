@@ -11,6 +11,7 @@
 #include "common/svg_icons.h"
 #include "common/theme.h"
 #include "tsf/candidate_layout_math.h"
+#include "tsf/context_menu_model.h"
 #include "tsf/guids.h"
 #include "tsf/input_mode_state.h"
 #include "tsf/module.h"
@@ -60,30 +61,6 @@ std::filesystem::path InstalledSiblingExecutable(std::wstring_view name);
 bool IsToolbarHostProcess();
 bool IsAlphabetVirtualKey(WPARAM wparam);
 char AlphabetVirtualKeyToLowerAscii(WPARAM wparam);
-
-enum LangBarMenuCommand : UINT {
-  kMenuFullShape = 100,
-  kMenuInputMode,
-  kMenuFullShapeFull,
-  kMenuFullShapeHalf,
-  kMenuPunctuation,
-  kMenuPunctuationChinese,
-  kMenuPunctuationEnglish,
-  kMenuCharset,
-  kMenuCharsetSimplified,
-  kMenuCharsetTraditional,
-  kMenuCandidateLayout,
-  kMenuCandidateLayoutHorizontal,
-  kMenuCandidateLayoutVertical,
-  kMenuEmoji,
-  kMenuCustomPhrases,
-  kMenuLexiconManagement,
-  kMenuKeyConfig,
-  kMenuToolbar,
-  kMenuSettings,
-  kMenuRedeploy,
-  kMenuAbout,
-};
 
 enum class CandidateFontFamily {
   kMiSans,
@@ -184,37 +161,6 @@ constexpr int kToolbarTooltipCornerRadiusHalfDips = 7;
 constexpr int kToolbarTooltipMouseOffsetYDips = 9;
 constexpr int kToolbarDefaultRightInsetDips = 16;
 constexpr int kToolbarDefaultBottomInsetDips = 16;
-constexpr int kContextMenuWidthDips = 202;
-constexpr int kContextMenuRowHeightHalfDips = 67;
-constexpr int kContextMenuCornerRadiusDips = 7;
-constexpr int kContextMenuTextPointSize = 11;
-constexpr int kContextMenuTextLeftDips = 72;
-constexpr int kContextMenuIconLeftDips = 42;
-constexpr int kContextMenuIconSizeDips = 18;
-constexpr int kContextMenuChevronRightDips = 17;
-constexpr int kContextMenuChevronSizeDips = 16;
-constexpr int kContextMenuTaskbarGapDips = 8;
-constexpr int kContextMenuScreenMarginDips = 6;
-constexpr int kContextMenuHoverInsetXDips = 3;
-constexpr int kContextMenuHoverInsetYHalfDips = 3;
-constexpr int kContextMenuHoverRadiusDips = 4;
-constexpr int kContextSubmenuShapeWidthDips = 102;
-constexpr int kContextSubmenuCharsetWidthDips = 118;
-constexpr int kToolbarCustomSubmenuWidthDips = 222;
-constexpr int kToolbarGearMenuWidthDips = 128;
-constexpr int kToolbarGearMenuTextLeftDips = 15;
-constexpr int kToolbarGearMenuTextRightDips = 12;
-constexpr int kToolbarGearMenuChevronRightDips = 10;
-constexpr int kToolbarCustomSubmenuIconLeftDips = 42;
-constexpr int kToolbarCustomSubmenuIconSizeDips = 18;
-constexpr int kToolbarCustomSubmenuTextLeftDips = 72;
-constexpr int kToolbarCustomSubmenuTextRightDips = 12;
-constexpr int kToolbarMenuTextIconPointSize = 11;
-constexpr int kContextSubmenuTextLeftDips = 46;
-constexpr int kContextSubmenuCheckLeftDips = 18;
-constexpr int kContextSubmenuCheckSizeDips = 16;
-constexpr int kContextSubmenuRadioDotSizeDips = 6;
-constexpr int kContextSubmenuOverlapDips = 2;
 constexpr std::wstring_view kFluentPinyinWebsiteUrl = L"";
 constexpr wchar_t kToolbarHostControlWindowClassName[] = L"FluentPinyinToolbarHostControlWindowV3";
 constexpr wchar_t kToolbarWindowClassName[] = L"FluentPinyinToolbarWindowV3";
@@ -325,124 +271,6 @@ enum CandidateToolId : int {
   kCandidateToolSettings = 5,
   kCandidateToolBrand = 6,
 };
-
-enum ContextMenuRow : int {
-  kContextMenuRowShape = 0,
-  kContextMenuRowCharset = 1,
-  kContextMenuRowEmoji = 2,
-  kContextMenuRowCustomPhrases = 3,
-  kContextMenuRowDictionaries = 4,
-  kContextMenuRowKeyConfig = 5,
-  kContextMenuRowToolbar = 6,
-  kContextMenuRowSettings = 7,
-  kContextMenuRowRestart = 8,
-  kContextMenuRowCount = 9,
-};
-
-enum ToolbarGearMenuRow : int {
-  kToolbarGearMenuRowCustom = 0,
-  kToolbarGearMenuRowLayout = 1,
-  kToolbarGearMenuRowHide = 2,
-  kToolbarGearMenuRowSettings = 3,
-  kToolbarGearMenuRowCount = 4,
-};
-
-bool ContextMenuHasSeparatorAfter(int row, bool toolbar_mode = false) {
-  if (toolbar_mode) {
-    return false;
-  }
-  return row == kContextMenuRowCharset || row == kContextMenuRowEmoji ||
-         row == kContextMenuRowDictionaries || row == kContextMenuRowKeyConfig ||
-         row == kContextMenuRowToolbar;
-}
-
-bool ContextMenuRowHasSubmenu(int row, bool toolbar_mode = false) {
-  if (toolbar_mode) {
-    return row == kToolbarGearMenuRowCustom;
-  }
-  return row == kContextMenuRowShape || row == kContextMenuRowCharset;
-}
-
-int ContextMenuRowCount(bool toolbar_mode) {
-  return toolbar_mode ? kToolbarGearMenuRowCount : kContextMenuRowCount;
-}
-
-int ContextMenuWidthDips(bool toolbar_mode) {
-  return toolbar_mode ? kToolbarGearMenuWidthDips : kContextMenuWidthDips;
-}
-
-int ContextMenuTextLeftDips(bool toolbar_mode) {
-  return toolbar_mode ? kToolbarGearMenuTextLeftDips : kContextMenuTextLeftDips;
-}
-
-int ContextMenuTextRightDips(bool toolbar_mode) {
-  return toolbar_mode ? kToolbarGearMenuTextRightDips : 16;
-}
-
-int ContextMenuChevronRightDips(bool toolbar_mode) {
-  return toolbar_mode ? kToolbarGearMenuChevronRightDips : kContextMenuChevronRightDips;
-}
-
-int ContextSubmenuWidthDips(int parent_row, bool toolbar_mode = false) {
-  if (toolbar_mode) {
-    return kToolbarCustomSubmenuWidthDips;
-  }
-  return parent_row == kContextMenuRowCharset ? kContextSubmenuCharsetWidthDips
-                                              : kContextSubmenuShapeWidthDips;
-}
-
-UINT ContextMenuCommandForRow(int row, bool toolbar_mode = false) {
-  if (toolbar_mode) {
-    switch (row) {
-      case kToolbarGearMenuRowLayout:
-      case kToolbarGearMenuRowHide:
-      case kToolbarGearMenuRowSettings:
-        return 1;
-      default:
-        return 0;
-    }
-  }
-  switch (row) {
-    case kContextMenuRowShape:
-    case kContextMenuRowCharset:
-      return 0;
-    case kContextMenuRowEmoji:
-      return kMenuEmoji;
-    case kContextMenuRowCustomPhrases:
-      return kMenuCustomPhrases;
-    case kContextMenuRowDictionaries:
-      return kMenuLexiconManagement;
-    case kContextMenuRowKeyConfig:
-      return kMenuKeyConfig;
-    case kContextMenuRowToolbar:
-      return kMenuToolbar;
-    case kContextMenuRowSettings:
-      return kMenuSettings;
-    case kContextMenuRowRestart:
-      return kMenuRedeploy;
-    default:
-      return 0;
-  }
-}
-
-UINT ContextSubmenuCommandForRow(int parent_row, int row, bool toolbar_mode = false) {
-  if (row < 0) {
-    return 0;
-  }
-  if (toolbar_mode) {
-    return parent_row == kToolbarGearMenuRowCustom ? 1 : 0;
-  }
-  if (row >= 2) {
-    return 0;
-  }
-  if (parent_row == kContextMenuRowShape) {
-    return row == 0 ? kMenuFullShapeHalf : kMenuFullShapeFull;
-  }
-  if (parent_row == kContextMenuRowCharset) {
-    return row == 0 ? kMenuCharsetSimplified : kMenuCharsetTraditional;
-  }
-  return 0;
-}
 
 const wchar_t* UiFontFamily(bool traditional = false) {
   return traditional ? L"MiSans TC" : L"MiSans";
