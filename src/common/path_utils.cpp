@@ -65,6 +65,23 @@ std::filesystem::path GetFpLogDirectory() {
   return GetFpLocalDataPath() / L"Logs";
 }
 
+std::filesystem::path GetModuleExecutablePath() {
+  std::wstring buffer(MAX_PATH, L'\0');
+  DWORD size = 0;
+  for (;;) {
+    size = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
+    if (size == 0) {
+      return {};
+    }
+    if (size < buffer.size()) {
+      break;
+    }
+    buffer.resize(buffer.size() * 2);
+  }
+  buffer.resize(size);
+  return std::filesystem::path(buffer);
+}
+
 bool EnsureDirectory(const std::filesystem::path& path) {
   std::error_code error;
   if (std::filesystem::exists(path, error)) {
@@ -72,6 +89,40 @@ bool EnsureDirectory(const std::filesystem::path& path) {
   }
 
   return std::filesystem::create_directories(path, error);
+}
+
+std::filesystem::path GetModuleDirectory() {
+  const auto executable = GetModuleExecutablePath();
+  return executable.empty() ? std::filesystem::current_path() : executable.parent_path();
+}
+
+std::filesystem::path GetSiblingExecutablePath(std::wstring_view name) {
+  return GetModuleDirectory() / std::wstring(name);
+}
+
+std::filesystem::path GetSystemDirectoryPath() {
+  std::wstring buffer(MAX_PATH, L'\0');
+  const UINT length = GetSystemDirectoryW(buffer.data(), static_cast<UINT>(buffer.size()));
+  if (length == 0) {
+    return L"C:\\Windows\\System32";
+  }
+  if (length >= buffer.size()) {
+    buffer.resize(length + 1);
+    const UINT retry_length =
+        GetSystemDirectoryW(buffer.data(), static_cast<UINT>(buffer.size()));
+    if (retry_length == 0 || retry_length >= buffer.size()) {
+      return L"C:\\Windows\\System32";
+    }
+    buffer.resize(retry_length);
+    return std::filesystem::path(buffer);
+  }
+  buffer.resize(length);
+  return std::filesystem::path(buffer);
+}
+
+void UseSystemCurrentDirectory() {
+  const auto system_dir = GetSystemDirectoryPath();
+  SetCurrentDirectoryW(system_dir.c_str());
 }
 
 }  // namespace fp

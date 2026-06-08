@@ -288,6 +288,38 @@ def product_version_from_cmake():
     return match.group(1)
 
 
+def normalize_thumbprints(value):
+    thumbprints = set()
+    invalid = []
+    for part in value.split(","):
+        normalized = re.sub(r"[\s:-]", "", part).upper()
+        if not normalized:
+            continue
+        if not re.fullmatch(r"[0-9A-F]{64}", normalized):
+            invalid.append(part.strip() or part)
+            continue
+        thumbprints.add(normalized)
+    if invalid:
+        raise RuntimeError(
+            "Updater publisher thumbprints must be SHA-256 hex strings: "
+            + ", ".join(invalid)
+        )
+    return sorted(thumbprints)
+
+
+def read_built_updater_thumbprints(build_dir):
+    config = build_dir / "generated" / "updater" / "updater_config.h"
+    if not config.exists():
+        raise RuntimeError(
+            f"Missing generated updater config: {config}. Reconfigure the build first."
+        )
+    text = config.read_text(encoding="utf-8")
+    match = re.search(r'L"([^"]*)"', text)
+    if not match:
+        raise RuntimeError(f"Unable to read updater publisher thumbprints from {config}")
+    return match.group(1)
+
+
 def remove_if_exists(path):
     if path.is_dir():
         shutil.rmtree(path)
@@ -409,11 +441,17 @@ def main():
     parser.add_argument("--payload-dir", default="dist/FluentPinyin")
     parser.add_argument("--release-dir", default="dist/release")
     parser.add_argument("--product-version", default="")
+    parser.add_argument(
+        "--updater-publisher-thumbprints",
+        default=os.environ.get("FP_UPDATER_PUBLISHER_THUMBPRINTS", ""),
+        help="Comma-separated SHA-256 publisher certificate thumbprints compiled into the updater.",
+    )
     parser.add_argument("--skip-installers", action="store_true")
     parser.add_argument("--include-zip", action="store_true")
     args = parser.parse_args()
 
     product_version = args.product_version.strip() or product_version_from_cmake()
+    updater_publisher_thumbprints = args.updater_publisher_thumbprints.strip()
     build_dir = (ROOT / args.build_dir).resolve()
     bin_dir = build_dir / "bin" / args.config
     if not bin_dir.exists():
@@ -502,6 +540,25 @@ def main():
         print(f"Archive: {archive}")
 
     if not args.skip_installers:
+        if not updater_publisher_thumbprints:
+            raise RuntimeError(
+                "Release installers require --updater-publisher-thumbprints or "
+                "FP_UPDATER_PUBLISHER_THUMBPRINTS. Reconfigure and rebuild the updater "
+                "with the same SHA-256 signing certificate thumbprint before packaging."
+            )
+        built_thumbprints = read_built_updater_thumbprints(build_dir)
+        expected_thumbprints = normalize_thumbprints(updater_publisher_thumbprints)
+        if not expected_thumbprints:
+            raise RuntimeError(
+                "Release installers require at least one SHA-256 updater publisher "
+                "thumbprint."
+            )
+        if normalize_thumbprints(built_thumbprints) != expected_thumbprints:
+            raise RuntimeError(
+                "Built updater publisher thumbprints do not match packaging input. "
+                "Reconfigure and rebuild with -DFP_UPDATER_PUBLISHER_THUMBPRINTS "
+                "before packaging."
+            )
         program_files = Path(os.environ.get("ProgramFiles", r"C:\Program Files"))
         wix = resolve_tool("wix.exe", [program_files / "WiX Toolset v7.0" / "bin" / "wix.exe"])
         product_code = "{" + str(uuid.uuid4()).upper() + "}"

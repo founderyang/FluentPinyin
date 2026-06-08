@@ -12,6 +12,9 @@ namespace fp::tsf {
 class RimeCoreClient {
  public:
   explicit RimeCoreClient(std::filesystem::path corehost_path);
+  RimeCoreClient(std::filesystem::path corehost_path,
+                 std::wstring pipe_suffix,
+                 std::string ipc_secret);
 
   fp::core::RimeEngineStatus Initialize();
   void Shutdown();
@@ -34,6 +37,8 @@ class RimeCoreClient {
                                          unsigned long wait_timeout_ms = 2500);
 
   std::filesystem::path corehost_path_;
+  std::wstring pipe_suffix_;
+  std::string ipc_secret_;
   bool initialized_ = false;
 };
 

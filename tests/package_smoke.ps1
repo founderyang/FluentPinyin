@@ -85,6 +85,12 @@ foreach ($fontPattern in @("MiSans*.ttf", "SourceHanSans*.otf", "Plangothic*.ttf
     throw "Payload fonts directory is missing required private font pattern: $fontPattern"
   }
 }
+foreach ($fontName in @("MiSans-Regular.ttf", "MiSans-Medium.ttf", "MiSans-Semibold.ttf")) {
+  $matches = @($fontFiles | Where-Object { $_.Name -eq $fontName })
+  if ($matches.Count -eq 0) {
+    throw "Payload fonts directory is missing settings UI MiSans font: $fontName"
+  }
+}
 
 $report = Join-Path $ReleaseDir "payload-size-report.txt"
 Assert-PathExists $report
@@ -148,6 +154,17 @@ if ($payloadWxsText -notmatch [regex]::Escape("windowsappruntimeinstall-x64.exe"
 }
 
 if ($RequireMsi) {
+  $installerWxs = Join-Path (Split-Path -Parent $PSScriptRoot) "installer\fluent-pinyin.wxs"
+  Assert-PathExists $installerWxs
+  $installerWxsText = Get-Content -LiteralPath $installerWxs -Raw
+  foreach ($required in @(
+    '<Property Id="REBOOT" Value="ReallySuppress" />',
+    '<Property Id="MSIRESTARTMANAGERCONTROL" Value="DisableShutdown" />'
+  )) {
+    if ($installerWxsText -notmatch [regex]::Escape($required)) {
+      throw "Installer WiX manifest missing restart prompt suppression: $required"
+    }
+  }
   Assert-PathExists (Join-Path $ReleaseDir "FluentPinyin.msi")
 }
 

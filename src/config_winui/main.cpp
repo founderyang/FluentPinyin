@@ -1,20 +1,30 @@
+#include "common/broadcast_messages.h"
 #include "common/constants.h"
+#include "common/candidate_font.h"
 #include "common/encoding.h"
 #include "common/path_utils.h"
+#include "common/svg_icons.h"
 #include "common/theme.h"
 #include "config_winui/app_paths.h"
+#include "config_winui/candidate_layout_settings.h"
+#include "config_winui/default_settings.h"
+#include "config_winui/file_dialogs.h"
 #include "config_winui/fuzzy_pinyin_custom_rules.h"
+#include "config_winui/fuzzy_pinyin_rules.h"
 #include "config_winui/hotkey_helpers.h"
 #include "config_winui/lexicon_store.h"
 #include "config_winui/settings_binding.h"
+#include "config_winui/settings_navigation.h"
+#include "config_winui/settings_options.h"
+#include "config_winui/settings_ui_helpers.h"
 #include "config_winui/status_tip_blacklist.h"
 #include "config_winui/theme_helpers.h"
+#include "config_winui/wanxiang_modes.h"
 #include "config_winui/window_helpers.h"
 #include "sync/sync_service.h"
 #include "../tsf/resource.h"
 
 #include <windows.h>
-#include <commdlg.h>
 #include <shellapi.h>
 #include <MddBootstrap.h>
 #include <microsoft.ui.xaml.window.h>
@@ -44,7 +54,6 @@
 #include <atomic>
 #include <array>
 #include <cmath>
-#include <cwctype>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -76,7 +85,6 @@ namespace XamlTypeInfo = Microsoft::UI::Xaml::XamlTypeInfo;
 using Windows::Foundation::IInspectable;
 using Windows::Foundation::IReference;
 using Windows::Graphics::SizeInt32;
-using Windows::UI::Color;
 using Windows::UI::Text::FontWeights;
 using Windows::UI::Xaml::Interop::TypeName;
 using fp::config_winui::ReadBoolSetting;
@@ -87,26 +95,71 @@ using fp::config_winui::RimeUserDataPath;
 using fp::config_winui::ResetSettingsCache;
 using fp::config_winui::SettingsPath;
 using fp::config_winui::SiblingExe;
+using fp::config_winui::InitialSettingsPageTag;
+using fp::config_winui::NormalizeSettingsPageTag;
+using fp::config_winui::CandidateLayoutChoices;
+using fp::config_winui::ReadCandidateLayoutSetting;
 using fp::config_winui::ClearSettingsPaletteOverride;
 using fp::config_winui::CurrentSettingsPalette;
 using fp::config_winui::CurrentThemeModeSetting;
 using fp::config_winui::CurrentThemePresetSetting;
+using fp::config_winui::DefaultCharsetChoiceIconText;
+using fp::config_winui::DefaultCharsetChoices;
+using fp::config_winui::DefaultInputModeChoiceIconText;
+using fp::config_winui::DefaultInputModeChoices;
+using fp::config_winui::DefaultPunctuationChoices;
 using fp::config_winui::DefaultPresetForThemeMode;
+using fp::config_winui::DefaultShapeChoices;
+using fp::config_winui::DoublePinyinSchemeChoices;
 using fp::config_winui::EffectiveThemePreset;
 using fp::config_winui::FuzzyPinyinRuleSelected;
+using fp::config_winui::PickRimeDictionaryFile;
+using fp::config_winui::PickSyncBackupFile;
+using fp::config_winui::PickSyncBackupSaveFile;
+using fp::config_winui::FuzzyPinyinRuleDefinitions;
+using fp::config_winui::JoinFuzzyPinyinRules;
 using fp::config_winui::JoinFuzzyPinyinCustomRules;
 using fp::config_winui::NormalizeFuzzyPinyinCustomRuleToken;
 using fp::config_winui::ParseFuzzyPinyinCustomRuleSetting;
+using fp::config_winui::ParseFuzzyPinyinRuleSetting;
 using fp::config_winui::SplitFuzzyPinyinCustomRule;
+using fp::config_winui::InputSchemeChoices;
+using fp::config_winui::InputSchemeIconText;
 using fp::config_winui::NormalizeShortcutDisplay;
 using fp::config_winui::ShortcutDisplayForKey;
 using fp::config_winui::IsShortcutModifierKey;
 using fp::config_winui::ShortcutModifierKeyEquals;
 using fp::config_winui::RecordedShortcutFromKey;
+using fp::config_winui::ApplySettingsResources;
+using fp::config_winui::ApplySettingsUIFont;
+using fp::config_winui::Brush;
+using fp::config_winui::ColorReference;
+using fp::config_winui::CurrentSettingsApplicationTheme;
+using fp::config_winui::CurrentSettingsElementTheme;
+using fp::config_winui::Radius;
+using fp::config_winui::SetSettingsWindowHandle;
+using fp::config_winui::SettingsBorderBrush;
+using fp::config_winui::SettingsBorderHoverBrush;
+using fp::config_winui::SettingsCardBrush;
+using fp::config_winui::SettingsEdgeColorRef;
+using fp::config_winui::SettingsFrame;
+using fp::config_winui::SettingsHairlineThickness;
+using fp::config_winui::SettingsIconBrush;
+using fp::config_winui::SettingsSecondaryTextBrush;
+using fp::config_winui::SettingsSurfaceBrush;
+using fp::config_winui::SettingsTextBrush;
+using fp::config_winui::SettingsUiFontFamily;
+using fp::config_winui::SettingsWindowHandle;
+using fp::config_winui::TransparentBrush;
+using fp::config_winui::UniformThickness;
+using fp::config_winui::CurrentStatusTipBlacklistItems;
+using fp::config_winui::CurrentStatusTipBlacklistCount;
 using fp::config_winui::NormalizeStatusTipBlacklistToken;
 using fp::config_winui::ParseStatusTipBlacklistSetting;
 using fp::config_winui::StatusTipBlacklistContains;
 using fp::config_winui::JoinStatusTipBlacklistItems;
+using fp::config_winui::SyncAutoIntervalChoices;
+using fp::config_winui::SyncAutoIntervalMinutesFromValue;
 using fp::config_winui::CurrentCustomPhraseCount;
 using fp::config_winui::CurrentManagedDictionaryCount;
 using fp::config_winui::CurrentUserLexiconCount;
@@ -130,32 +183,20 @@ using fp::config_winui::ThemeModeIndex;
 using fp::config_winui::ThemeModeValueForIndex;
 using fp::config_winui::ThemePreview;
 using fp::config_winui::ThemePreviewPalette;
+using fp::config_winui::WanxiangModeDefinition;
+using fp::config_winui::WanxiangModeDefinitions;
 using fp::config_winui::CenterWindowOnMonitor;
 using fp::config_winui::DefaultWindowSize;
 using fp::config_winui::GetWindowHandle;
 using fp::config_winui::ScaleSizeForDpi;
 using fp::config_winui::WriteBoolSetting;
+using fp::config_winui::WriteCandidateLayoutSetting;
 using fp::config_winui::WriteIntSetting;
 using fp::config_winui::WriteStringSetting;
 using fp::config_winui::EnsureUiFontsLoaded;
 using fp::config_winui::ModuleDirectory;
 using fp::config_winui::WindowIconPath;
 
-constexpr int kDefaultCandidateCount = 7;
-constexpr int kMinCandidateCount = 3;
-constexpr int kMaxCandidateCount = 9;
-constexpr int kDefaultCandidateFontSizeLevel = 0;
-constexpr int kMinCandidateFontSizeLevel = 0;
-constexpr int kMaxCandidateFontSizeLevel = 3;
-constexpr std::array<std::wstring_view, 4> kCandidateFontSizeLabels{L"小", L"中", L"大", L"特大"};
-constexpr std::wstring_view kSettingsUiFontFamily = L"MiSans";
-constexpr std::wstring_view kDefaultCandidateFontFamily = L"misans";
-constexpr std::wstring_view kDefaultStatusTipBlacklist =
-    L"explorer.exe,fluent-pinyin-settings.exe,ShellExperienceHost.exe,StartMenuExperienceHost.exe";
-constexpr std::wstring_view kDefaultFuzzyPinyinRules =
-    L"nl,ry,hf,rl,kg,en_eng,in_ing,c_ch,z_zh,s_sh";
-constexpr std::wstring_view kCommonFuzzyPinyinRules =
-    L"en_eng,in_ing,c_ch,z_zh,s_sh";
 constexpr std::wstring_view kSettingsAppTitle = L"流畅拼音输入法设置";
 constexpr std::wstring_view kSettingsSingleInstanceMutexName =
     L"Local\\FluentPinyinSettingsSingleInstance";
@@ -172,252 +213,20 @@ constexpr double kContentFrameLeftInset = 12.0;
 constexpr double kContentFrameTopInset = 48.0;
 constexpr double kContentFrameRightInset = 24.0;
 constexpr double kContentFrameBottomInset = 22.0;
-constexpr double kSettingsDialogContentWidth = 500.0;
-constexpr double kSettingsDialogOuterWidth = 548.0;
-constexpr double kSettingsDialogListHeight = 160.0;
-constexpr double kSyncProviderDialogFormViewportHeight = 220.0;
-constexpr std::wstring_view kToolbarVisibleSetting = L"toolbar_visible_v2";
-constexpr std::wstring_view kLegacyToolbarVisibleSetting = L"toolbar_visible";
 constexpr std::wstring_view kWindowsAppRuntimeInstallerName =
     L"windowsappruntimeinstall-x64.exe";
 constexpr int kMinSettingsWindowWidthDips = 860;
 constexpr int kMinSettingsWindowHeightDips = 480;
 
 WNDPROC g_settings_window_proc = nullptr;
-HWND g_settings_window_hwnd = nullptr;
 SizeInt32 g_min_settings_window_size_dips{kMinSettingsWindowWidthDips,
                                           kMinSettingsWindowHeightDips};
 std::vector<ToggleSwitch> g_toolbar_visible_switches;
 bool g_syncing_toolbar_visible_switches = false;
 
-std::wstring InitialPageValue() {
+std::wstring InitialPageTagFromProcess() {
   const wchar_t* command_line = GetCommandLineW();
-  if (command_line == nullptr) {
-    return L"";
-  }
-
-  const std::wstring command(command_line);
-  const std::wstring marker = L"--page=";
-  const size_t marker_pos = command.find(marker);
-  if (marker_pos == std::wstring::npos) {
-    return L"";
-  }
-
-  size_t value_start = marker_pos + marker.size();
-  if (value_start < command.size() && command[value_start] == L'"') {
-    ++value_start;
-  }
-  size_t value_end = command.find_first_of(L" \"", value_start);
-  if (value_end == std::wstring::npos) {
-    value_end = command.size();
-  }
-
-  return command.substr(value_start, value_end - value_start);
-}
-
-std::wstring InitialPageTag() {
-  const std::wstring tag = InitialPageValue();
-  if (tag.empty()) {
-    return L"general";
-  }
-
-  if (tag == L"phrases" || tag == L"custom-phrases" || tag == L"custom_phrases" ||
-      tag == L"dictionaries" || tag == L"lexicon-management" ||
-      tag == L"lexicon_management" || tag == L"domain" || tag == L"imports") {
-    return L"lexicon";
-  }
-  if (tag == L"keys") {
-    return L"hotkeys";
-  }
-  if (tag == L"input") {
-    return L"general";
-  }
-  if (tag == L"general" || tag == L"advanced" || tag == L"appearance" ||
-      tag == L"lexicon" || tag == L"hotkeys" || tag == L"sync" || tag == L"about") {
-    return tag;
-  }
-  return L"general";
-}
-
-Color ColorFromArgb(uint8_t alpha, uint8_t red, uint8_t green, uint8_t blue) {
-  return Color{alpha, red, green, blue};
-}
-
-Color ColorFromRgb(uint8_t red, uint8_t green, uint8_t blue) {
-  return ColorFromArgb(255, red, green, blue);
-}
-
-SolidColorBrush Brush(uint8_t red, uint8_t green, uint8_t blue) {
-  return SolidColorBrush(ColorFromRgb(red, green, blue));
-}
-
-SolidColorBrush Brush(uint8_t alpha, uint8_t red, uint8_t green, uint8_t blue) {
-  return SolidColorBrush(ColorFromArgb(alpha, red, green, blue));
-}
-
-SolidColorBrush TransparentBrush() {
-  return SolidColorBrush(Windows::UI::Colors::Transparent());
-}
-
-FontFamily SettingsUiFontFamily() {
-  return FontFamily(kSettingsUiFontFamily);
-}
-
-void ApplySettingsUIFont(Control const& control) {
-  control.FontFamily(SettingsUiFontFamily());
-}
-
-void ApplySettingsUIFont(TextBlock const& text) {
-  text.FontFamily(SettingsUiFontFamily());
-}
-
-void ApplySettingsUIFont(CheckBox const& check) {
-  check.FontFamily(SettingsUiFontFamily());
-}
-
-IReference<Color> ColorReference(uint8_t red, uint8_t green, uint8_t blue) {
-  return box_value(ColorFromRgb(red, green, blue)).as<IReference<Color>>();
-}
-
-IReference<Color> ColorReference(uint8_t alpha, uint8_t red, uint8_t green, uint8_t blue) {
-  return box_value(ColorFromArgb(alpha, red, green, blue)).as<IReference<Color>>();
-}
-
-CornerRadius Radius(double value) {
-  return CornerRadius{value, value, value, value};
-}
-
-Thickness UniformThickness(double value) {
-  return Thickness{value, value, value, value};
-}
-
-double SettingsHairlineDip() {
-  UINT dpi = g_settings_window_hwnd != nullptr ? GetDpiForWindow(g_settings_window_hwnd) : 0;
-  if (dpi == 0) {
-    dpi = GetDpiForSystem();
-  }
-  dpi = std::max<UINT>(dpi, 96);
-  return 96.0 / static_cast<double>(dpi);
-}
-
-Thickness SettingsHairlineThickness() {
-  return UniformThickness(SettingsHairlineDip());
-}
-
-using ThemeColor = fp::ThemeColor;
-
-SolidColorBrush Brush(ThemeColor color) {
-  return Brush(color.red, color.green, color.blue);
-}
-
-IReference<Color> ColorReference(ThemeColor color) {
-  return ColorReference(color.red, color.green, color.blue);
-}
-
-SolidColorBrush SettingsSurfaceBrush() {
-  return Brush(CurrentSettingsPalette().background);
-}
-
-SolidColorBrush SettingsCardBrush() {
-  return Brush(CurrentSettingsPalette().card);
-}
-
-ThemeColor SettingsBorderColor() {
-  return CurrentSettingsPalette().border;
-}
-
-ThemeColor SettingsBorderHoverColor() {
-  return CurrentSettingsPalette().edge;
-}
-
-SolidColorBrush SettingsBorderBrush() {
-  return Brush(SettingsBorderColor());
-}
-
-SolidColorBrush SettingsBorderHoverBrush() {
-  return Brush(SettingsBorderHoverColor());
-}
-
-SolidColorBrush SettingsIconBrush() {
-  return Brush(CurrentSettingsPalette().icon);
-}
-
-SolidColorBrush SettingsTextBrush() {
-  return Brush(CurrentSettingsPalette().text);
-}
-
-SolidColorBrush SettingsSecondaryTextBrush() {
-  return Brush(CurrentSettingsPalette().secondary_text);
-}
-
-ThemeColor SettingsEdgeColor() {
-  return CurrentSettingsPalette().border;
-}
-
-SolidColorBrush SettingsEdgeBrush() {
-  return Brush(SettingsEdgeColor());
-}
-
-COLORREF SettingsEdgeColorRef() {
-  const ThemeColor color = SettingsEdgeColor();
-  return RGB(color.red, color.green, color.blue);
-}
-
-Border SettingsFrame(UIElement const& child,
-                     ThemeColor surface,
-                     CornerRadius radius,
-                     Thickness content_padding = UniformThickness(0),
-                     Thickness margin = UniformThickness(0)) {
-  Border frame;
-  frame.Background(Brush(surface));
-  frame.BorderBrush(SettingsBorderBrush());
-  frame.BorderThickness(SettingsHairlineThickness());
-  frame.CornerRadius(radius);
-  frame.Padding(content_padding);
-  frame.Margin(margin);
-  frame.HorizontalAlignment(HorizontalAlignment::Stretch);
-  frame.VerticalAlignment(VerticalAlignment::Stretch);
-  frame.UseLayoutRounding(true);
-  frame.Child(child);
-  return frame;
-}
-
-ElementTheme CurrentSettingsElementTheme() {
-  return CurrentSettingsPalette().light ? ElementTheme::Light : ElementTheme::Dark;
-}
-
-ApplicationTheme CurrentSettingsApplicationTheme() {
-  return CurrentSettingsPalette().light ? ApplicationTheme::Light : ApplicationTheme::Dark;
-}
-
-std::wstring ReadCandidateLayoutSetting(std::wstring_view default_value = L"horizontal") {
-  const std::wstring value = ReadStringSetting(L"candidate_layout");
-  if (value == L"horizontal" || value == L"vertical") {
-    return value;
-  }
-  return ReadBoolSetting(L"candidate_horizontal", default_value != L"vertical") ? L"horizontal"
-                                                                                : L"vertical";
-}
-
-std::vector<std::wstring> CurrentStatusTipBlacklistItems() {
-  return ParseStatusTipBlacklistSetting(
-      ReadStringSetting(L"status_tip_blacklist", kDefaultStatusTipBlacklist));
-}
-
-int CurrentStatusTipBlacklistCount() {
-  return static_cast<int>(CurrentStatusTipBlacklistItems().size());
-}
-
-bool ContainsIgnoreCase(const std::wstring& value, const std::wstring& needle) {
-  std::wstring lower_value = value;
-  std::wstring lower_needle = needle;
-  std::transform(lower_value.begin(), lower_value.end(), lower_value.begin(), [](wchar_t ch) {
-    return static_cast<wchar_t>(std::towlower(ch));
-  });
-  std::transform(lower_needle.begin(), lower_needle.end(), lower_needle.begin(), [](wchar_t ch) {
-    return static_cast<wchar_t>(std::towlower(ch));
-  });
-  return lower_value.find(lower_needle) != std::wstring::npos;
+  return InitialSettingsPageTag(command_line != nullptr ? command_line : L"");
 }
 
 std::wstring FileStemDisplayName(const std::filesystem::path& path) {
@@ -431,68 +240,12 @@ std::wstring FileStemDisplayName(const std::filesystem::path& path) {
   return path.stem().wstring();
 }
 
-std::optional<std::filesystem::path> PickRimeDictionaryFile(HWND owner) {
-  std::wstring file_name(32768, L'\0');
-  OPENFILENAMEW open_file{};
-  open_file.lStructSize = sizeof(open_file);
-  open_file.hwndOwner = owner;
-  open_file.lpstrFilter =
-      L"词库 (*.dict.yaml)\0*.dict.yaml\0YAML 文件 (*.yaml)\0*.yaml\0所有文件 (*.*)\0*.*\0";
-  open_file.lpstrFile = file_name.data();
-  open_file.nMaxFile = static_cast<DWORD>(file_name.size());
-  open_file.lpstrTitle = L"选择要导入的词库";
-  open_file.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
-  if (!GetOpenFileNameW(&open_file)) {
-    return std::nullopt;
-  }
-  file_name.resize(std::wcslen(file_name.c_str()));
-  return std::filesystem::path(file_name);
-}
-
-std::optional<std::filesystem::path> PickSyncBackupFile(HWND owner) {
-  std::wstring file_name(32768, L'\0');
-  OPENFILENAMEW open_file{};
-  open_file.lStructSize = sizeof(open_file);
-  open_file.hwndOwner = owner;
-  open_file.lpstrFilter = L"流畅拼音同步包 (*.fpsync)\0*.fpsync\0所有文件 (*.*)\0*.*\0";
-  open_file.lpstrFile = file_name.data();
-  open_file.nMaxFile = static_cast<DWORD>(file_name.size());
-  open_file.lpstrTitle = L"选择要恢复的备份包";
-  open_file.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
-  if (!GetOpenFileNameW(&open_file)) {
-    return std::nullopt;
-  }
-  file_name.resize(std::wcslen(file_name.c_str()));
-  return std::filesystem::path(file_name);
-}
-
-std::optional<std::filesystem::path> PickSyncBackupSaveFile(HWND owner) {
-  fp::EnsureDirectory(fp::sync::DefaultBackupDirectory());
-  std::wstring file_name =
-      (fp::sync::DefaultBackupDirectory() / fp::sync::NewTimestampedBackupName()).wstring();
-  file_name.resize(32768, L'\0');
-  OPENFILENAMEW save_file{};
-  save_file.lStructSize = sizeof(save_file);
-  save_file.hwndOwner = owner;
-  save_file.lpstrFilter = L"流畅拼音同步包 (*.fpsync)\0*.fpsync\0所有文件 (*.*)\0*.*\0";
-  save_file.lpstrFile = file_name.data();
-  save_file.nMaxFile = static_cast<DWORD>(file_name.size());
-  save_file.lpstrTitle = L"保存加密备份包";
-  save_file.lpstrDefExt = L"fpsync";
-  save_file.Flags = OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR | OFN_OVERWRITEPROMPT;
-  if (!GetSaveFileNameW(&save_file)) {
-    return std::nullopt;
-  }
-  file_name.resize(std::wcslen(file_name.c_str()));
-  return std::filesystem::path(file_name);
-}
-
 bool WriteManagedDictionaryIntegrationFiles(
     const std::vector<ManagedDictionaryEntry>& entries) {
   return fp::config_winui::WriteManagedDictionaryIntegrationFiles(
       entries,
-      ReadBoolSetting(L"user_lexicon_enabled", true),
-      ReadBoolSetting(L"imported_lexicons_enabled", true));
+      ReadBoolSetting(fp::kUserLexiconEnabledSetting, true),
+      ReadBoolSetting(fp::kImportedLexiconsEnabledSetting, true));
 }
 
 bool ImportManagedDictionary(const std::filesystem::path& source_path,
@@ -546,207 +299,26 @@ std::wstring LexiconCountText(int count) {
   return count > 99 ? L"99+" : std::to_wstring(std::max(0, count));
 }
 
-struct FuzzyPinyinRuleDefinition {
-  std::wstring_view id;
-  std::wstring_view name;
-  std::wstring_view example;
-};
-
-struct WanxiangModeDefinition {
-  std::wstring_view title;
-  std::wstring_view subtitle;
-  std::wstring_view setting_key;
-  bool default_value;
-  std::wstring_view icon;
-  std::wstring_view legacy_key;
-};
-
-const std::array<FuzzyPinyinRuleDefinition, 10>& FuzzyPinyinRuleDefinitions() {
-  static constexpr std::array<FuzzyPinyinRuleDefinition, 10> rules{{
-      {L"nl", L"n / l", L"nan ? lan"},
-      {L"ry", L"r / y", L"ran ? yan"},
-      {L"hf", L"h / f", L"hu ? fu"},
-      {L"rl", L"r / l", L"ru ? lu"},
-      {L"kg", L"k / g", L"ka ? ga"},
-      {L"en_eng", L"en / eng", L"shen ? sheng"},
-      {L"in_ing", L"in / ing", L"xin ? xing"},
-      {L"c_ch", L"c / ch", L"cao ? chao"},
-      {L"z_zh", L"z / zh", L"zai ? zhai"},
-      {L"s_sh", L"s / sh", L"san ? shan"},
-  }};
-  return rules;
-}
-
-const std::array<WanxiangModeDefinition, 14>& WanxiangModeDefinitions() {
-  static constexpr std::array<WanxiangModeDefinition, 14> modes{{
-      {L"反查拆字",
-       L"使用 ` 引导部件拼音、笔画和辅助码反查。",
-       L"wanxiang_reverse_lookup_enabled",
-       true,
-       L"`",
-       L"u_mode"},
-      {L"Unicode 码位",
-       L"使用 U 加十六进制码位输入字符。",
-       L"wanxiang_unicode_enabled",
-       true,
-       L"U",
-       L"u_mode"},
-      {L"数字金额",
-       L"使用 R 引导中文数字和财务大写。",
-       L"wanxiang_number_enabled",
-       true,
-       L"R",
-       L"v_mode"},
-      {L"日期时间",
-       L"使用 N 或斜杠命令输入日期时间。",
-       L"wanxiang_date_enabled",
-       true,
-       L"N",
-       L"v_mode"},
-      {L"超级计算器",
-       L"使用 V 输入表达式、换算和计算。",
-       L"wanxiang_calculator_enabled",
-       true,
-       L"V",
-       L"v_mode"},
-      {L"符号表",
-       L"使用 / 加数字或字母输出符号表。",
-       L"wanxiang_symbol_enabled",
-       true,
-       L"/",
-       L""},
-      {L"快捷符号",
-       L"使用单字母命令快速上屏符号。",
-       L"wanxiang_quick_symbol_enabled",
-       false,
-       L"a/",
-       L""},
-      {L"成对符号包裹",
-       L"使用命令包裹候选文字和标记。",
-       L"wanxiang_paired_symbol_enabled",
-       true,
-       L"\\",
-       L""},
-      {L"英文词库",
-       L"启用英文候选、大小写格式化和中英混排辅助。",
-       L"wanxiang_english_enabled",
-       true,
-       L"En",
-       L""},
-      {L"混合编码",
-       L"启用中英数字混合候选。",
-       L"wanxiang_mixed_code_enabled",
-       true,
-       L"Mix",
-       L""},
-      {L"输入统计",
-       L"启用输入统计查询和记录。",
-       L"wanxiang_input_statistics_enabled",
-       false,
-       L"统",
-       L""},
-      {L"自动造词",
-       L"启用自动造词和英文造词过滤器。",
-       L"wanxiang_auto_phrase_enabled",
-       true,
-       L"词",
-       L""},
-      {L"手动造词",
-       L"启用手动创建用户词入口。",
-       L"wanxiang_user_phrase_enabled",
-       false,
-       L"``",
-       L""},
-      {L"方案命令",
-       L"启用输入方案切换命令。",
-       L"wanxiang_schema_shortcuts_enabled",
-       false,
-       L"命",
-       L""},
-  }};
-  return modes;
-}
-
-bool IsKnownFuzzyPinyinRule(std::wstring_view id) {
-  const auto& rules = FuzzyPinyinRuleDefinitions();
-  return std::any_of(rules.begin(), rules.end(), [id](const auto& rule) {
-    return rule.id == id;
-  });
-}
-
-std::vector<std::wstring> ParseFuzzyPinyinRuleSetting(std::wstring_view value,
-                                                      bool default_to_all) {
-  std::vector<std::wstring> result;
-  std::wstring token;
-  auto append_token = [&]() {
-    if (token.empty()) {
-      return;
-    }
-    if (token == L"all") {
-      for (const auto& rule : FuzzyPinyinRuleDefinitions()) {
-        const std::wstring id(rule.id);
-        if (std::find(result.begin(), result.end(), id) == result.end()) {
-          result.push_back(id);
-        }
-      }
-    } else if (IsKnownFuzzyPinyinRule(token) &&
-               std::find(result.begin(), result.end(), token) == result.end()) {
-      result.push_back(token);
-    }
-    token.clear();
-  };
-
-  for (const wchar_t ch : value) {
-    if (ch == L',' || ch == L';' || ch == L'|' || ch == L' ' || ch == L'\t') {
-      append_token();
-    } else {
-      token.push_back(ch);
-    }
-  }
-  append_token();
-
-  if (result.empty() && default_to_all) {
-    for (const auto& rule : FuzzyPinyinRuleDefinitions()) {
-      result.emplace_back(rule.id);
-    }
-  }
-  return result;
-}
-
-std::wstring JoinFuzzyPinyinRules(const std::vector<std::wstring>& rules) {
-  std::wstring value;
-  for (const auto& rule : rules) {
-    if (!IsKnownFuzzyPinyinRule(rule)) {
-      continue;
-    }
-    if (!value.empty()) {
-      value += L',';
-    }
-    value += rule;
-  }
-  return value;
-}
-
 std::vector<std::wstring> CurrentFuzzyPinyinRules(bool default_to_all = false) {
   constexpr std::wstring_view marker = L"__fluent_default_fuzzy_rules__";
-  const std::wstring raw = ReadStringSetting(L"fuzzy_pinyin_rules", marker);
+  const std::wstring raw = ReadStringSetting(fp::kFuzzyPinyinRulesSetting, marker);
   return ParseFuzzyPinyinRuleSetting(raw, default_to_all || raw == marker);
 }
 
 std::wstring CurrentFuzzyPinyinCustomRulesText() {
   return JoinFuzzyPinyinCustomRules(
       ParseFuzzyPinyinCustomRuleSetting(
-          ReadStringSetting(L"fuzzy_pinyin_custom_rules", L"")),
+          ReadStringSetting(fp::kFuzzyPinyinCustomRulesSetting, L"")),
       L'\n');
 }
 
 int CurrentFuzzyPinyinCustomRuleCount() {
   return static_cast<int>(ParseFuzzyPinyinCustomRuleSetting(
-      ReadStringSetting(L"fuzzy_pinyin_custom_rules", L"")).size());
+      ReadStringSetting(fp::kFuzzyPinyinCustomRulesSetting, L"")).size());
 }
 
 std::wstring FuzzyPinyinRuleIconText() {
-  return ReadBoolSetting(L"fuzzy_pinyin", false) ? L"模" : L"规";
+  return ReadBoolSetting(fp::kFuzzyPinyinSetting, false) ? L"模" : L"规";
 }
 
 IReference<bool> NullableBool(bool value) {
@@ -794,13 +366,6 @@ void SetFuzzyPinyinRuleChecks(
   }
 }
 
-bool WriteCandidateLayoutSetting(std::wstring_view value) {
-  const bool horizontal = value != L"vertical";
-  bool changed = WriteStringSetting(L"candidate_layout", horizontal ? L"horizontal" : L"vertical");
-  changed = WriteBoolSetting(L"candidate_horizontal", horizontal) || changed;
-  return changed;
-}
-
 void OpenPath(const std::filesystem::path& path) {
   fp::EnsureDirectory(path);
   ShellExecuteW(nullptr, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
@@ -838,44 +403,23 @@ void ShowWindowsAppRuntimeMissingMessage(HRESULT result) {
 }
 
 void RequestToolbarHostRefresh() {
-  const UINT message = RegisterWindowMessageW(std::wstring(fp::kToolbarRefreshMessageName).c_str());
-  if (message != 0) {
-    PostMessageW(HWND_BROADCAST, message, 0, 0);
-  }
+  fp::PostRegisteredBroadcastMessage(fp::kToolbarRefreshMessageName);
 }
 
 void RequestToolbarHostShutdown() {
-  const UINT message =
-      RegisterWindowMessageW(std::wstring(fp::kToolbarHostShutdownMessageName).c_str());
-  if (message != 0) {
-    PostMessageW(HWND_BROADCAST, message, 0, 0);
-  }
+  fp::PostRegisteredBroadcastMessage(fp::kToolbarHostShutdownMessageName);
 }
 
 void RequestApplyInputConfig() {
-  const UINT message =
-      RegisterWindowMessageW(std::wstring(fp::kApplyInputConfigMessageName).c_str());
-  if (message == 0) {
-    return;
-  }
-  PostMessageW(HWND_BROADCAST, message, 0, 0);
+  fp::PostRegisteredBroadcastMessage(fp::kApplyInputConfigMessageName);
 }
 
 void RequestInputStateRefresh() {
-  const UINT message =
-      RegisterWindowMessageW(std::wstring(fp::kRefreshInputStateMessageName).c_str());
-  if (message == 0) {
-    return;
-  }
-  PostMessageW(HWND_BROADCAST, message, 0, 0);
+  fp::PostRegisteredBroadcastMessage(fp::kRefreshInputStateMessageName);
 }
 
 void RequestCandidateWindowVisualRefresh() {
-  const UINT message =
-      RegisterWindowMessageW(std::wstring(fp::kRefreshCandidateWindowVisualsMessageName).c_str());
-  if (message != 0) {
-    PostMessageW(HWND_BROADCAST, message, 0, 0);
-  }
+  fp::PostRegisteredBroadcastMessage(fp::kRefreshCandidateWindowVisualsMessageName);
   RequestInputStateRefresh();
 }
 
@@ -940,11 +484,13 @@ SizeInt32 SettingsMinimumWindowSize(HWND hwnd) {
 
 LRESULT CALLBACK SettingsWindowProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
   const UINT toolbar_refresh_message =
-      RegisterWindowMessageW(std::wstring(fp::kToolbarRefreshMessageName).c_str());
+      fp::RegisteredBroadcastMessage(fp::kToolbarRefreshMessageName);
   if (toolbar_refresh_message != 0 && message == toolbar_refresh_message) {
     ResetSettingsCache();
     const bool visible =
-        ReadBoolSettingMigrated(kToolbarVisibleSetting, false, kLegacyToolbarVisibleSetting);
+        ReadBoolSettingMigrated(fp::kToolbarVisibleSetting,
+                                false,
+                                fp::kLegacyToolbarVisibleSetting);
     g_syncing_toolbar_visible_switches = true;
     for (auto it = g_toolbar_visible_switches.begin(); it != g_toolbar_visible_switches.end();) {
       if (*it == nullptr) {
@@ -1080,198 +626,6 @@ void ApplyDwmWindowFrame(Window const& window) {
     set_attribute(hwnd, kDwmTextColor, &text_color, sizeof(text_color));
   }
   FreeLibrary(dwm);
-}
-
-void ApplySettingsResources(ResourceDictionary const& resources) {
-  const auto palette = CurrentSettingsPalette();
-  const Thickness hairline = SettingsHairlineThickness();
-  const auto settings_font = SettingsUiFontFamily().as<IInspectable>();
-  const auto border = SettingsBorderBrush().as<IInspectable>();
-  const auto border_hover = SettingsBorderHoverBrush().as<IInspectable>();
-  const auto surface = Brush(palette.background).as<IInspectable>();
-  const auto card = Brush(palette.card).as<IInspectable>();
-  const auto text = Brush(palette.text).as<IInspectable>();
-  const auto secondary_text = Brush(palette.secondary_text).as<IInspectable>();
-  const auto button = Brush(palette.button).as<IInspectable>();
-  const auto button_hover = Brush(palette.button_hover).as<IInspectable>();
-  const auto button_pressed = Brush(palette.button_pressed).as<IInspectable>();
-  const auto accent = Brush(palette.accent).as<IInspectable>();
-  const auto transparent = TransparentBrush().as<IInspectable>();
-  const auto knob_on =
-      Brush(palette.light ? ThemeColor{255, 255, 255} : ThemeColor{0, 0, 0}).as<IInspectable>();
-  const auto knob_off = Brush(palette.secondary_text).as<IInspectable>();
-  resources.Insert(box_value(L"ContentControlThemeFontFamily"), settings_font);
-  resources.Insert(box_value(L"TextBlockFontFamily"), settings_font);
-  resources.Insert(box_value(L"ButtonFontFamily"), settings_font);
-  resources.Insert(box_value(L"CheckBoxFontFamily"), settings_font);
-  resources.Insert(box_value(L"ComboBoxFontFamily"), settings_font);
-  resources.Insert(box_value(L"ComboBoxItemFontFamily"), settings_font);
-  resources.Insert(box_value(L"ContentDialogFontFamily"), settings_font);
-  resources.Insert(box_value(L"ContentDialogButtonFontFamily"), settings_font);
-  resources.Insert(box_value(L"MTCMediaFontFamily"), settings_font);
-  resources.Insert(box_value(L"NavigationViewFontFamily"), settings_font);
-  resources.Insert(box_value(L"NavigationViewItemFontFamily"), settings_font);
-  resources.Insert(box_value(L"PasswordBoxFontFamily"), settings_font);
-  resources.Insert(box_value(L"PhoneFontFamily"), settings_font);
-  resources.Insert(box_value(L"PhoneFontFamilyNormal"), settings_font);
-  resources.Insert(box_value(L"PhoneFontFamilySemiLight"), settings_font);
-  resources.Insert(box_value(L"PivotHeaderItemFontFamily"), settings_font);
-  resources.Insert(box_value(L"PivotTitleFontFamily"), settings_font);
-  resources.Insert(box_value(L"TextBoxFontFamily"), settings_font);
-  resources.Insert(box_value(L"TextControlFontFamily"), settings_font);
-  resources.Insert(box_value(L"ToggleSwitchFontFamily"), settings_font);
-  resources.Insert(box_value(L"ToolTipFontFamily"), settings_font);
-  resources.Insert(box_value(L"ToolTipContentThemeFontFamily"), settings_font);
-  resources.Insert(box_value(L"KeyTipFontFamily"), settings_font);
-  resources.Insert(box_value(L"ApplicationPageBackgroundThemeBrush"), surface);
-  resources.Insert(box_value(L"SolidBackgroundFillColorBaseBrush"), surface);
-  resources.Insert(box_value(L"SolidBackgroundFillColorSecondaryBrush"), surface);
-  resources.Insert(box_value(L"LayerFillColorDefaultBrush"), surface);
-  resources.Insert(box_value(L"LayerFillColorAltBrush"), surface);
-  resources.Insert(box_value(L"ControlStrokeColorDefaultBrush"), border);
-  resources.Insert(box_value(L"SurfaceStrokeColorDefaultBrush"), border);
-  resources.Insert(box_value(L"ButtonBorderThemeThickness"), box_value(hairline));
-  resources.Insert(box_value(L"ComboBoxBorderThemeThickness"), box_value(hairline));
-  resources.Insert(box_value(L"ComboBoxDropdownBorderThickness"), box_value(hairline));
-  resources.Insert(box_value(L"ComboBoxPopupBorderThemeThickness"), box_value(hairline));
-  resources.Insert(box_value(L"ContentDialogMaxWidth"),
-                   box_value(kSettingsDialogOuterWidth));
-  resources.Insert(box_value(L"ContentDialogMinWidth"),
-                   box_value(kSettingsDialogOuterWidth));
-  resources.Insert(box_value(L"ContentDialogBackground"), card);
-  resources.Insert(box_value(L"ContentDialogForeground"), text);
-  resources.Insert(box_value(L"ContentDialogBorderBrush"), border);
-  resources.Insert(box_value(L"ContentDialogBorderWidth"), box_value(hairline));
-  resources.Insert(box_value(L"ContentDialogButtonBackground"), button);
-  resources.Insert(box_value(L"ContentDialogButtonBackgroundPointerOver"), button_hover);
-  resources.Insert(box_value(L"ContentDialogButtonBackgroundPressed"), button_pressed);
-  resources.Insert(box_value(L"ContentDialogButtonForeground"), text);
-  resources.Insert(box_value(L"ContentDialogButtonBorderBrush"), border);
-  resources.Insert(box_value(L"ContentDialogButtonBorderBrushPointerOver"), border_hover);
-  resources.Insert(box_value(L"ContentDialogButtonBorderBrushPressed"), border_hover);
-  resources.Insert(box_value(L"ContentDialogPrimaryButtonBackground"), Brush(palette.accent).as<IInspectable>());
-  resources.Insert(box_value(L"ContentDialogPrimaryButtonBackgroundPointerOver"), accent);
-  resources.Insert(box_value(L"ContentDialogPrimaryButtonBackgroundPressed"), accent);
-  resources.Insert(box_value(L"ContentDialogPrimaryButtonForeground"),
-                   Brush(palette.light ? ThemeColor{255, 255, 255} : ThemeColor{0, 0, 0}).as<IInspectable>());
-  resources.Insert(box_value(L"ComboBoxBackground"), button);
-  resources.Insert(box_value(L"ComboBoxBackgroundPointerOver"), button_hover);
-  resources.Insert(box_value(L"ComboBoxBackgroundPressed"), button_pressed);
-  resources.Insert(box_value(L"ComboBoxBackgroundDropDownOpen"), button_pressed);
-  resources.Insert(box_value(L"ComboBoxForeground"), text);
-  resources.Insert(box_value(L"ComboBoxForegroundPointerOver"), text);
-  resources.Insert(box_value(L"ComboBoxForegroundPressed"), text);
-  resources.Insert(box_value(L"ComboBoxForegroundDropDownOpen"), text);
-  resources.Insert(box_value(L"ComboBoxBorderBrush"), border);
-  resources.Insert(box_value(L"ComboBoxBorderBrushPointerOver"), border_hover);
-  resources.Insert(box_value(L"ComboBoxBorderBrushPressed"), border_hover);
-  resources.Insert(box_value(L"ComboBoxBorderBrushDropDownOpen"), border);
-  resources.Insert(box_value(L"ComboBoxDropDownBackground"), card);
-  resources.Insert(box_value(L"ComboBoxDropDownBorderBrush"), border);
-  resources.Insert(box_value(L"ComboBoxItemBackground"), card);
-  resources.Insert(box_value(L"ComboBoxItemBackgroundPointerOver"), button_hover);
-  resources.Insert(box_value(L"ComboBoxItemBackgroundPressed"), button_pressed);
-  resources.Insert(box_value(L"ComboBoxItemBackgroundSelected"), button_pressed);
-  resources.Insert(box_value(L"ComboBoxItemBackgroundSelectedPointerOver"), button_pressed);
-  resources.Insert(box_value(L"ComboBoxItemForeground"), text);
-  resources.Insert(box_value(L"ComboBoxItemForegroundPointerOver"), text);
-  resources.Insert(box_value(L"ComboBoxItemForegroundPressed"), text);
-  resources.Insert(box_value(L"ComboBoxItemForegroundSelected"), text);
-  resources.Insert(box_value(L"ComboBoxItemPillFillBrush"), transparent);
-  resources.Insert(box_value(L"NavigationViewForeground"), text);
-  resources.Insert(box_value(L"NavigationViewItemForeground"), text);
-  resources.Insert(box_value(L"NavigationViewItemForegroundPointerOver"), text);
-  resources.Insert(box_value(L"NavigationViewItemForegroundPressed"), text);
-  resources.Insert(box_value(L"NavigationViewItemForegroundDisabled"), secondary_text);
-  resources.Insert(box_value(L"NavigationViewItemForegroundChecked"), text);
-  resources.Insert(box_value(L"NavigationViewItemForegroundCheckedPointerOver"), text);
-  resources.Insert(box_value(L"NavigationViewItemForegroundCheckedPressed"), text);
-  resources.Insert(box_value(L"NavigationViewItemForegroundSelected"), text);
-  resources.Insert(box_value(L"NavigationViewItemForegroundSelectedPointerOver"), text);
-  resources.Insert(box_value(L"NavigationViewItemForegroundSelectedPressed"), text);
-  resources.Insert(box_value(L"NavigationViewItemIconForeground"), text);
-  resources.Insert(box_value(L"NavigationViewItemIconForegroundPointerOver"), text);
-  resources.Insert(box_value(L"NavigationViewItemIconForegroundPressed"), text);
-  resources.Insert(box_value(L"NavigationViewItemIconForegroundSelected"), text);
-  resources.Insert(box_value(L"NavigationViewItemIconForegroundSelectedPointerOver"), text);
-  resources.Insert(box_value(L"NavigationViewItemBackground"), transparent);
-  resources.Insert(box_value(L"NavigationViewItemBackgroundPointerOver"), button_hover);
-  resources.Insert(box_value(L"NavigationViewItemBackgroundPressed"), button_pressed);
-  resources.Insert(box_value(L"NavigationViewItemBackgroundChecked"), button);
-  resources.Insert(box_value(L"NavigationViewItemBackgroundCheckedPointerOver"), button_hover);
-  resources.Insert(box_value(L"NavigationViewItemBackgroundCheckedPressed"), button_pressed);
-  resources.Insert(box_value(L"NavigationViewItemBackgroundSelected"), button);
-  resources.Insert(box_value(L"NavigationViewItemBackgroundSelectedPointerOver"), button_hover);
-  resources.Insert(box_value(L"NavigationViewItemBackgroundSelectedPressed"), button_pressed);
-  resources.Insert(box_value(L"NavigationViewItemBorderBrush"), transparent);
-  resources.Insert(box_value(L"NavigationViewItemBorderBrushPointerOver"), transparent);
-  resources.Insert(box_value(L"NavigationViewItemBorderBrushPressed"), transparent);
-  resources.Insert(box_value(L"NavigationViewItemBorderBrushChecked"), transparent);
-  resources.Insert(box_value(L"NavigationViewItemBorderBrushSelected"), transparent);
-  resources.Insert(box_value(L"NavigationViewSelectionIndicatorForeground"), accent);
-  resources.Insert(box_value(L"ToggleSwitchContentForeground"), text);
-  resources.Insert(box_value(L"ToggleSwitchContentForegroundDisabled"), secondary_text);
-  resources.Insert(box_value(L"ToggleSwitchHeaderForeground"), text);
-  resources.Insert(box_value(L"ToggleSwitchHeaderForegroundDisabled"), secondary_text);
-  resources.Insert(box_value(L"ToggleSwitchContainerBackground"), transparent);
-  resources.Insert(box_value(L"ToggleSwitchContainerBackgroundPointerOver"),
-                   ColorReference(0, 0, 0, 0));
-  resources.Insert(box_value(L"ToggleSwitchContainerBackgroundPressed"),
-                   ColorReference(0, 0, 0, 0));
-  resources.Insert(box_value(L"ToggleSwitchContainerBackgroundDisabled"),
-                   ColorReference(0, 0, 0, 0));
-  resources.Insert(box_value(L"ToggleSwitchFillOff"), button);
-  resources.Insert(box_value(L"ToggleSwitchFillOffPointerOver"),
-                   ColorReference(palette.button_hover));
-  resources.Insert(box_value(L"ToggleSwitchFillOffPressed"),
-                   ColorReference(palette.button_pressed));
-  resources.Insert(box_value(L"ToggleSwitchFillOffDisabled"),
-                   ColorReference(palette.button));
-  resources.Insert(box_value(L"ToggleSwitchStrokeOff"), border);
-  resources.Insert(box_value(L"ToggleSwitchStrokeOffPointerOver"),
-                   ColorReference(SettingsBorderHoverColor()));
-  resources.Insert(box_value(L"ToggleSwitchStrokeOffPressed"),
-                   ColorReference(SettingsBorderHoverColor()));
-  resources.Insert(box_value(L"ToggleSwitchStrokeOffDisabled"),
-                   ColorReference(SettingsBorderColor()));
-  resources.Insert(box_value(L"ToggleSwitchOuterBorderStrokeThickness"),
-                   box_value(SettingsHairlineDip()));
-  resources.Insert(box_value(L"ToggleSwitchFillOn"), accent);
-  resources.Insert(box_value(L"ToggleSwitchFillOnPointerOver"), accent);
-  resources.Insert(box_value(L"ToggleSwitchFillOnPressed"), accent);
-  resources.Insert(box_value(L"ToggleSwitchFillOnDisabled"), button_pressed);
-  resources.Insert(box_value(L"ToggleSwitchStrokeOn"), accent);
-  resources.Insert(box_value(L"ToggleSwitchStrokeOnPointerOver"), accent);
-  resources.Insert(box_value(L"ToggleSwitchStrokeOnPressed"), accent);
-  resources.Insert(box_value(L"ToggleSwitchStrokeOnDisabled"), button_pressed);
-  resources.Insert(box_value(L"ToggleSwitchKnobFillOff"), knob_off);
-  resources.Insert(box_value(L"ToggleSwitchKnobFillOffPointerOver"), knob_off);
-  resources.Insert(box_value(L"ToggleSwitchKnobFillOffPressed"), knob_off);
-  resources.Insert(box_value(L"ToggleSwitchKnobFillOffDisabled"), secondary_text);
-  resources.Insert(box_value(L"ToggleSwitchKnobFillOn"), knob_on);
-  resources.Insert(box_value(L"ToggleSwitchKnobFillOnPointerOver"), knob_on);
-  resources.Insert(box_value(L"ToggleSwitchKnobFillOnPressed"), knob_on);
-  resources.Insert(box_value(L"ToggleSwitchKnobFillOnDisabled"), secondary_text);
-  resources.Insert(box_value(L"TextControlForeground"), text);
-  resources.Insert(box_value(L"TextControlForegroundPointerOver"), text);
-  resources.Insert(box_value(L"TextControlForegroundFocused"), text);
-  resources.Insert(box_value(L"TextControlPlaceholderForeground"), secondary_text);
-  resources.Insert(box_value(L"TextControlPlaceholderForegroundPointerOver"), secondary_text);
-  resources.Insert(box_value(L"TextControlPlaceholderForegroundFocused"), secondary_text);
-  resources.Insert(box_value(L"TextControlHeaderForeground"), text);
-  resources.Insert(box_value(L"TextControlBackground"), button);
-  resources.Insert(box_value(L"TextControlBackgroundPointerOver"), button_hover);
-  resources.Insert(box_value(L"TextControlBackgroundFocused"), button_pressed);
-  resources.Insert(box_value(L"TextControlBorderBrush"), border);
-  resources.Insert(box_value(L"TextControlBorderBrushPointerOver"), border_hover);
-  resources.Insert(box_value(L"TextControlBorderBrushFocused"), border_hover);
-  resources.Insert(box_value(L"TextControlBorderBrushDisabled"), border);
-  resources.Insert(box_value(L"TextControlBorderThemeThickness"), box_value(hairline));
-  resources.Insert(box_value(L"TextControlBorderThemeThicknessFocused"), box_value(hairline));
-  resources.Insert(box_value(L"TextControlButtonForeground"), secondary_text);
-  resources.Insert(box_value(L"TextControlSelectionHighlightColor"), accent);
-  resources.Insert(box_value(L"NavigationViewDefaultPaneBackground"), surface);
-  resources.Insert(box_value(L"NavigationViewContentBackground"), surface);
 }
 
 TextBlock Text(std::wstring_view value, double size, int weight = FW_NORMAL) {
@@ -1424,31 +778,30 @@ Shapes::Ellipse EllipseShape(double left,
 }
 
 constexpr std::wstring_view kFluentCircle20FilledPath =
-    L"M10 2C14.4183 2 18 5.58172 18 10C18 14.4183 14.4183 18 10 18C5.58172 18 2 14.4183 2 10C2 5.58172 5.58172 2 10 2Z";
+    fp::svg::kFluentCircle20FilledPath;
 constexpr std::wstring_view kFluentCircle20RegularPath =
     L"M10 3C6.13401 3 3 6.13401 3 10C3 13.866 6.13401 17 10 17C13.866 17 17 13.866 17 10C17 6.13401 13.866 3 10 3ZM2 10C2 5.58172 5.58172 2 10 2C14.4183 2 18 5.58172 18 10C18 14.4183 14.4183 18 10 18C5.58172 18 2 14.4183 2 10Z";
 constexpr std::wstring_view kFluentWeatherMoon24Path =
-    L"M20.0258 17.0014C17.2639 21.7851 11.1471 23.4241 6.3634 20.6622C5.06068 19.9101 3.964 18.8926 3.12872 17.6797C2.84945 17.2741 3.0301 16.7141 3.49369 16.5482C7.26112 15.1997 9.27892 13.6372 10.4498 11.4021C11.6825 9.04908 12.001 6.47162 11.1387 2.93862C11.0195 2.45008 11.4053 1.98492 11.9075 2.01186C13.4645 2.09539 14.9856 2.54263 16.3649 3.33903C21.1486 6.10088 22.7876 12.2177 20.0258 17.0014ZM11.7785 12.0981C10.5272 14.4867 8.46706 16.1972 4.96104 17.597C5.5693 18.2929 6.29275 18.8894 7.1134 19.3632C11.1796 21.7108 16.3791 20.3176 18.7267 16.2514C21.0744 12.1852 19.6812 6.98571 15.6149 4.63807C14.7379 4.1317 13.7951 3.79168 12.8228 3.62253C13.4699 7.00652 13.0525 9.66622 11.7785 12.0981Z";
+    fp::svg::kFluentWeatherMoon24Path;
 constexpr std::wstring_view kFluentDarkTheme20RegularPath =
     L"M10 3C13.866 3 17 6.13401 17 10C17 13.866 13.866 17 10 17V3ZM10 2C5.58172 2 2 5.58172 2 10C2 14.4183 5.58172 18 10 18C14.4183 18 18 14.4183 18 10C18 5.58172 14.4183 2 10 2Z";
 constexpr std::wstring_view kFluentWeatherMoon20FilledPath =
     L"M16.3592 13.9967C14.1552 17.8141 9.27399 19.122 5.45663 16.918C4.41706 16.3178 3.54192 15.5059 2.87537 14.538C2.65251 14.2143 2.79667 13.7674 3.16661 13.635C6.17301 12.559 7.78322 11.312 8.71759 9.52844C9.70125 7.65076 9.95545 5.59395 9.26732 2.77462C9.17217 2.38477 9.4801 2.01357 9.88082 2.03507C11.1233 2.10173 12.3371 2.45863 13.4378 3.09415C17.2552 5.2981 18.5631 10.1793 16.3592 13.9967Z";
 constexpr std::wstring_view kFluentWeatherSunny20RegularPath =
     L"M10 2C10.2761 2 10.5 2.22386 10.5 2.5V3.5C10.5 3.77614 10.2761 4 10 4C9.72386 4 9.5 3.77614 9.5 3.5V2.5C9.5 2.22386 9.72386 2 10 2ZM10 14C12.2091 14 14 12.2091 14 10C14 7.79086 12.2091 6 10 6C7.79086 6 6 7.79086 6 10C6 12.2091 7.79086 14 10 14ZM10 13C8.34315 13 7 11.6569 7 10C7 8.34315 8.34315 7 10 7C11.6569 7 13 8.34315 13 10C13 11.6569 11.6569 13 10 13ZM17.5 10.5C17.7761 10.5 18 10.2761 18 10C18 9.72386 17.7761 9.5 17.5 9.5H16.5C16.2239 9.5 16 9.72386 16 10C16 10.2761 16.2239 10.5 16.5 10.5H17.5ZM10 16C10.2761 16 10.5 16.2239 10.5 16.5V17.5C10.5 17.7761 10.2761 18 10 18C9.72386 18 9.5 17.7761 9.5 17.5V16.5C9.5 16.2239 9.72386 16 10 16ZM3.5 10.5C3.77614 10.5 4 10.2761 4 10C4 9.72386 3.77614 9.5 3.5 9.5H2.46289C2.18675 9.5 1.96289 9.72386 1.96289 10C1.96289 10.2761 2.18675 10.5 2.46289 10.5H3.5ZM4.14645 4.14645C4.34171 3.95118 4.65829 3.95118 4.85355 4.14645L5.85355 5.14645C6.04882 5.34171 6.04882 5.65829 5.85355 5.85355C5.65829 6.04882 5.34171 6.04882 5.14645 5.85355L4.14645 4.85355C3.95118 4.65829 3.95118 4.34171 4.14645 4.14645ZM4.85355 15.8536C4.65829 16.0488 4.34171 16.0488 4.14645 15.8536C3.95118 15.6583 3.95118 15.3417 4.14645 15.1464L5.14645 14.1464C5.34171 13.9512 5.65829 13.9512 5.85355 14.1464C6.04882 14.3417 6.04882 14.6583 5.85355 14.8536L4.85355 15.8536ZM15.8536 4.14645C15.6583 3.95118 15.3417 3.95118 15.1464 4.14645L14.1464 5.14645C13.9512 5.34171 13.9512 5.65829 14.1464 5.85355C14.3417 6.04882 14.6583 6.04882 14.8536 5.85355L15.8536 4.85355C16.0488 4.65829 16.0488 4.34171 15.8536 4.14645ZM15.1464 15.8536C15.3417 16.0488 15.6583 16.0488 15.8536 15.8536C16.0488 15.6583 16.0488 15.3417 15.8536 15.1464L14.8536 14.1464C14.6583 13.9512 14.3417 13.9512 14.1464 14.1464C13.9512 14.3417 13.9512 14.6583 14.1464 14.8536L15.1464 15.8536Z";
-constexpr std::wstring_view kFluentEmoji24Path =
-    L"M12 1.99805C17.5237 1.99805 22.0015 6.47589 22.0015 11.9996C22.0015 17.5233 17.5237 22.0011 12 22.0011C6.47626 22.0011 1.99841 17.5233 1.99841 11.9996C1.99841 6.47589 6.47626 1.99805 12 1.99805ZM12 3.49805C7.30469 3.49805 3.49841 7.30432 3.49841 11.9996C3.49841 16.6949 7.30469 20.5011 12 20.5011C16.6952 20.5011 20.5015 16.6949 20.5015 11.9996C20.5015 7.30432 16.6952 3.49805 12 3.49805ZM8.4617 14.7829C9.31084 15.8606 10.6019 16.5012 11.9999 16.5012C13.3962 16.5012 14.6856 15.8624 15.5349 14.7871C15.7916 14.462 16.2633 14.4066 16.5883 14.6634C16.9134 14.9201 16.9688 15.3917 16.712 15.7168C15.5813 17.1485 13.8601 18.0012 11.9999 18.0012C10.1373 18.0012 8.41408 17.1462 7.28348 15.7112C7.02713 15.3859 7.08307 14.9143 7.40843 14.658C7.73379 14.4016 8.20535 14.4576 8.4617 14.7829ZM9.00041 8.75024C9.69037 8.75024 10.2497 9.30956 10.2497 9.99953C10.2497 10.6895 9.69037 11.2488 9.00041 11.2488C8.31045 11.2488 7.75112 10.6895 7.75112 9.99953C7.75112 9.30956 8.31045 8.75024 9.00041 8.75024ZM15.0004 8.75024C15.6904 8.75024 16.2497 9.30956 16.2497 9.99953C16.2497 10.6895 15.6904 11.2488 15.0004 11.2488C14.3104 11.2488 13.7511 10.6895 13.7511 9.99953C13.7511 9.30956 14.3104 8.75024 15.0004 8.75024Z";
+constexpr std::wstring_view kFluentEmoji24Path = fp::svg::kFluentEmoji24Path;
 constexpr std::wstring_view kFluentChevronLeft20Path =
-    L"M12.3534 15.8537C12.1585 16.0493 11.8419 16.0499 11.6463 15.855L6.16178 10.39C5.94607 10.1751 5.94607 9.82574 6.16178 9.6108L11.6463 4.14582C11.8419 3.9509 12.1585 3.95147 12.3534 4.14708C12.5483 4.34269 12.5477 4.65927 12.3521 4.85418L7.18753 10.0004L12.3521 15.1466C12.5477 15.3415 12.5483 15.6581 12.3534 15.8537Z";
+    fp::svg::kFluentChevronLeft20Path;
 constexpr std::wstring_view kFluentChevronRight20Path =
-    L"M7.64582 4.14708C7.84073 3.95147 8.15731 3.9509 8.35292 4.14582L13.8374 9.6108C14.0531 9.82574 14.0531 10.1751 13.8374 10.39L8.35292 15.855C8.15731 16.0499 7.84073 16.0493 7.64582 15.8537C7.4509 15.6581 7.45147 15.3415 7.64708 15.1466L12.8117 10.0004L7.64708 4.85418C7.45147 4.65927 7.4509 4.34269 7.64582 4.14708Z";
+    fp::svg::kFluentChevronRight20Path;
 constexpr std::wstring_view kFluentChevronDown20Path =
-    L"M15.8537 7.64582C16.0493 7.84073 16.0499 8.15731 15.855 8.35292L10.39 13.8374C10.1751 14.0531 9.82574 14.0531 9.6108 13.8374L4.14582 8.35292C3.9509 8.15731 3.95147 7.84073 4.14708 7.64582C4.34269 7.4509 4.65927 7.45147 4.85418 7.64708L10.0004 12.8117L15.1466 7.64708C15.3415 7.45147 15.6581 7.4509 15.8537 7.64582Z";
+    fp::svg::kFluentChevronDown20Path;
 constexpr std::wstring_view kFluentChevronUp20Path =
-    L"M4.14708 12.3534C3.95147 12.1585 3.9509 11.8419 4.14582 11.6463L9.6108 6.16178C9.82574 5.94607 10.1751 5.94607 10.39 6.16178L15.855 11.6463C16.0499 11.8419 16.0493 12.1585 15.8537 12.3534C15.6581 12.5483 15.3415 12.5477 15.1466 12.3521L10.0004 7.18753L4.85418 12.3521C4.65927 12.5477 4.34269 12.5483 4.14708 12.3534Z";
+    fp::svg::kFluentChevronUp20Path;
 constexpr std::wstring_view kFluentTriangleLeft12FilledPath =
-    L"M1.45866 5.21367C0.847113 5.56267 0.847113 6.43734 1.45866 6.78633L8.62781 10.8776C9.23809 11.2259 10 10.7893 10 10.0913V10.0635L10 10.0586V1.94235L10 1.93748V1.9087C10 1.2107 9.23809 0.774094 8.62781 1.12237L1.45866 5.21367Z";
+    fp::svg::kFluentTriangleLeft12FilledPath;
 constexpr std::wstring_view kFluentTriangleRight12FilledPath =
-    L"M10.5414 6.78633C11.1529 6.43734 11.1529 5.56267 10.5414 5.21367L3.3722 1.12237C2.76192 0.774094 2.00001 1.2107 2.00001 1.9087L2.00001 1.9365L2 1.94138L2 10.0576L2.00001 10.0625L2.00001 10.0913C2.00001 10.7893 2.76192 11.2259 3.3722 10.8776L10.5414 6.78633Z";
+    fp::svg::kFluentTriangleRight12FilledPath;
 constexpr std::wstring_view kFluentReOrderDotsHorizontal20RegularPath =
     L"M15 7C15 7.55229 15.4477 8 16 8C16.5523 8 17 7.55229 17 7C17 6.44772 16.5523 6 16 6C15.4477 6 15 6.44772 15 7ZM9 7C9 7.55228 9.44772 8 10 8C10.5523 8 11 7.55228 11 7C11 6.44772 10.5523 6 10 6C9.44772 6 9 6.44772 9 7ZM4 8C3.44772 8 3 7.55228 3 7C3 6.44772 3.44772 6 4 6C4.55229 6 5 6.44772 5 7C5 7.55228 4.55229 8 4 8ZM15 13C15 13.5523 15.4477 14 16 14C16.5523 14 17 13.5523 17 13C17 12.4477 16.5523 12 16 12C15.4477 12 15 12.4477 15 13ZM10 14C9.44772 14 9 13.5523 9 13C9 12.4477 9.44772 12 10 12C10.5523 12 11 12.4477 11 13C11 13.5523 10.5523 14 10 14ZM3 13C3 13.5523 3.44772 14 4 14C4.55229 14 5 13.5523 5 13C5 12.4477 4.55229 12 4 12C3.44772 12 3 12.4477 3 13Z";
 constexpr std::wstring_view kFluentReOrderDotsVertical20RegularPath =
@@ -1703,7 +1056,8 @@ Grid TriangleStatusIcon(bool right) {
 }
 
 std::wstring DefaultInputModeIconText() {
-  return ReadStringSetting(L"default_input_mode", L"zh") == L"en" ? L"英" : L"中";
+  return DefaultInputModeChoiceIconText(
+      ReadStringSetting(fp::kDefaultInputModeSetting, fp::kDefaultInputMode));
 }
 
 std::wstring FirstIconText(std::wstring_view value) {
@@ -1735,7 +1089,8 @@ std::wstring IntChoiceIconText(const std::vector<std::wstring>& labels, int valu
 }
 
 std::wstring DefaultCharsetIconText() {
-  return ReadStringSetting(L"default_charset", L"simplified") == L"traditional" ? L"繁" : L"简";
+  return DefaultCharsetChoiceIconText(
+      ReadStringSetting(fp::kDefaultCharsetSetting, fp::kDefaultCharset));
 }
 
 Grid CandidateLayoutIcon(std::wstring_view layout) {
@@ -1744,7 +1099,7 @@ Grid CandidateLayoutIcon(std::wstring_view layout) {
   root.Height(kSettingIconHostSize);
   root.HorizontalAlignment(HorizontalAlignment::Center);
   root.VerticalAlignment(VerticalAlignment::Center);
-  root.Children().Append(PathShape(layout == L"vertical"
+  root.Children().Append(PathShape(layout == fp::kCandidateLayoutVertical
                                        ? kFluentReOrderDotsVertical20RegularPath
                                        : kFluentReOrderDotsHorizontal20RegularPath,
                                    kSettingIconVisualSize,
@@ -2166,62 +1521,70 @@ ComboBox StringChoiceComboWithIcon(
 
 ComboBox CandidateCountCombo() {
   const int current =
-      ReadIntSetting(L"candidate_count", kDefaultCandidateCount, kMinCandidateCount, kMaxCandidateCount);
+      ReadIntSetting(fp::kCandidateCountSetting,
+                     fp::kDefaultCandidateCount,
+                     fp::kMinCandidateCount,
+                     fp::kMaxCandidateCount);
   std::vector<std::wstring> labels;
-  for (int value = kMinCandidateCount; value <= kMaxCandidateCount; ++value) {
+  for (int value = fp::kMinCandidateCount; value <= fp::kMaxCandidateCount; ++value) {
     labels.push_back(std::to_wstring(value));
   }
-  return ChoiceCombo(labels, current - kMinCandidateCount, [](int selected) {
-    WriteIntSetting(L"candidate_count", kMinCandidateCount + selected);
+  return ChoiceCombo(labels, current - fp::kMinCandidateCount, [](int selected) {
+    WriteIntSetting(fp::kCandidateCountSetting, fp::kMinCandidateCount + selected);
     RequestCandidateWindowVisualRefresh();
   });
 }
 
 ComboBox CandidateCountCombo(TextBlock const& icon_label) {
   const int current =
-      ReadIntSetting(L"candidate_count", kDefaultCandidateCount, kMinCandidateCount, kMaxCandidateCount);
+      ReadIntSetting(fp::kCandidateCountSetting,
+                     fp::kDefaultCandidateCount,
+                     fp::kMinCandidateCount,
+                     fp::kMaxCandidateCount);
   icon_label.Text(std::to_wstring(current));
   std::vector<std::wstring> labels;
-  for (int value = kMinCandidateCount; value <= kMaxCandidateCount; ++value) {
+  for (int value = fp::kMinCandidateCount; value <= fp::kMaxCandidateCount; ++value) {
     labels.push_back(std::to_wstring(value));
   }
-  return ChoiceCombo(labels, current - kMinCandidateCount, [icon_label](int selected) {
-    const int value = kMinCandidateCount + selected;
-    WriteIntSetting(L"candidate_count", value);
+  return ChoiceCombo(labels, current - fp::kMinCandidateCount, [icon_label](int selected) {
+    const int value = fp::kMinCandidateCount + selected;
+    WriteIntSetting(fp::kCandidateCountSetting, value);
     icon_label.Text(std::to_wstring(value));
     RequestCandidateWindowVisualRefresh();
   });
 }
 
 ComboBox CandidateFontSizeCombo() {
-  const int current = ReadIntSetting(L"candidate_font_size_level",
-                                     kDefaultCandidateFontSizeLevel,
-                                     kMinCandidateFontSizeLevel,
-                                     kMaxCandidateFontSizeLevel);
+  const int current = ReadIntSetting(fp::kCandidateFontSizeLevelSetting,
+                                     fp::kDefaultCandidateFontSizeLevel,
+                                     fp::kMinCandidateFontSizeLevel,
+                                     fp::kMaxCandidateFontSizeLevel);
   std::vector<std::wstring> labels;
-  labels.reserve(kCandidateFontSizeLabels.size());
-  for (const auto label : kCandidateFontSizeLabels) {
+  labels.reserve(fp::kCandidateFontSizeLabels.size());
+  for (const auto label : fp::kCandidateFontSizeLabels) {
     labels.emplace_back(label);
   }
   return ChoiceCombo(labels, current, [](int selected) {
-    if (selected < kMinCandidateFontSizeLevel || selected > kMaxCandidateFontSizeLevel) {
+    if (selected < fp::kMinCandidateFontSizeLevel ||
+        selected > fp::kMaxCandidateFontSizeLevel) {
       return;
     }
-    WriteIntSetting(L"candidate_font_size_level", selected);
+    WriteIntSetting(fp::kCandidateFontSizeLevelSetting, selected);
     RequestCandidateWindowVisualRefresh();
     RequestCandidateWindowVisualRefreshDeferred(120);
   });
 }
 
 std::wstring CandidateFontIconText(std::wstring_view value) {
-  return value == L"source_han_sans" || value == L"plangothic" ? L"源" : L"米";
+  return fp::IsSourceHanSansCandidateFontFamily(value) ? L"源" : L"米";
 }
 
 ComboBox CandidateFontFamilyCombo(TextBlock const& icon_label) {
   return StringChoiceComboWithIcon(
-      L"candidate_font_family",
-      {{L"MiSans", L"misans"}, {L"思源黑体", L"source_han_sans"}},
-      kDefaultCandidateFontFamily,
+      fp::kCandidateFontFamilySetting,
+      {{L"MiSans", std::wstring(fp::kDefaultCandidateFontFamily)},
+       {L"思源黑体", std::wstring(fp::kSourceHanSansCandidateFontFamily)}},
+      fp::kDefaultCandidateFontFamily,
       icon_label,
       L"",
       false,
@@ -2266,8 +1629,8 @@ ComboBox StringChoiceCombo(std::wstring_view key,
   const std::wstring current =
       !initial_value.empty()
           ? std::wstring(initial_value)
-          : (key == L"candidate_layout" ? ReadCandidateLayoutSetting(default_value)
-                                         : ReadStringSetting(key, default_value));
+          : (key == fp::kCandidateLayoutSetting ? ReadCandidateLayoutSetting(default_value)
+                                                : ReadStringSetting(key, default_value));
   std::vector<std::wstring> labels;
   int selected_index = 0;
   for (size_t index = 0; index < choices.size(); ++index) {
@@ -2288,15 +1651,18 @@ ComboBox StringChoiceCombo(std::wstring_view key,
     }
     const std::wstring value = choices[static_cast<size_t>(selected)].second;
     const std::wstring previous =
-        key == L"candidate_layout" ? ReadCandidateLayoutSetting() : ReadStringSetting(key);
-    if (key == L"candidate_layout") {
+        key == fp::kCandidateLayoutSetting
+            ? ReadCandidateLayoutSetting(fp::kDefaultCandidateLayout)
+            : ReadStringSetting(key);
+    if (key == fp::kCandidateLayoutSetting) {
       WriteCandidateLayoutSetting(value);
     } else {
       WriteStringSetting(key, value);
     }
     const bool active_double_pinyin_setting =
-        key != L"double_pinyin_scheme" ||
-        ReadStringSetting(L"input_scheme", fp::kDefaultInputScheme) == L"double_pinyin";
+        key != fp::kDoublePinyinSchemeSetting ||
+        ReadStringSetting(fp::kInputSchemeSetting, fp::kDefaultInputScheme) ==
+            std::wstring(fp::kInputSchemeDoublePinyin);
     if (restart_input_core_on_change && active_double_pinyin_setting && previous != value) {
       RequestApplyInputConfigDeferred();
     }
@@ -2321,8 +1687,8 @@ ComboBox StringChoiceComboWithIcon(
   const std::wstring current =
       !initial_value.empty()
           ? std::wstring(initial_value)
-          : (key == L"candidate_layout" ? ReadCandidateLayoutSetting(default_value)
-                                         : ReadStringSetting(key, default_value));
+          : (key == fp::kCandidateLayoutSetting ? ReadCandidateLayoutSetting(default_value)
+                                                : ReadStringSetting(key, default_value));
   icon_label.Text(resolve_icon(current));
   return StringChoiceCombo(key,
                            choices,
@@ -2376,11 +1742,9 @@ void RequestRimeOptionRefresh(bool) {
 
 ComboBox InputSchemeCombo(ComboBox const& double_scheme_combo,
                           std::function<void(std::wstring_view)> on_change = {}) {
-  const std::vector<std::pair<std::wstring, std::wstring>> choices{
-      {L"全拼", L"pinyin"},
-      {L"双拼", L"double_pinyin"},
-  };
-  const std::wstring current = ReadStringSetting(L"input_scheme", fp::kDefaultInputScheme);
+  const auto choices = InputSchemeChoices();
+  const std::wstring current =
+      ReadStringSetting(fp::kInputSchemeSetting, fp::kDefaultInputScheme);
   std::vector<std::wstring> labels;
   int selected_index = 0;
   for (size_t index = 0; index < choices.size(); ++index) {
@@ -2389,16 +1753,17 @@ ComboBox InputSchemeCombo(ComboBox const& double_scheme_combo,
       selected_index = static_cast<int>(index);
     }
   }
-  double_scheme_combo.IsEnabled(current == L"double_pinyin");
+  double_scheme_combo.IsEnabled(current == std::wstring(fp::kInputSchemeDoublePinyin));
 
   return ChoiceCombo(labels, selected_index, [double_scheme_combo, choices, on_change](int selected) {
     if (selected < 0 || selected >= static_cast<int>(choices.size())) {
       return;
     }
     const std::wstring value = choices[static_cast<size_t>(selected)].second;
-    const std::wstring previous = ReadStringSetting(L"input_scheme", fp::kDefaultInputScheme);
-    WriteStringSetting(L"input_scheme", value);
-    double_scheme_combo.IsEnabled(value == L"double_pinyin");
+    const std::wstring previous =
+        ReadStringSetting(fp::kInputSchemeSetting, fp::kDefaultInputScheme);
+    WriteStringSetting(fp::kInputSchemeSetting, value);
+    double_scheme_combo.IsEnabled(value == std::wstring(fp::kInputSchemeDoublePinyin));
     if (previous != value) {
       RequestApplyInputConfigDeferred();
     }
@@ -2411,12 +1776,11 @@ ComboBox InputSchemeCombo(ComboBox const& double_scheme_combo,
 ComboBox InputSchemeCombo(ComboBox const& double_scheme_combo,
                           TextBlock const& icon_label,
                           std::function<void(std::wstring_view)> on_change = {}) {
-  icon_label.Text(ReadStringSetting(L"input_scheme", fp::kDefaultInputScheme) == L"double_pinyin"
-                      ? L"双"
-                      : L"全");
+  icon_label.Text(InputSchemeIconText(
+      ReadStringSetting(fp::kInputSchemeSetting, fp::kDefaultInputScheme)));
   return InputSchemeCombo(double_scheme_combo,
                           [icon_label, on_change](std::wstring_view value) {
-                            icon_label.Text(value == L"double_pinyin" ? L"双" : L"全");
+                            icon_label.Text(InputSchemeIconText(value));
                             if (on_change) {
                               on_change(value);
                             }
@@ -2474,15 +1838,15 @@ ToggleSwitch ToolbarVisibleSwitch(std::function<void(bool)> on_change = {}) {
   ApplySettingsUIFont(toggle);
   toggle.MinWidth(0);
   toggle.HorizontalAlignment(HorizontalAlignment::Right);
-  toggle.IsOn(ReadBoolSettingMigrated(kToolbarVisibleSetting,
+  toggle.IsOn(ReadBoolSettingMigrated(fp::kToolbarVisibleSetting,
                                       false,
-                                      kLegacyToolbarVisibleSetting));
+                                      fp::kLegacyToolbarVisibleSetting));
   toggle.Toggled([toggle, on_change](auto const&, auto const&) {
     if (g_syncing_toolbar_visible_switches) {
       return;
     }
-    WriteBoolSetting(kToolbarVisibleSetting, toggle.IsOn());
-    WriteBoolSetting(kLegacyToolbarVisibleSetting, false);
+    WriteBoolSetting(fp::kToolbarVisibleSetting, toggle.IsOn());
+    WriteBoolSetting(fp::kLegacyToolbarVisibleSetting, false);
     RequestInputStateRefresh();
     if (on_change) {
       on_change(toggle.IsOn());
@@ -2617,36 +1981,10 @@ Button ActionPathButton(std::wstring_view text,
 
 std::wstring ShortcutConflictTooltip(std::wstring_view current_key,
                                      std::wstring_view display) {
-  const std::wstring normalized = NormalizeShortcutDisplay(display);
-  if (normalized.empty()) {
-    return L"已清除";
-  }
-
-  struct HotkeyConflictEntry {
-    std::wstring_view key;
-    std::wstring_view label;
-    std::wstring_view fallback;
-  };
-  constexpr std::array<HotkeyConflictEntry, 8> shortcuts{{
-      {L"shortcut_toolbar_input_mode", L"中/英文模式", L"Shift"},
-      {L"shortcut_toolbar_shape", L"全/半角", L"Shift+."},
-      {L"shortcut_toolbar_punctuation", L"中/英文标点", L"Ctrl+."},
-      {L"shortcut_toolbar_charset", L"简体/繁体", L"Ctrl+Shift+F"},
-      {L"shortcut_toolbar_emoji", L"表情符号/符号", L"Win+."},
-      {L"shortcut_candidate_expand", L"展开/收起候选框", L"Tab"},
-      {L"shortcut_candidate_previous_page", L"上一页", L"PgUp"},
-      {L"shortcut_candidate_next_page", L"下一页", L"PgDn"},
-  }};
-
-  for (const auto& entry : shortcuts) {
-    if (entry.key == current_key) {
-      continue;
-    }
-    if (NormalizeShortcutDisplay(ReadStringSetting(entry.key, entry.fallback)) == normalized) {
-      return L"与 " + std::wstring(entry.label) + L" 使用相同热键";
-    }
-  }
-  return L"点击后按新的组合键";
+  return fp::config_winui::ShortcutConflictTooltip(
+      current_key, display, [](std::wstring_view key, std::wstring_view fallback) {
+        return ReadStringSetting(key, fallback);
+      });
 }
 
 Button HotkeyRecorderButton(std::wstring_view key,
@@ -3068,63 +2406,6 @@ NavigationViewItem NavItem(std::wstring_view title,
   return item;
 }
 
-void ResetDefaultSettings() {
-  std::error_code error;
-  std::filesystem::remove(SettingsPath(), error);
-  ResetSettingsCache();
-
-  WriteIntSetting(L"candidate_count", kDefaultCandidateCount);
-  WriteIntSetting(L"candidate_font_size_level", kDefaultCandidateFontSizeLevel);
-  WriteStringSetting(L"candidate_font_family", kDefaultCandidateFontFamily);
-  WriteBoolSetting(L"candidate_horizontal", true);
-  WriteStringSetting(L"candidate_layout", L"horizontal");
-  WriteBoolSetting(L"status_tip_enabled", true);
-  WriteStringSetting(L"status_tip_blacklist", kDefaultStatusTipBlacklist);
-  WriteBoolSetting(kToolbarVisibleSetting, false);
-  WriteBoolSetting(kLegacyToolbarVisibleSetting, false);
-  WriteStringSetting(fp::kLegacyThemeSetting, fp::kThemeModeSystem);
-  WriteStringSetting(fp::kThemeModeSetting, fp::kThemeModeSystem);
-  WriteStringSetting(fp::kThemePresetSetting, DefaultPresetForThemeMode(fp::kThemeModeSystem));
-  WriteStringSetting(L"input_scheme", fp::kDefaultInputScheme);
-  WriteStringSetting(L"double_pinyin_scheme", fp::kDefaultDoublePinyinScheme);
-  WriteStringSetting(L"input_profile", L"base");
-  WriteStringSetting(L"default_input_mode", L"zh");
-  WriteStringSetting(L"default_charset", L"simplified");
-  WriteBoolSetting(L"default_shape_half", true);
-  WriteBoolSetting(L"default_chinese_punctuation", true);
-  WriteBoolSetting(L"auto_pinyin_correction", true);
-  WriteBoolSetting(L"super_abbrev", true);
-  WriteBoolSetting(L"smart_fuzzy_pinyin", true);
-  WriteBoolSetting(L"fuzzy_pinyin", false);
-  WriteStringSetting(L"fuzzy_pinyin_rules", kDefaultFuzzyPinyinRules);
-  WriteStringSetting(L"fuzzy_pinyin_custom_rules", L"");
-  WriteBoolSetting(L"user_lexicon_enabled", true);
-  WriteBoolSetting(L"custom_phrases_enabled", true);
-  WriteBoolSetting(L"imported_lexicons_enabled", true);
-  WriteBoolSetting(L"name_input", true);
-  WriteBoolSetting(L"u_mode", true);
-  WriteBoolSetting(L"v_mode", true);
-  for (const auto& mode : WanxiangModeDefinitions()) {
-    WriteBoolSetting(mode.setting_key, mode.default_value);
-  }
-
-  WriteStringSetting(L"shortcut_toolbar_input_mode", L"Shift");
-  WriteStringSetting(L"shortcut_toolbar_shape", L"Shift+.");
-  WriteStringSetting(L"shortcut_toolbar_punctuation", L"Ctrl+.");
-  WriteStringSetting(L"shortcut_toolbar_charset", L"Ctrl+Shift+F");
-  WriteStringSetting(L"shortcut_toolbar_emoji", L"Win+.");
-  WriteStringSetting(L"shortcut_candidate_expand", L"Tab");
-  WriteStringSetting(L"shortcut_candidate_previous_page", L"PgUp");
-  WriteStringSetting(L"shortcut_candidate_next_page", L"PgDn");
-  WriteBoolSetting(L"sync_clipboard", false);
-  WriteBoolSetting(L"sync_user_data", false);
-  WriteStringSetting(L"sync_provider", L"object");
-  WriteBoolSetting(L"sync_auto_enabled", false);
-  WriteIntSetting(L"sync_auto_interval_minutes", 30);
-  WriteStringSetting(L"sync_object_region", L"auto");
-  WriteStringSetting(L"sync_object_key", fp::sync::DefaultObjectKey());
-}
-
 class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvider> {
  public:
   SettingsApp() {
@@ -3138,11 +2419,11 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
   void OnLaunched(LaunchActivatedEventArgs const&) {
     Resources().MergedDictionaries().Append(XamlControlsResources());
     window_ = Window();
-    g_settings_window_hwnd = GetWindowHandle(window_);
+    SetSettingsWindowHandle(GetWindowHandle(window_));
     ApplySettingsResources(Resources());
     window_.Title(kSettingsAppTitle);
     window_.ExtendsContentIntoTitleBar(true);
-    window_.Content(BuildRoot(InitialPageTag()));
+    window_.Content(BuildRoot(InitialPageTagFromProcess()));
     if (title_bar_drag_region_ != nullptr) {
       window_.SetTitleBar(title_bar_drag_region_);
     }
@@ -3175,7 +2456,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
     if (window_ == nullptr) {
       return;
     }
-    g_settings_window_hwnd = GetWindowHandle(window_);
+    SetSettingsWindowHandle(GetWindowHandle(window_));
     hstring current_tag = hstring(current_page_tag_);
     if (nav_ != nullptr) {
       if (auto item = nav_.SelectedItem().try_as<NavigationViewItem>()) {
@@ -3222,7 +2503,8 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
     nav_.AlwaysShowHeader(false);
     nav_.PaneTitle(L"流畅拼音");
     const std::wstring selected_page =
-        initial_page.empty() ? InitialPageTag() : std::wstring(initial_page);
+        initial_page.empty() ? InitialPageTagFromProcess()
+                             : NormalizeSettingsPageTag(initial_page);
 
     auto general = NavItem(L"常规", L"general", L"\uE115");
     nav_.MenuItems().Append(general);
@@ -3564,7 +2846,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
         [checks]() {
           SetFuzzyPinyinRuleChecks(
               *checks,
-              ParseFuzzyPinyinRuleSetting(kDefaultFuzzyPinyinRules, true));
+              ParseFuzzyPinyinRuleSetting(fp::kDefaultFuzzyPinyinRules, true));
         });
     actions.Children().Append(all);
     auto common = StableInlinePathActionButton(
@@ -3574,7 +2856,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
         [checks]() {
           SetFuzzyPinyinRuleChecks(
               *checks,
-              ParseFuzzyPinyinRuleSetting(kCommonFuzzyPinyinRules, false));
+              ParseFuzzyPinyinRuleSetting(fp::kDefaultCommonFuzzyPinyinRules, false));
         });
     actions.Children().Append(common);
     auto clear = StableInlinePathActionButton(
@@ -3810,7 +3092,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
     };
 
     for (const auto& rule : ParseFuzzyPinyinCustomRuleSetting(
-             ReadStringSetting(L"fuzzy_pinyin_custom_rules", L""))) {
+             ReadStringSetting(fp::kFuzzyPinyinCustomRulesSetting, L""))) {
       const auto [left, right] = SplitFuzzyPinyinCustomRule(rule);
       (*add_custom_row)(left, right);
     }
@@ -3868,7 +3150,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
           if (suppress_toggle_dialog) {
             *suppress_toggle_dialog = false;
           }
-          WriteBoolSetting(L"fuzzy_pinyin", false);
+          WriteBoolSetting(fp::kFuzzyPinyinSetting, false);
         }
         return;
       }
@@ -3896,8 +3178,8 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
       }
 
       if (selected.empty() && custom_rules.empty()) {
-        WriteStringSetting(L"fuzzy_pinyin_rules", L"");
-        WriteStringSetting(L"fuzzy_pinyin_custom_rules", L"");
+        WriteStringSetting(fp::kFuzzyPinyinRulesSetting, L"");
+        WriteStringSetting(fp::kFuzzyPinyinCustomRulesSetting, L"");
         if (suppress_toggle_dialog) {
           *suppress_toggle_dialog = true;
         }
@@ -3906,13 +3188,14 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
         if (suppress_toggle_dialog) {
           *suppress_toggle_dialog = false;
         }
-        WriteBoolSetting(L"fuzzy_pinyin", false);
+        WriteBoolSetting(fp::kFuzzyPinyinSetting, false);
         RequestApplyInputConfigDeferred();
         return;
       }
 
-      WriteStringSetting(L"fuzzy_pinyin_rules", JoinFuzzyPinyinRules(selected));
-      WriteStringSetting(L"fuzzy_pinyin_custom_rules",
+      WriteStringSetting(fp::kFuzzyPinyinRulesSetting,
+                         JoinFuzzyPinyinRules(selected));
+      WriteStringSetting(fp::kFuzzyPinyinCustomRulesSetting,
                          JoinFuzzyPinyinCustomRules(custom_rules, L','));
       if (require_enabled || fuzzy_switch.IsOn()) {
         if (suppress_toggle_dialog) {
@@ -3923,7 +3206,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
         if (suppress_toggle_dialog) {
           *suppress_toggle_dialog = false;
         }
-        WriteBoolSetting(L"fuzzy_pinyin", true);
+        WriteBoolSetting(fp::kFuzzyPinyinSetting, true);
         RequestApplyInputConfigDeferred();
       }
     });
@@ -4094,7 +3377,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
         0.66,
         [clear_rows, add_blacklist_row]() {
           (*clear_rows)();
-          for (const auto& item : ParseStatusTipBlacklistSetting(kDefaultStatusTipBlacklist)) {
+          for (const auto& item : ParseStatusTipBlacklistSetting(fp::kDefaultStatusTipBlacklist)) {
             (*add_blacklist_row)(item);
           }
         }));
@@ -4161,14 +3444,14 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
         }
       }
 
-      WriteStringSetting(L"status_tip_blacklist", JoinStatusTipBlacklistItems(items));
+      WriteStringSetting(fp::kStatusTipBlacklistSetting, JoinStatusTipBlacklistItems(items));
       count_icon.Text(std::to_wstring(items.size()));
       RequestInputStateRefreshDeferred();
     });
   }
 
   void ShowSyncMessage(std::wstring_view title, std::wstring_view message, UINT flags = MB_OK) {
-    MessageBoxW(g_settings_window_hwnd,
+    MessageBoxW(SettingsWindowHandle(),
                 std::wstring(message).c_str(),
                 std::wstring(title).c_str(),
                 flags);
@@ -4189,8 +3472,8 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
   }
 
   void ApplyAutoSyncSchedule(bool enabled, int interval_minutes) {
-    WriteBoolSetting(L"sync_auto_enabled", enabled);
-    WriteIntSetting(L"sync_auto_interval_minutes", interval_minutes);
+    WriteBoolSetting(fp::kSyncAutoEnabledSetting, enabled);
+    WriteIntSetting(fp::kSyncAutoIntervalMinutesSetting, interval_minutes);
     const auto result = enabled
                             ? fp::sync::InstallScheduledSync(SiblingExe(L"fluent-pinyin-settings.exe"),
                                                              interval_minutes)
@@ -4203,7 +3486,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
   void RunSyncActionAsync(std::wstring title,
                           std::function<fp::sync::SyncResult()> action,
                           bool refresh_input_config) {
-    auto hwnd = g_settings_window_hwnd;
+    auto hwnd = SettingsWindowHandle();
     std::thread([title = std::move(title),
                  action = std::move(action),
                  refresh_input_config,
@@ -4332,7 +3615,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
                                            L"auto / us-east-1");
     auto object_access_key = SyncDialogTextBox(config.object_access_key, L"Access Key");
     auto object_secret_key = SyncDialogPasswordBox(config.object_secret_key, L"Secret Key");
-    auto object_key = SyncDialogTextBox(config.object_key.empty() ? fp::sync::DefaultObjectKey()
+    auto object_key = SyncDialogTextBox(config.object_key.empty() ? fp::kDefaultSyncObjectKey
                                                                   : config.object_key,
                                         L"fluent-pinyin/sync.fpsync");
     object_panel.Children().Append(Text(L"对象存储", 14, FW_SEMIBOLD));
@@ -4349,7 +3632,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
     auto webdav_url = SyncDialogTextBox(config.webdav_url, L"https://dav.example.com/fluent-pinyin");
     auto webdav_username = SyncDialogTextBox(config.webdav_username, L"用户名，可留空");
     auto webdav_password = SyncDialogPasswordBox(config.webdav_password, L"密码，可留空");
-    auto webdav_key = SyncDialogTextBox(config.object_key.empty() ? fp::sync::DefaultObjectKey()
+    auto webdav_key = SyncDialogTextBox(config.object_key.empty() ? fp::kDefaultSyncObjectKey
                                                                   : config.object_key,
                                         L"fluent-pinyin/sync.fpsync");
     webdav_panel.Children().Append(Text(L"WebDAV", 14, FW_SEMIBOLD));
@@ -4420,18 +3703,21 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
       }
 
       const bool webdav = provider_combo.SelectedIndex() == 1;
-      WriteStringSetting(L"sync_provider", webdav ? L"webdav" : L"object");
-      WriteStringSetting(L"sync_object_endpoint", object_endpoint.Text().c_str());
-      WriteStringSetting(L"sync_object_bucket", object_bucket.Text().c_str());
-      WriteStringSetting(L"sync_object_region", object_region.Text().c_str());
-      WriteStringSetting(L"sync_object_access_key", object_access_key.Text().c_str());
-      SaveProtectedSyncSetting(L"sync_object_secret_key", object_secret_key.Password().c_str());
-      WriteStringSetting(L"sync_webdav_url", webdav_url.Text().c_str());
-      WriteStringSetting(L"sync_webdav_username", webdav_username.Text().c_str());
-      SaveProtectedSyncSetting(L"sync_webdav_password", webdav_password.Password().c_str());
-      WriteStringSetting(L"sync_object_key",
+      WriteStringSetting(fp::kSyncProviderSetting, webdav ? L"webdav" : L"object");
+      WriteStringSetting(fp::kSyncObjectEndpointSetting, object_endpoint.Text().c_str());
+      WriteStringSetting(fp::kSyncObjectBucketSetting, object_bucket.Text().c_str());
+      WriteStringSetting(fp::kSyncObjectRegionSetting, object_region.Text().c_str());
+      WriteStringSetting(fp::kSyncObjectAccessKeySetting, object_access_key.Text().c_str());
+      SaveProtectedSyncSetting(fp::kSyncObjectSecretKeySetting,
+                               object_secret_key.Password().c_str());
+      WriteStringSetting(fp::kSyncWebDavUrlSetting, webdav_url.Text().c_str());
+      WriteStringSetting(fp::kSyncWebDavUsernameSetting, webdav_username.Text().c_str());
+      SaveProtectedSyncSetting(fp::kSyncWebDavPasswordSetting,
+                               webdav_password.Password().c_str());
+      WriteStringSetting(fp::kSyncObjectKeySetting,
                          webdav ? std::wstring(webdav_key.Text()) : std::wstring(object_key.Text()));
-      SaveProtectedSyncSetting(L"sync_encryption_secret", encryption_secret.Password().c_str());
+      SaveProtectedSyncSetting(fp::kSyncEncryptionSecretSetting,
+                               encryption_secret.Password().c_str());
       ResetSettingsCache();
     });
   }
@@ -4583,14 +3869,14 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
         kFluentIconArrowImport20RegularPath,
         0.66,
         [this, rows, rows_panel, add_dictionary_row, update_empty_state, state_icon]() {
-      const auto selected = PickRimeDictionaryFile(g_settings_window_hwnd);
+      const auto selected = PickRimeDictionaryFile(SettingsWindowHandle());
       if (!selected) {
         return;
       }
 
       std::wstring error;
       if (!ImportManagedDictionary(*selected, &error)) {
-        MessageBoxW(g_settings_window_hwnd,
+        MessageBoxW(SettingsWindowHandle(),
                     error.empty() ? L"导入词库失败。" : error.c_str(),
                     L"流畅拼音 设置",
                     MB_ICONWARNING);
@@ -4604,7 +3890,8 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
       }
       (*update_empty_state)();
       SetIconChild(state_icon,
-                   ImportedLexiconsStateIcon(ReadBoolSetting(L"imported_lexicons_enabled", true)));
+                   ImportedLexiconsStateIcon(
+                       ReadBoolSetting(fp::kImportedLexiconsEnabledSetting, true)));
       RequestApplyInputConfigDeferred();
         });
     Grid::SetColumn(import_button, 1);
@@ -4669,7 +3956,8 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
       }
       WriteManagedDictionaryIntegrationFiles(entries);
       SetIconChild(state_icon,
-                   ImportedLexiconsStateIcon(ReadBoolSetting(L"imported_lexicons_enabled", true)));
+                   ImportedLexiconsStateIcon(
+                       ReadBoolSetting(fp::kImportedLexiconsEnabledSetting, true)));
       RequestApplyInputConfigDeferred();
     });
   }
@@ -4899,11 +4187,13 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
         WriteUserLexiconEntries(entries);
         WriteManagedDictionaryIntegrationFiles(ReadManagedDictionaryManifest());
         SetIconChild(state_icon,
-                     UserLexiconStateIcon(ReadBoolSetting(L"user_lexicon_enabled", true)));
+                     UserLexiconStateIcon(
+                         ReadBoolSetting(fp::kUserLexiconEnabledSetting, true)));
       } else {
         WriteCustomPhraseEntries(entries);
         SetIconChild(state_icon,
-                     CustomPhrasesStateIcon(ReadBoolSetting(L"custom_phrases_enabled", true)));
+                     CustomPhrasesStateIcon(
+                         ReadBoolSetting(fp::kCustomPhrasesEnabledSetting, true)));
       }
       RequestApplyInputConfigDeferred();
     });
@@ -5034,28 +4324,17 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
 
   UIElement BuildGeneralPage() {
     auto page = PageShell(L"常规", L"输入、候选、拼音辅助和默认设置。");
-    const std::vector<std::pair<std::wstring, std::wstring>> double_pinyin_choices{
-        {L"自然码", L"zrm"},
-        {L"小鹤双拼", L"flypy"},
-        {L"微软双拼", L"mspy"},
-        {L"搜狗双拼", L"sogou"},
-        {L"智能 ABC", L"abc"},
-        {L"紫光双拼", L"ziguang"},
-        {L"拼音加加", L"pyjj"},
-        {L"国标双拼", L"gbpy"},
-        {L"乱序 17", L"lxsq"},
-    };
     auto input_scheme_icon =
-        TextIcon(ReadStringSetting(L"input_scheme", fp::kDefaultInputScheme) == L"double_pinyin"
-                     ? L"双"
-                     : L"全");
+        TextIcon(InputSchemeIconText(
+            ReadStringSetting(fp::kInputSchemeSetting, fp::kDefaultInputScheme)));
     auto double_pinyin_scheme_icon =
         TextIcon(ChoiceIconText(
-            double_pinyin_choices,
-            ReadStringSetting(L"double_pinyin_scheme", fp::kDefaultDoublePinyinScheme)));
+            DoublePinyinSchemeChoices(),
+            ReadStringSetting(fp::kDoublePinyinSchemeSetting,
+                              fp::kDefaultDoublePinyinScheme)));
     auto double_pinyin_scheme = StringChoiceComboWithIcon(
-        L"double_pinyin_scheme",
-        double_pinyin_choices,
+        fp::kDoublePinyinSchemeSetting,
+        DoublePinyinSchemeChoices(),
         fp::kDefaultDoublePinyinScheme,
         double_pinyin_scheme_icon,
         L"",
@@ -5067,7 +4346,9 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
         double_pinyin_scheme_icon,
         L"已联动");
     double_pinyin_scheme_row.Visibility(
-        ReadStringSetting(L"input_scheme", fp::kDefaultInputScheme) == L"double_pinyin"
+        ReadStringSetting(fp::kInputSchemeSetting,
+                          fp::kDefaultInputScheme) ==
+                std::wstring(fp::kInputSchemeDoublePinyin)
             ? Visibility::Visible
             : Visibility::Collapsed);
     page.Children().Append(SectionHeader(L"拼音设置", true));
@@ -5076,10 +4357,10 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
         L"选择全拼或双拼。",
         InputSchemeCombo(double_pinyin_scheme,
                          [input_scheme_icon, double_pinyin_scheme_row](std::wstring_view value) {
-                           input_scheme_icon.Text(value == L"double_pinyin" ? L"双" : L"全");
-                           double_pinyin_scheme_row.Visibility(value == L"double_pinyin"
-                                                                   ? Visibility::Visible
-                                                                   : Visibility::Collapsed);
+                           input_scheme_icon.Text(InputSchemeIconText(value));
+                           double_pinyin_scheme_row.Visibility(
+                               value == fp::kInputSchemeDoublePinyin ? Visibility::Visible
+                                                                     : Visibility::Collapsed);
                          }),
         input_scheme_icon,
         L"已联动"));
@@ -5089,13 +4370,13 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
     page.Children().Append(SettingRowWithIcon(
         L"输入模式",
         L"设置默认中文或英文状态。",
-        StringChoiceCombo(L"default_input_mode",
-                          {{L"中文", L"zh"}, {L"英文", L"en"}},
-                          L"zh",
+        StringChoiceCombo(fp::kDefaultInputModeSetting,
+                          DefaultInputModeChoices(),
+                          fp::kDefaultInputMode,
                           L"",
                           false,
                           [input_mode_icon](std::wstring_view value) {
-                            input_mode_icon.Text(value == L"en" ? L"英" : L"中");
+                            input_mode_icon.Text(DefaultInputModeChoiceIconText(value));
                             RequestInputStateRefresh();
                             RequestToolbarHostRefresh();
                           }),
@@ -5105,13 +4386,13 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
     page.Children().Append(SettingRowWithIcon(
         L"输入字符",
         L"设置默认输出简体或繁体。",
-        StringChoiceCombo(L"default_charset",
-                          {{L"简体", L"simplified"}, {L"繁体", L"traditional"}},
-                          L"simplified",
+        StringChoiceCombo(fp::kDefaultCharsetSetting,
+                          DefaultCharsetChoices(),
+                          fp::kDefaultCharset,
                           L"",
                           false,
                           [charset_icon](std::wstring_view value) {
-                            charset_icon.Text(value == L"traditional" ? L"繁" : L"简");
+                            charset_icon.Text(DefaultCharsetChoiceIconText(value));
                             RequestInputStateRefresh();
                             RequestToolbarHostRefresh();
                           }),
@@ -5122,12 +4403,13 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
     shape_icon.Height(kSettingIconHostSize);
     shape_icon.HorizontalAlignment(HorizontalAlignment::Center);
     shape_icon.VerticalAlignment(VerticalAlignment::Center);
-    SetIconChild(shape_icon, ShapeStatusIcon(!ReadBoolSetting(L"default_shape_half", true)));
+    SetIconChild(shape_icon,
+                 ShapeStatusIcon(!ReadBoolSetting(fp::kDefaultShapeHalfSetting, true)));
     page.Children().Append(SettingRowWithIcon(
         L"全角/半角",
         L"设置默认全角或半角状态。",
-        BoolChoiceCombo(L"default_shape_half",
-                        {{L"半角", true}, {L"全角", false}},
+        BoolChoiceCombo(fp::kDefaultShapeHalfSetting,
+                        DefaultShapeChoices(),
                         true,
                         [shape_icon](bool half_shape) {
                           SetIconChild(shape_icon, ShapeStatusIcon(!half_shape));
@@ -5142,12 +4424,13 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
     punctuation_icon.HorizontalAlignment(HorizontalAlignment::Center);
     punctuation_icon.VerticalAlignment(VerticalAlignment::Center);
     SetIconChild(punctuation_icon,
-                 PunctuationStatusIcon(ReadBoolSetting(L"default_chinese_punctuation", true)));
+                 PunctuationStatusIcon(
+                     ReadBoolSetting(fp::kDefaultChinesePunctuationSetting, true)));
     page.Children().Append(SettingRowWithIcon(
         L"标点符号",
         L"设置默认中文或英文标点。",
-        BoolChoiceCombo(L"default_chinese_punctuation",
-                        {{L"中文标点", true}, {L"英文标点", false}},
+        BoolChoiceCombo(fp::kDefaultChinesePunctuationSetting,
+                        DefaultPunctuationChoices(),
                         true,
                         [punctuation_icon](bool chinese_punctuation) {
                           SetIconChild(punctuation_icon, PunctuationStatusIcon(chinese_punctuation));
@@ -5158,10 +4441,10 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
         L"已联动"));
     page.Children().Append(SectionHeader(L"候选窗口"));
     auto candidate_count_icon =
-        TextIcon(std::to_wstring(ReadIntSetting(L"candidate_count",
-                                                kDefaultCandidateCount,
-                                                kMinCandidateCount,
-                                                kMaxCandidateCount)));
+        TextIcon(std::to_wstring(ReadIntSetting(fp::kCandidateCountSetting,
+                                                fp::kDefaultCandidateCount,
+                                                fp::kMinCandidateCount,
+                                                fp::kMaxCandidateCount)));
     page.Children().Append(SettingRowWithIcon(L"候选词数",
                                               L"设置每页候选数量，范围 3 到 9。",
                                               CandidateCountCombo(candidate_count_icon),
@@ -5172,13 +4455,14 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
     candidate_layout_icon.Height(kSettingIconHostSize);
     candidate_layout_icon.HorizontalAlignment(HorizontalAlignment::Center);
     candidate_layout_icon.VerticalAlignment(VerticalAlignment::Center);
-    SetIconChild(candidate_layout_icon, CandidateLayoutIcon(ReadCandidateLayoutSetting()));
+    SetIconChild(candidate_layout_icon,
+                 CandidateLayoutIcon(ReadCandidateLayoutSetting(fp::kDefaultCandidateLayout)));
     page.Children().Append(SettingRowWithIcon(
         L"候选排列",
         L"选择横排或竖排候选窗口。",
-        StringChoiceCombo(L"candidate_layout",
-                          {{L"横排", L"horizontal"}, {L"竖排", L"vertical"}},
-                          L"horizontal",
+        StringChoiceCombo(fp::kCandidateLayoutSetting,
+                          CandidateLayoutChoices(),
+                          fp::kDefaultCandidateLayout,
                           L"",
                           false,
                           [candidate_layout_icon](std::wstring_view value) {
@@ -5195,11 +4479,12 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
     auto_correction_icon.HorizontalAlignment(HorizontalAlignment::Center);
     auto_correction_icon.VerticalAlignment(VerticalAlignment::Center);
     SetIconChild(auto_correction_icon,
-                 AutoPinyinCorrectionIcon(ReadBoolSetting(L"auto_pinyin_correction", true)));
+                 AutoPinyinCorrectionIcon(
+                     ReadBoolSetting(fp::kAutoPinyinCorrectionSetting, true)));
     page.Children().Append(SettingRowWithIcon(
         L"自动拼音纠错",
         L"修正常见拼写偏差。",
-        SettingSwitch(L"auto_pinyin_correction",
+        SettingSwitch(fp::kAutoPinyinCorrectionSetting,
                       true,
                       [auto_correction_icon](bool enabled) {
                         SetIconChild(auto_correction_icon, AutoPinyinCorrectionIcon(enabled));
@@ -5213,11 +4498,11 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
     super_abbrev_icon.HorizontalAlignment(HorizontalAlignment::Center);
     super_abbrev_icon.VerticalAlignment(VerticalAlignment::Center);
     SetIconChild(super_abbrev_icon,
-                 SuperAbbrevIcon(ReadBoolSetting(L"super_abbrev", true)));
+                 SuperAbbrevIcon(ReadBoolSetting(fp::kSuperAbbrevSetting, true)));
     page.Children().Append(SettingRowWithIcon(
         L"超级简拼",
         L"使用更短的声母组合快速出词。",
-        SettingSwitch(L"super_abbrev",
+        SettingSwitch(fp::kSuperAbbrevSetting,
                       true,
                       [super_abbrev_icon](bool enabled) {
                         SetIconChild(super_abbrev_icon, SuperAbbrevIcon(enabled));
@@ -5231,11 +4516,12 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
     smart_fuzzy_icon.HorizontalAlignment(HorizontalAlignment::Center);
     smart_fuzzy_icon.VerticalAlignment(VerticalAlignment::Center);
     SetIconChild(smart_fuzzy_icon,
-                 SmartFuzzyPinyinIcon(ReadBoolSetting(L"smart_fuzzy_pinyin", true)));
+                 SmartFuzzyPinyinIcon(
+                     ReadBoolSetting(fp::kSmartFuzzyPinyinSetting, true)));
     page.Children().Append(SettingRowWithIcon(
         L"智能模糊拼音",
         L"自动处理常见模糊音。",
-        SettingSwitch(L"smart_fuzzy_pinyin",
+        SettingSwitch(fp::kSmartFuzzyPinyinSetting,
                       true,
                       [smart_fuzzy_icon](bool enabled) {
                         SetIconChild(smart_fuzzy_icon, SmartFuzzyPinyinIcon(enabled));
@@ -5249,17 +4535,18 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
     fuzzy_rules_icon.HorizontalAlignment(HorizontalAlignment::Center);
     fuzzy_rules_icon.VerticalAlignment(VerticalAlignment::Center);
     SetIconChild(fuzzy_rules_icon,
-                 FuzzyPinyinRulesStateIcon(ReadBoolSetting(L"fuzzy_pinyin", false)));
+                 FuzzyPinyinRulesStateIcon(
+                     ReadBoolSetting(fp::kFuzzyPinyinSetting, false)));
     auto suppress_fuzzy_dialog = std::make_shared<bool>(false);
     ToggleSwitch fuzzy_rules_switch;
     ApplySettingsUIFont(fuzzy_rules_switch);
     fuzzy_rules_switch.MinWidth(0);
     fuzzy_rules_switch.HorizontalAlignment(HorizontalAlignment::Right);
-    fuzzy_rules_switch.IsOn(ReadBoolSetting(L"fuzzy_pinyin", false));
+    fuzzy_rules_switch.IsOn(ReadBoolSetting(fp::kFuzzyPinyinSetting, false));
     fuzzy_rules_switch.Toggled(
         [this, fuzzy_rules_switch, fuzzy_rules_icon, suppress_fuzzy_dialog](auto const&,
                                                                            auto const&) {
-      WriteBoolSetting(L"fuzzy_pinyin", fuzzy_rules_switch.IsOn());
+      WriteBoolSetting(fp::kFuzzyPinyinSetting, fuzzy_rules_switch.IsOn());
       SetIconChild(fuzzy_rules_icon, FuzzyPinyinRulesStateIcon(fuzzy_rules_switch.IsOn()));
       if (*suppress_fuzzy_dialog) {
         return;
@@ -5324,7 +4611,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
     page.Children().Append(SectionHeader(L"进阶输入", true));
     page.Children().Append(SettingRowWithIcon(L"人名输入",
                                               L"启用人名候选偏好。",
-                                              RimeConfigSwitch(L"name_input", true),
+                                              RimeConfigSwitch(fp::kNameInputSetting, true),
                                               TextIcon(L"名"),
                                               L"已保存"));
     page.Children().Append(SectionHeader(L"基础模式"));
@@ -5347,8 +4634,8 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
     auto page = PageShell(L"外观", L"候选窗口、状态提示、工具栏和主题。");
     page.Children().Append(SectionHeader(L"候选窗口", true));
     auto candidate_font_icon = TextIcon(
-        CandidateFontIconText(ReadStringSetting(L"candidate_font_family",
-                                                kDefaultCandidateFontFamily)));
+        CandidateFontIconText(ReadStringSetting(fp::kCandidateFontFamilySetting,
+                                                fp::kDefaultCandidateFontFamily)));
     page.Children().Append(SettingRowWithIcon(
         L"候选项字体",
         L"切换候选窗口字体。",
@@ -5368,9 +4655,9 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
     toolbar_icon.HorizontalAlignment(HorizontalAlignment::Center);
     toolbar_icon.VerticalAlignment(VerticalAlignment::Center);
     SetIconChild(toolbar_icon,
-                 ToolbarVisibleIcon(ReadBoolSettingMigrated(kToolbarVisibleSetting,
+                 ToolbarVisibleIcon(ReadBoolSettingMigrated(fp::kToolbarVisibleSetting,
                                                             false,
-                                                            kLegacyToolbarVisibleSetting)));
+                                                            fp::kLegacyToolbarVisibleSetting)));
     auto toolbar_switch = ToolbarVisibleSwitch([toolbar_icon](bool visible) {
       SetIconChild(toolbar_icon, ToolbarVisibleIcon(visible));
       if (!visible) {
@@ -5393,11 +4680,11 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
     status_tip_icon.HorizontalAlignment(HorizontalAlignment::Center);
     status_tip_icon.VerticalAlignment(VerticalAlignment::Center);
     SetIconChild(status_tip_icon,
-                 StatusTipEnabledIcon(ReadBoolSetting(L"status_tip_enabled", true)));
+                 StatusTipEnabledIcon(ReadBoolSetting(fp::kStatusTipEnabledSetting, true)));
     page.Children().Append(SettingRowWithIcon(
         L"输入状态提示",
         L"切换输入状态时，在鼠标附近显示紧凑提示。",
-        SettingSwitch(L"status_tip_enabled",
+        SettingSwitch(fp::kStatusTipEnabledSetting,
                       true,
                       [status_tip_icon](bool enabled) {
                         SetIconChild(status_tip_icon, StatusTipEnabledIcon(enabled));
@@ -5501,14 +4788,15 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
     user_icon.HorizontalAlignment(HorizontalAlignment::Center);
     user_icon.VerticalAlignment(VerticalAlignment::Center);
     SetIconChild(user_icon,
-                 UserLexiconStateIcon(ReadBoolSetting(L"user_lexicon_enabled", true)));
+                 UserLexiconStateIcon(
+                     ReadBoolSetting(fp::kUserLexiconEnabledSetting, true)));
     ToggleSwitch user_switch;
     ApplySettingsUIFont(user_switch);
     user_switch.MinWidth(0);
     user_switch.HorizontalAlignment(HorizontalAlignment::Right);
-    user_switch.IsOn(ReadBoolSetting(L"user_lexicon_enabled", true));
+    user_switch.IsOn(ReadBoolSetting(fp::kUserLexiconEnabledSetting, true));
     user_switch.Toggled([user_switch, user_icon](auto const&, auto const&) {
-      WriteBoolSetting(L"user_lexicon_enabled", user_switch.IsOn());
+      WriteBoolSetting(fp::kUserLexiconEnabledSetting, user_switch.IsOn());
       WriteManagedDictionaryIntegrationFiles(ReadManagedDictionaryManifest());
       SetIconChild(user_icon, UserLexiconStateIcon(user_switch.IsOn()));
       RequestApplyInputConfigDeferred();
@@ -5538,14 +4826,15 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
     phrase_icon.HorizontalAlignment(HorizontalAlignment::Center);
     phrase_icon.VerticalAlignment(VerticalAlignment::Center);
     SetIconChild(phrase_icon,
-                 CustomPhrasesStateIcon(ReadBoolSetting(L"custom_phrases_enabled", true)));
+                 CustomPhrasesStateIcon(
+                     ReadBoolSetting(fp::kCustomPhrasesEnabledSetting, true)));
     ToggleSwitch phrase_switch;
     ApplySettingsUIFont(phrase_switch);
     phrase_switch.MinWidth(0);
     phrase_switch.HorizontalAlignment(HorizontalAlignment::Right);
-    phrase_switch.IsOn(ReadBoolSetting(L"custom_phrases_enabled", true));
+    phrase_switch.IsOn(ReadBoolSetting(fp::kCustomPhrasesEnabledSetting, true));
     phrase_switch.Toggled([phrase_switch, phrase_icon](auto const&, auto const&) {
-      WriteBoolSetting(L"custom_phrases_enabled", phrase_switch.IsOn());
+      WriteBoolSetting(fp::kCustomPhrasesEnabledSetting, phrase_switch.IsOn());
       SetIconChild(phrase_icon, CustomPhrasesStateIcon(phrase_switch.IsOn()));
       RequestApplyInputConfigDeferred();
     });
@@ -5574,14 +4863,15 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
     import_icon.HorizontalAlignment(HorizontalAlignment::Center);
     import_icon.VerticalAlignment(VerticalAlignment::Center);
     SetIconChild(import_icon,
-                 ImportedLexiconsStateIcon(ReadBoolSetting(L"imported_lexicons_enabled", true)));
+                 ImportedLexiconsStateIcon(
+                     ReadBoolSetting(fp::kImportedLexiconsEnabledSetting, true)));
     ToggleSwitch import_switch;
     ApplySettingsUIFont(import_switch);
     import_switch.MinWidth(0);
     import_switch.HorizontalAlignment(HorizontalAlignment::Right);
-    import_switch.IsOn(ReadBoolSetting(L"imported_lexicons_enabled", true));
+    import_switch.IsOn(ReadBoolSetting(fp::kImportedLexiconsEnabledSetting, true));
     import_switch.Toggled([import_switch, import_icon](auto const&, auto const&) {
-      WriteBoolSetting(L"imported_lexicons_enabled", import_switch.IsOn());
+      WriteBoolSetting(fp::kImportedLexiconsEnabledSetting, import_switch.IsOn());
       WriteManagedDictionaryIntegrationFiles(ReadManagedDictionaryManifest());
       SetIconChild(import_icon, ImportedLexiconsStateIcon(import_switch.IsOn()));
       RequestApplyInputConfigDeferred();
@@ -5654,30 +4944,45 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
     auto page = PageShell(L"热键", L"状态切换和候选导航。");
     page.Children().Append(SectionHeader(L"状态切换", true));
     page.Children().Append(HotkeyBindingRowWithIcon(
-        L"中/英文模式", L"shortcut_toolbar_input_mode", L"Shift", TextIcon(L"中")));
+        L"中/英文模式",
+        fp::kShortcutToolbarInputModeSetting,
+        fp::kDefaultShortcutToolbarInputMode,
+        TextIcon(L"中")));
     page.Children().Append(HotkeyBindingRowWithIcon(
-        L"全/半角", L"shortcut_toolbar_shape", L"Shift+.", ShapeStatusIcon(false)));
+        L"全/半角",
+        fp::kShortcutToolbarShapeSetting,
+        fp::kDefaultShortcutToolbarShape,
+        ShapeStatusIcon(false)));
     page.Children().Append(HotkeyBindingRowWithIcon(
-        L"中/英文标点", L"shortcut_toolbar_punctuation", L"Ctrl+.", PunctuationStatusIcon(true)));
+        L"中/英文标点",
+        fp::kShortcutToolbarPunctuationSetting,
+        fp::kDefaultShortcutToolbarPunctuation,
+        PunctuationStatusIcon(true)));
     page.Children().Append(HotkeyBindingRowWithIcon(
-        L"简体/繁体", L"shortcut_toolbar_charset", L"Ctrl+Shift+F", TextIcon(L"简")));
+        L"简体/繁体",
+        fp::kShortcutToolbarCharsetSetting,
+        fp::kDefaultShortcutToolbarCharset,
+        TextIcon(L"简")));
     page.Children().Append(HotkeyBindingRowWithIcon(
-        L"表情符号/符号", L"shortcut_toolbar_emoji", L"Win+.", EmojiStatusIcon()));
+        L"表情符号/符号",
+        fp::kShortcutToolbarEmojiSetting,
+        fp::kDefaultShortcutToolbarEmoji,
+        EmojiStatusIcon()));
     page.Children().Append(SectionHeader(L"候选导航"));
     page.Children().Append(HotkeyBindingRowWithIcon(
         L"展开/收起候选框",
-        L"shortcut_candidate_expand",
-        L"Tab",
+        fp::kShortcutCandidateExpandSetting,
+        fp::kDefaultShortcutCandidateExpand,
         ChevronStatusIcon(kFluentChevronDown20Path)));
     page.Children().Append(HotkeyBindingRowWithIcon(
         L"上一页",
-        L"shortcut_candidate_previous_page",
-        L"PgUp",
+        fp::kShortcutCandidatePreviousPageSetting,
+        fp::kDefaultShortcutCandidatePreviousPage,
         TriangleStatusIcon(false)));
     page.Children().Append(HotkeyBindingRowWithIcon(
         L"下一页",
-        L"shortcut_candidate_next_page",
-        L"PgDn",
+        fp::kShortcutCandidateNextPageSetting,
+        fp::kDefaultShortcutCandidateNextPage,
         TriangleStatusIcon(true)));
     return Scroll(page);
   }
@@ -5687,12 +4992,12 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
     page.Children().Append(SectionHeader(L"同步内容", true));
     page.Children().Append(SettingRowWithIcon(L"剪贴板同步",
                                               L"在设备之间同步剪贴板。",
-                                              SettingSwitch(L"sync_clipboard", false),
+                                              SettingSwitch(fp::kSyncClipboardSetting, false),
                                               FluentPathIcon(kFluentIconClipboard20RegularPath, 0.94),
                                               L"已保存"));
     page.Children().Append(SettingRowWithIcon(L"配置和词库同步",
                                               L"同步设置、词库和输入数据。",
-                                              SettingSwitch(L"sync_user_data", false),
+                                              SettingSwitch(fp::kSyncUserDataSetting, false),
                                               FluentPathIcon(kFluentIconBookDatabase20RegularPath, 0.90),
                                               L"已保存"));
     page.Children().Append(SectionHeader(L"云端服务"));
@@ -5738,16 +5043,20 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
                                                   L"已接入"));
 
     page.Children().Append(SectionHeader(L"定时自动同步"));
-    const int current_interval = ReadIntSetting(L"sync_auto_interval_minutes", 30, 5, 1440);
+    const int current_interval =
+        ReadIntSetting(fp::kSyncAutoIntervalMinutesSetting,
+                       fp::kDefaultSyncAutoIntervalMinutes,
+                       fp::kMinSyncAutoIntervalMinutes,
+                       fp::kMaxSyncAutoIntervalMinutes);
     auto auto_sync_switch = SettingSwitch(
-        L"sync_auto_enabled",
+        fp::kSyncAutoEnabledSetting,
         false,
         [this, current_interval](bool enabled) {
           ApplyAutoSyncSchedule(enabled,
-                                ReadIntSetting(L"sync_auto_interval_minutes",
+                                ReadIntSetting(fp::kSyncAutoIntervalMinutesSetting,
                                                current_interval,
-                                               5,
-                                               1440));
+                                               fp::kMinSyncAutoIntervalMinutes,
+                                               fp::kMaxSyncAutoIntervalMinutes));
         });
     page.Children().Append(SettingRowWithIcon(L"自动同步",
                                               L"按固定间隔自动同步。",
@@ -5757,25 +5066,16 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
     page.Children().Append(SettingRowWithIcon(
         L"同步间隔",
         L"设置自动同步频率。",
-        StringChoiceCombo(L"sync_auto_interval_minutes",
-                          {{L"每 15 分钟", L"15"},
-                           {L"每 30 分钟", L"30"},
-                           {L"每 1 小时", L"60"},
-                           {L"每 6 小时", L"360"}},
-                          L"30",
+        StringChoiceCombo(fp::kSyncAutoIntervalMinutesSetting,
+                          SyncAutoIntervalChoices(),
+                          std::to_wstring(fp::kDefaultSyncAutoIntervalMinutes),
                           L"",
                           false,
                           [this](std::wstring_view value) {
-                            if (!ReadBoolSetting(L"sync_auto_enabled", false)) {
+                            if (!ReadBoolSetting(fp::kSyncAutoEnabledSetting, false)) {
                               return;
                             }
-                            int interval = 30;
-                            try {
-                              interval = std::stoi(std::wstring(value));
-                            } catch (...) {
-                              interval = 30;
-                            }
-                            ApplyAutoSyncSchedule(true, interval);
+                            ApplyAutoSyncSchedule(true, SyncAutoIntervalMinutesFromValue(value));
                           }),
         FluentPathIcon(kFluentIconCalendarClock20RegularPath, 0.92),
         L"已保存"));
@@ -5786,7 +5086,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
     actions.Spacing(10);
     auto backup = ActionPathButton(L"备份配置", kFluentIconArchive20RegularPath, 0.84);
     backup.Click([this](auto const&, auto const&) {
-      const auto selected = PickSyncBackupSaveFile(g_settings_window_hwnd);
+      const auto selected = PickSyncBackupSaveFile(SettingsWindowHandle());
       if (!selected) {
         return;
       }
@@ -5801,11 +5101,11 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
     });
     auto restore = ActionPathButton(L"恢复配置", kFluentIconHistory20RegularPath, 0.84);
     restore.Click([this](auto const&, auto const&) {
-      const auto selected = PickSyncBackupFile(g_settings_window_hwnd);
+      const auto selected = PickSyncBackupFile(SettingsWindowHandle());
       if (!selected) {
         return;
       }
-      const int confirm = MessageBoxW(g_settings_window_hwnd,
+      const int confirm = MessageBoxW(SettingsWindowHandle(),
                                       L"恢复会覆盖本机设置和用户词库；恢复前会自动备份。是否继续？",
                                       L"恢复配置",
                                       MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2);

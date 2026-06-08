@@ -8,71 +8,101 @@
 #include <sddl.h>
 
 #include <array>
+#include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <exception>
 #include <filesystem>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
+#include <thread>
+#include <utility>
 #include <vector>
 
 namespace {
 
 constexpr DWORD kPipeBufferSize = 1024 * 1024;
 constexpr DWORD kPipeDefaultTimeoutMs = 120000;
+constexpr std::uint32_t kIpcSecretLimit = 512;
 
-bool ReadExact(HANDLE pipe, void* buffer, DWORD bytes) {
-  auto* cursor = static_cast<unsigned char*>(buffer);
-  DWORD remaining = bytes;
-  while (remaining > 0) {
-    DWORD read = 0;
-    if (!ReadFile(pipe, cursor, remaining, &read, nullptr) || read == 0) {
-      return false;
-    }
-    cursor += read;
-    remaining -= read;
+struct CoreHostRuntimeOptions {
+  fp::core::RimeEngineOptions engine;
+  std::wstring pipe_suffix;
+  std::string ipc_secret;
+  bool ipc_secret_required = false;
+  DWORD parent_process_id = 0;
+};
+
+std::optional<std::string> ReadIpcSecretFromHandleText(std::wstring_view handle_text) {
+  std::uintptr_t value = 0;
+  if (handle_text.empty()) {
+    return std::nullopt;
   }
-  return true;
-}
-
-bool WriteExact(HANDLE pipe, const void* buffer, DWORD bytes) {
-  const auto* cursor = static_cast<const unsigned char*>(buffer);
-  DWORD remaining = bytes;
-  while (remaining > 0) {
-    DWORD written = 0;
-    if (!WriteFile(pipe, cursor, remaining, &written, nullptr) || written == 0) {
-      return false;
+  for (wchar_t ch : handle_text) {
+    if (ch < L'0' || ch > L'9') {
+      return std::nullopt;
     }
-    cursor += written;
-    remaining -= written;
+    const std::uintptr_t digit = static_cast<std::uintptr_t>(ch - L'0');
+    if (value > ((std::numeric_limits<std::uintptr_t>::max)() - digit) / 10) {
+      return std::nullopt;
+    }
+    value = value * 10 + digit;
   }
-  return true;
-}
 
-bool ReadMessage(HANDLE pipe, std::string* payload) {
+  HANDLE handle = reinterpret_cast<HANDLE>(value);
   std::uint32_t size = 0;
-  if (payload == nullptr || !ReadExact(pipe, &size, sizeof(size)) || size > kPipeBufferSize) {
-    return false;
+  std::optional<std::string> secret;
+  if (handle != nullptr && handle != INVALID_HANDLE_VALUE &&
+      fp::coreipc::ReadExact(handle, &size, sizeof(size)) && size > 0 &&
+      size <= kIpcSecretLimit) {
+    std::string buffer(size, '\0');
+    if (fp::coreipc::ReadExact(handle, buffer.data(), size)) {
+      secret = std::move(buffer);
+    }
   }
-  payload->assign(size, '\0');
-  return size == 0 || ReadExact(pipe, payload->data(), size);
+  if (handle != nullptr && handle != INVALID_HANDLE_VALUE) {
+    CloseHandle(handle);
+  }
+  return secret;
 }
 
-bool WriteMessage(HANDLE pipe, std::string_view payload) {
-  if (payload.size() > kPipeBufferSize) {
-    return false;
+std::optional<DWORD> ParseProcessId(std::wstring_view text) {
+  if (text.empty()) {
+    return std::nullopt;
   }
-  const auto size = static_cast<std::uint32_t>(payload.size());
-  return WriteExact(pipe, &size, sizeof(size)) &&
-         (size == 0 || WriteExact(pipe, payload.data(), size));
+  DWORD value = 0;
+  for (wchar_t ch : text) {
+    if (ch < L'0' || ch > L'9') {
+      return std::nullopt;
+    }
+    const DWORD digit = static_cast<DWORD>(ch - L'0');
+    if (value > ((std::numeric_limits<DWORD>::max)() - digit) / 10) {
+      return std::nullopt;
+    }
+    value = value * 10 + digit;
+  }
+  return value == 0 ? std::nullopt : std::optional<DWORD>(value);
 }
 
 class CoreHostState {
  public:
-  explicit CoreHostState(fp::core::RimeEngineOptions options) : options_(std::move(options)) {}
+  CoreHostState(fp::core::RimeEngineOptions options, std::string ipc_secret)
+      : options_(std::move(options)), ipc_secret_(std::move(ipc_secret)) {}
 
   std::string Handle(std::string_view request) {
+    std::string authenticated_request;
+    if (!ipc_secret_.empty()) {
+      if (!fp::coreipc::DecodeAuthenticatedRequest(request,
+                                                   ipc_secret_,
+                                                   &authenticated_request)) {
+        return fp::coreipc::EncodeErrorResponse(L"Unauthorized core host request.");
+      }
+      request = authenticated_request;
+    }
+
     fp::coreipc::Command command{};
     std::vector<std::string> fields;
     if (!fp::coreipc::DecodeCommand(request, &command, &fields)) {
@@ -84,7 +114,7 @@ class CoreHostState {
       case fp::coreipc::Command::kInitialize:
         return fp::coreipc::EncodeStatusResponse(EnsureInitialized());
       case fp::coreipc::Command::kShutdown:
-        shutdown_requested_ = true;
+        shutdown_requested_.store(true, std::memory_order_relaxed);
         // The core host is the process boundary for librime/OpenCC.  On a
         // shutdown request, return the IPC response and let process exit reclaim
         // the engine instead of running teardown code in a host application.
@@ -114,7 +144,9 @@ class CoreHostState {
     }
   }
 
-  [[nodiscard]] bool shutdown_requested() const noexcept { return shutdown_requested_; }
+  [[nodiscard]] bool shutdown_requested() const noexcept {
+    return shutdown_requested_.load(std::memory_order_relaxed);
+  }
 
  private:
   fp::core::RimeEngineStatus EnsureInitialized() {
@@ -213,21 +245,22 @@ class CoreHostState {
 
   std::mutex mutex_;
   fp::core::RimeEngineOptions options_;
+  std::string ipc_secret_;
   std::unique_ptr<fp::core::RimeEngine> engine_;
-  bool shutdown_requested_ = false;
+  std::atomic_bool shutdown_requested_{false};
 };
 
 void ServePipe(CoreHostState* state, HANDLE pipe) {
   std::string request;
   std::string response = fp::coreipc::EncodeErrorResponse(L"Core host internal error.");
-  if (ReadMessage(pipe, &request)) {
+  if (fp::coreipc::ReadMessage(pipe, &request)) {
     try {
       response = state->Handle(request);
     } catch (...) {
       response = fp::coreipc::EncodeErrorResponse(L"Core host command failed unexpectedly.");
     }
   }
-  WriteMessage(pipe, response);
+  fp::coreipc::WriteMessage(pipe, response);
   FlushFileBuffers(pipe);
   DisconnectNamedPipe(pipe);
   CloseHandle(pipe);
@@ -286,7 +319,9 @@ class LocalSecurityDescriptor {
         L"(A;;GA;;;SY)"
         L"(A;;GA;;;BA)"
         L"(A;;GA;;;" +
-        *user_sid + L")";
+        *user_sid +
+        L")"
+        L"S:(ML;;NW;;;ME)";
     if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl.c_str(),
                                                               SDDL_REVISION_1,
                                                               &descriptor_,
@@ -324,8 +359,8 @@ class LocalSecurityDescriptor {
   SECURITY_ATTRIBUTES attributes_{};
 };
 
-fp::core::RimeEngineOptions ParseOptions() {
-  fp::core::RimeEngineOptions options;
+CoreHostRuntimeOptions ParseOptions() {
+  CoreHostRuntimeOptions options;
   int argc = 0;
   wchar_t** argv = CommandLineToArgvW(GetCommandLineW(), &argc);
   if (argv == nullptr) {
@@ -334,23 +369,70 @@ fp::core::RimeEngineOptions ParseOptions() {
   for (int index = 1; index < argc; ++index) {
     const std::wstring_view arg = argv[index];
     if (arg == L"--user-data-dir" && index + 1 < argc) {
-      options.user_data_dir = argv[++index];
+      options.engine.user_data_dir = argv[++index];
     } else if (arg == L"--staging-dir" && index + 1 < argc) {
-      options.staging_dir = argv[++index];
+      options.engine.staging_dir = argv[++index];
     } else if (arg == L"--log-dir" && index + 1 < argc) {
-      options.log_dir = argv[++index];
+      options.engine.log_dir = argv[++index];
+    } else if (arg == L"--pipe-suffix" && index + 1 < argc) {
+      options.pipe_suffix = argv[++index];
+    } else if (arg == L"--ipc-secret-handle" && index + 1 < argc) {
+      options.ipc_secret_required = true;
+      const auto secret = ReadIpcSecretFromHandleText(argv[++index]);
+      if (secret) {
+        options.ipc_secret = *secret;
+      }
+    } else if (arg == L"--parent-pid" && index + 1 < argc) {
+      const auto parent_pid = ParseProcessId(argv[++index]);
+      if (parent_pid) {
+        options.parent_process_id = *parent_pid;
+      }
     } else if (arg == L"--no-deploy") {
-      options.deploy = false;
+      options.engine.deploy = false;
     }
   }
   LocalFree(argv);
   return options;
 }
 
+void StartParentWatchdog(DWORD parent_process_id) {
+  if (parent_process_id == 0 || parent_process_id == GetCurrentProcessId()) {
+    return;
+  }
+  HANDLE parent = OpenProcess(SYNCHRONIZE, FALSE, parent_process_id);
+  if (parent == nullptr) {
+    fp::LogWarning(L"corehost",
+                   L"Failed to open parent process for lifetime monitoring: " +
+                       std::to_wstring(GetLastError()));
+    return;
+  }
+  try {
+    std::thread([parent]() {
+      WaitForSingleObject(parent, INFINITE);
+      CloseHandle(parent);
+      fp::FlushLogs();
+      TerminateProcess(GetCurrentProcess(), 0);
+    }).detach();
+  } catch (...) {
+    CloseHandle(parent);
+    fp::LogWarning(L"corehost", L"Failed to start parent process lifetime watchdog.");
+  }
+}
+
 int RunCoreHost() {
   SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
 
-  const std::wstring mutex_name = fp::coreipc::CoreHostMutexName();
+  CoreHostRuntimeOptions options = ParseOptions();
+  if ((!options.pipe_suffix.empty() || options.ipc_secret_required) &&
+      options.ipc_secret.empty()) {
+    fp::LogError(L"corehost",
+                 L"Core host IPC secret is required for isolated pipe instances.");
+    return 1;
+  }
+  StartParentWatchdog(options.parent_process_id);
+
+  const std::wstring mutex_name =
+      fp::coreipc::CoreHostMutexNameForSuffix(options.pipe_suffix);
   HANDLE mutex = CreateMutexW(nullptr, TRUE, mutex_name.c_str());
   if (mutex == nullptr) {
     fp::LogError(L"corehost", L"Failed to create core host mutex.");
@@ -363,7 +445,7 @@ int RunCoreHost() {
   }
 
   fp::LogInfo(L"corehost", L"FluentPinyin core host started.");
-  CoreHostState state(ParseOptions());
+  CoreHostState state(std::move(options.engine), std::move(options.ipc_secret));
   LocalSecurityDescriptor pipe_security;
   if (!pipe_security.valid()) {
     fp::LogError(L"corehost", L"Core host pipe security descriptor is invalid.");
@@ -371,7 +453,7 @@ int RunCoreHost() {
     return 1;
   }
   for (;;) {
-    const std::wstring pipe_name = fp::coreipc::PipeName();
+    const std::wstring pipe_name = fp::coreipc::PipeNameForSuffix(options.pipe_suffix);
     HANDLE pipe = CreateNamedPipeW(pipe_name.c_str(),
                                    PIPE_ACCESS_DUPLEX,
                                    PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,

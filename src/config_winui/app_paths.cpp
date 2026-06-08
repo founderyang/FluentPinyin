@@ -1,10 +1,10 @@
 #include "config_winui/app_paths.h"
 
+#include "common/bundled_fonts.h"
 #include "common/path_utils.h"
 
 #include <windows.h>
 
-#include <array>
 #include <atomic>
 #include <system_error>
 
@@ -15,18 +15,11 @@ std::filesystem::path RimeUserDataPath() {
 }
 
 std::filesystem::path ModuleDirectory() {
-  std::wstring buffer(32768, L'\0');
-  const DWORD length =
-      GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
-  if (length == 0 || length >= buffer.size()) {
-    return std::filesystem::current_path();
-  }
-  buffer.resize(length);
-  return std::filesystem::path(buffer).parent_path();
+  return fp::GetModuleDirectory();
 }
 
 std::filesystem::path SiblingExe(std::wstring_view name) {
-  return ModuleDirectory() / std::wstring(name);
+  return fp::GetSiblingExecutablePath(name);
 }
 
 std::wstring WindowIconPath() {
@@ -70,20 +63,14 @@ void EnsureUiFontsLoaded() {
   }
 
   const auto font_dir = ModuleDirectory() / L"fonts";
-  constexpr std::array<std::wstring_view, 11> font_files{
-      L"MiSans-Regular.ttf",
-      L"MiSans-Medium.ttf",
-      L"MiSans-Semibold.ttf",
-      L"MiSansTC-Regular.ttf",
-      L"MiSansTC-Medium.ttf",
-      L"MiSansTC-Semibold.ttf",
-      L"MiSansL3-Regular.ttf",
-      L"SourceHanSansSC-Regular.otf",
-      L"SourceHanSansTC-Regular.otf",
-      L"PlangothicP1-Regular.ttf",
-      L"PlangothicP2-Regular.ttf",
-  };
-  for (const auto file : font_files) {
+  for (const auto file : fp::kBundledBaseUiFontFiles) {
+    const auto path = font_dir / std::wstring(file);
+    std::error_code error;
+    if (std::filesystem::exists(path, error)) {
+      AddFontResourceExW(path.c_str(), FR_PRIVATE, nullptr);
+    }
+  }
+  for (const auto file : fp::kBundledFallbackUiFontFiles) {
     const auto path = font_dir / std::wstring(file);
     std::error_code error;
     if (std::filesystem::exists(path, error)) {

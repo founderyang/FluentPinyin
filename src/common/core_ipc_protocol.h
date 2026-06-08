@@ -2,6 +2,9 @@
 
 #include "common\rime_types.h"
 
+#include <windows.h>
+
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -11,9 +14,12 @@ namespace fp::coreipc {
 inline constexpr wchar_t kPipeName[] = L"\\\\.\\pipe\\FluentPinyin.CoreHost.V1";
 inline constexpr wchar_t kCoreHostMutexName[] = L"Local\\FluentPinyin.CoreHost.V1";
 inline constexpr wchar_t kCoreHostExecutableName[] = L"fluent-pinyin-corehost.exe";
+inline constexpr DWORD kPipeMessageSizeLimit = 1024 * 1024;
 
 std::wstring PipeName();
+std::wstring PipeNameForSuffix(std::wstring_view suffix);
 std::wstring CoreHostMutexName();
+std::wstring CoreHostMutexNameForSuffix(std::wstring_view suffix);
 
 enum class Command : std::uint32_t {
   kInitialize = 1,
@@ -24,6 +30,7 @@ enum class Command : std::uint32_t {
   kSelectCandidate = 6,
   kRedeploy = 7,
   kHandshake = 8,
+  kAuthenticatedRequest = 9,
 };
 
 enum class Status : std::uint32_t {
@@ -42,6 +49,19 @@ std::string EncodeSelectCandidateRequest(std::string_view input,
                                          size_t candidate_index);
 std::string EncodeRedeployRequest();
 std::string EncodeHandshakeRequest(std::string_view nonce);
+std::string EncodeAuthenticatedRequest(std::string_view secret, std::string_view request);
+bool DecodeAuthenticatedRequest(std::string_view payload,
+                                std::string_view expected_secret,
+                                std::string* request);
+
+bool ReadExact(HANDLE pipe, void* buffer, DWORD bytes);
+bool WriteExact(HANDLE pipe, const void* buffer, DWORD bytes);
+bool ReadMessage(HANDLE pipe,
+                 std::string* payload,
+                 DWORD size_limit = kPipeMessageSizeLimit);
+bool WriteMessage(HANDLE pipe,
+                  std::string_view payload,
+                  DWORD size_limit = kPipeMessageSizeLimit);
 
 bool DecodeCommand(std::string_view payload, Command* command, std::vector<std::string>* fields);
 

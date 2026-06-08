@@ -1,28 +1,46 @@
 #include "config_winui/hotkey_helpers.h"
 
+#include "common/constants.h"
+#include "common/encoding.h"
+
 #include <algorithm>
+#include <array>
 #include <cwctype>
+#include <utility>
 #include <vector>
 
 namespace fp::config_winui {
-namespace {
 
-std::wstring TrimWhitespace(std::wstring_view value) {
-  size_t first = 0;
-  while (first < value.size() && std::iswspace(value[first])) {
-    ++first;
-  }
-  size_t last = value.size();
-  while (last > first && std::iswspace(value[last - 1])) {
-    --last;
-  }
-  return std::wstring(value.substr(first, last - first));
+std::span<const HotkeyShortcutDefinition> HotkeyShortcutDefinitions() noexcept {
+  static constexpr std::array<HotkeyShortcutDefinition, 8> shortcuts{{
+      {fp::kShortcutToolbarInputModeSetting,
+       L"中/英文模式",
+       fp::kDefaultShortcutToolbarInputMode},
+      {fp::kShortcutToolbarShapeSetting, L"全/半角", fp::kDefaultShortcutToolbarShape},
+      {fp::kShortcutToolbarPunctuationSetting,
+       L"中/英文标点",
+       fp::kDefaultShortcutToolbarPunctuation},
+      {fp::kShortcutToolbarCharsetSetting,
+       L"简体/繁体",
+       fp::kDefaultShortcutToolbarCharset},
+      {fp::kShortcutToolbarEmojiSetting,
+       L"表情符号/符号",
+       fp::kDefaultShortcutToolbarEmoji},
+      {fp::kShortcutCandidateExpandSetting,
+       L"展开/收起候选框",
+       fp::kDefaultShortcutCandidateExpand},
+      {fp::kShortcutCandidatePreviousPageSetting,
+       L"上一页",
+       fp::kDefaultShortcutCandidatePreviousPage},
+      {fp::kShortcutCandidateNextPageSetting,
+       L"下一页",
+       fp::kDefaultShortcutCandidateNextPage},
+  }};
+  return shortcuts;
 }
 
-}  // namespace
-
 std::wstring NormalizeShortcutDisplay(std::wstring_view value) {
-  std::wstring text = TrimWhitespace(value);
+  std::wstring text = fp::TrimWhitespace(value);
   text.erase(std::remove_if(text.begin(), text.end(), [](wchar_t ch) {
                return std::iswspace(ch) != 0;
              }),
@@ -85,6 +103,27 @@ std::wstring NormalizeShortcutDisplay(std::wstring_view value) {
     normalized += tokens[index];
   }
   return normalized;
+}
+
+std::wstring ShortcutConflictTooltip(
+    std::wstring_view current_key,
+    std::wstring_view display,
+    const std::function<std::wstring(std::wstring_view key,
+                                     std::wstring_view fallback)>& read_setting) {
+  const std::wstring normalized = NormalizeShortcutDisplay(display);
+  if (normalized.empty()) {
+    return L"已清除";
+  }
+
+  for (const auto& entry : HotkeyShortcutDefinitions()) {
+    if (entry.key == current_key) {
+      continue;
+    }
+    if (NormalizeShortcutDisplay(read_setting(entry.key, entry.fallback)) == normalized) {
+      return L"与 " + std::wstring(entry.label) + L" 使用相同热键";
+    }
+  }
+  return L"点击后按新的组合键";
 }
 
 std::wstring ShortcutDisplayForKey(WPARAM virtual_key) {

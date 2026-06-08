@@ -4,23 +4,163 @@
 #include "common/logging.h"
 
 #include <windows.h>
+#include <bcrypt.h>
 #include <psapi.h>
 #include <softpub.h>
 #include <wintrust.h>
 
 #include <algorithm>
+#include <array>
+#include <cstdint>
 #include <cwctype>
 #include <cstdio>
+#include <memory>
 #include <string>
 #include <system_error>
+#include <utility>
+#include <vector>
 
 namespace fp::tsf {
 namespace {
 
 constexpr DWORD kCoreHostConnectTimeoutMs = 2500;
 constexpr DWORD kCoreHostInitializeTimeoutMs = 120000;
-constexpr DWORD kCoreHostPipeBufferLimit = 1024 * 1024;
 constexpr DWORD kCoreHostPipeRetryIntervalMs = 25;
+constexpr DWORD kCoreHostSecretLimit = 512;
+
+class ScopedHandle {
+ public:
+  ScopedHandle() = default;
+  explicit ScopedHandle(HANDLE handle) : handle_(handle) {}
+  ScopedHandle(const ScopedHandle&) = delete;
+  ScopedHandle& operator=(const ScopedHandle&) = delete;
+  ScopedHandle(ScopedHandle&& other) noexcept : handle_(other.release()) {}
+  ScopedHandle& operator=(ScopedHandle&& other) noexcept {
+    if (this != &other) {
+      reset(other.release());
+    }
+    return *this;
+  }
+  ~ScopedHandle() {
+    reset();
+  }
+
+  [[nodiscard]] HANDLE get() const noexcept { return handle_; }
+  [[nodiscard]] bool valid() const noexcept {
+    return handle_ != nullptr && handle_ != INVALID_HANDLE_VALUE;
+  }
+  HANDLE release() noexcept {
+    HANDLE handle = handle_;
+    handle_ = nullptr;
+    return handle;
+  }
+  void reset(HANDLE handle = nullptr) noexcept {
+    if (valid()) {
+      CloseHandle(handle_);
+    }
+    handle_ = handle;
+  }
+
+ private:
+  HANDLE handle_ = nullptr;
+};
+
+class ScopedAttributeList {
+ public:
+  explicit ScopedAttributeList(DWORD attribute_count) {
+    SIZE_T bytes = 0;
+    InitializeProcThreadAttributeList(nullptr, attribute_count, 0, &bytes);
+    if (bytes == 0) {
+      return;
+    }
+    storage_.resize(bytes);
+    list_ = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(storage_.data());
+    if (!InitializeProcThreadAttributeList(list_, attribute_count, 0, &bytes)) {
+      list_ = nullptr;
+      storage_.clear();
+    }
+  }
+  ScopedAttributeList(const ScopedAttributeList&) = delete;
+  ScopedAttributeList& operator=(const ScopedAttributeList&) = delete;
+  ~ScopedAttributeList() {
+    if (list_ != nullptr) {
+      DeleteProcThreadAttributeList(list_);
+    }
+  }
+
+  [[nodiscard]] LPPROC_THREAD_ATTRIBUTE_LIST get() const noexcept { return list_; }
+  [[nodiscard]] bool valid() const noexcept { return list_ != nullptr; }
+
+ private:
+  std::vector<unsigned char> storage_;
+  LPPROC_THREAD_ATTRIBUTE_LIST list_ = nullptr;
+};
+
+std::wstring HexTokenWide() {
+  std::array<unsigned char, 16> bytes{};
+  if (BCryptGenRandom(nullptr,
+                      bytes.data(),
+                      static_cast<ULONG>(bytes.size()),
+                      BCRYPT_USE_SYSTEM_PREFERRED_RNG) != 0) {
+    const ULONGLONG tick = GetTickCount64();
+    const DWORD process_id = GetCurrentProcessId();
+    for (size_t index = 0; index < bytes.size(); ++index) {
+      bytes[index] = static_cast<unsigned char>((tick >> ((index % 8) * 8)) ^
+                                                (process_id >> ((index % 4) * 8)) ^
+                                                (index * 29));
+    }
+  }
+  constexpr wchar_t hex[] = L"0123456789ABCDEF";
+  std::wstring token;
+  token.reserve(bytes.size() * 2);
+  for (const unsigned char byte : bytes) {
+    token.push_back(hex[(byte >> 4) & 0x0F]);
+    token.push_back(hex[byte & 0x0F]);
+  }
+  return token;
+}
+
+std::string NarrowAscii(const std::wstring& text) {
+  return std::string(text.begin(), text.end());
+}
+
+std::string SecretForSuffix(const std::wstring& suffix) {
+  return NarrowAscii(suffix) + "." + NarrowAscii(HexTokenWide());
+}
+
+const std::wstring& ProcessPipeSuffix() {
+  static const std::wstring suffix = HexTokenWide();
+  return suffix;
+}
+
+const std::string& ProcessIpcSecret() {
+  static const std::string secret = SecretForSuffix(ProcessPipeSuffix());
+  return secret;
+}
+
+std::wstring QuoteCommandLineArg(std::wstring_view value) {
+  std::wstring result;
+  result.reserve(value.size() + 2);
+  result.push_back(L'"');
+  size_t backslashes = 0;
+  for (wchar_t ch : value) {
+    if (ch == L'\\') {
+      ++backslashes;
+      continue;
+    }
+    if (ch == L'"') {
+      result.append(backslashes * 2 + 1, L'\\');
+      result.push_back(ch);
+    } else {
+      result.append(backslashes, L'\\');
+      result.push_back(ch);
+    }
+    backslashes = 0;
+  }
+  result.append(backslashes * 2, L'\\');
+  result.push_back(L'"');
+  return result;
+}
 
 std::wstring NormalizePathForCompare(const std::filesystem::path& path) {
   std::error_code error;
@@ -59,22 +199,9 @@ void IpcTrace(const wchar_t* message, DWORD value = ERROR_SUCCESS) {
   fflush(stderr);
 }
 
-bool ReadExact(HANDLE pipe, void* buffer, DWORD bytes) {
-  auto* cursor = static_cast<unsigned char*>(buffer);
-  DWORD remaining = bytes;
-  while (remaining > 0) {
-    DWORD read = 0;
-    if (!ReadFile(pipe, cursor, remaining, &read, nullptr) || read == 0) {
-      return false;
-    }
-    cursor += read;
-    remaining -= read;
-  }
-  return true;
-}
-
-bool WaitForCoreHostPipe(DWORD timeout_ms, DWORD* last_error = nullptr) {
-  const std::wstring pipe_name = fp::coreipc::PipeName();
+bool WaitForCoreHostPipe(const std::wstring& pipe_name,
+                         DWORD timeout_ms,
+                         DWORD* last_error = nullptr) {
   IpcTrace(L"waiting for pipe");
   const ULONGLONG start = GetTickCount64();
   DWORD error = ERROR_FILE_NOT_FOUND;
@@ -108,37 +235,27 @@ bool WaitForCoreHostPipe(DWORD timeout_ms, DWORD* last_error = nullptr) {
   }
 }
 
-bool WriteExact(HANDLE pipe, const void* buffer, DWORD bytes) {
-  const auto* cursor = static_cast<const unsigned char*>(buffer);
-  DWORD remaining = bytes;
-  while (remaining > 0) {
-    DWORD written = 0;
-    if (!WriteFile(pipe, cursor, remaining, &written, nullptr) || written == 0) {
-      return false;
-    }
-    cursor += written;
-    remaining -= written;
-  }
-  return true;
-}
-
-bool WriteMessage(HANDLE pipe, std::string_view payload) {
-  if (payload.size() > kCoreHostPipeBufferLimit) {
+bool CreateChildSecretPipe(ScopedHandle* read_handle, ScopedHandle* write_handle) {
+  SECURITY_ATTRIBUTES security{};
+  security.nLength = sizeof(security);
+  security.bInheritHandle = TRUE;
+  HANDLE raw_read = nullptr;
+  HANDLE raw_write = nullptr;
+  if (!CreatePipe(&raw_read, &raw_write, &security, 0)) {
     return false;
   }
-  const auto size = static_cast<std::uint32_t>(payload.size());
-  return WriteExact(pipe, &size, sizeof(size)) &&
-         (size == 0 || WriteExact(pipe, payload.data(), size));
+  read_handle->reset(raw_read);
+  write_handle->reset(raw_write);
+  return SetHandleInformation(write_handle->get(), HANDLE_FLAG_INHERIT, 0) != FALSE;
 }
 
-bool ReadMessage(HANDLE pipe, std::string* payload) {
-  std::uint32_t size = 0;
-  if (payload == nullptr || !ReadExact(pipe, &size, sizeof(size)) ||
-      size > kCoreHostPipeBufferLimit) {
+bool WriteChildSecret(HANDLE pipe, std::string_view secret) {
+  if (secret.empty() || secret.size() > kCoreHostSecretLimit) {
     return false;
   }
-  payload->assign(size, '\0');
-  return size == 0 || ReadExact(pipe, payload->data(), size);
+  const auto size = static_cast<std::uint32_t>(secret.size());
+  return fp::coreipc::WriteExact(pipe, &size, sizeof(size)) &&
+         fp::coreipc::WriteExact(pipe, secret.data(), size);
 }
 
 std::optional<std::filesystem::path> ProcessImagePath(DWORD process_id) {
@@ -215,16 +332,26 @@ bool VerifyCoreHostServer(HANDLE pipe, const std::filesystem::path& expected_cor
 }  // namespace
 
 RimeCoreClient::RimeCoreClient(std::filesystem::path corehost_path)
-    : corehost_path_(std::move(corehost_path)) {}
+    : RimeCoreClient(std::move(corehost_path),
+                     ProcessPipeSuffix(),
+                     ProcessIpcSecret()) {}
+
+RimeCoreClient::RimeCoreClient(std::filesystem::path corehost_path,
+                               std::wstring pipe_suffix,
+                               std::string ipc_secret)
+    : corehost_path_(std::move(corehost_path)),
+      pipe_suffix_(std::move(pipe_suffix)),
+      ipc_secret_(ipc_secret.empty() ? SecretForSuffix(pipe_suffix_) : std::move(ipc_secret)) {}
 
 bool RimeCoreClient::EnsureHostRunning() {
   DWORD wait_error = ERROR_SUCCESS;
-  if (WaitForCoreHostPipe(50, &wait_error)) {
+  const std::wstring pipe_name = fp::coreipc::PipeNameForSuffix(pipe_suffix_);
+  if (WaitForCoreHostPipe(pipe_name, 50, &wait_error)) {
     IpcTrace(L"host pipe already running");
     return true;
   }
   if (wait_error == ERROR_PIPE_BUSY || wait_error == ERROR_SEM_TIMEOUT) {
-    if (WaitForCoreHostPipe(kCoreHostConnectTimeoutMs, &wait_error)) {
+    if (WaitForCoreHostPipe(pipe_name, kCoreHostConnectTimeoutMs, &wait_error)) {
       return true;
     }
     fp::LogWarning(L"tsf",
@@ -240,21 +367,56 @@ bool RimeCoreClient::EnsureHostRunning() {
   const auto resolved_corehost = std::filesystem::absolute(corehost_path_, path_error);
   const std::filesystem::path launch_path =
       path_error ? corehost_path_ : resolved_corehost;
-  std::wstring command_line = L"\"" + launch_path.wstring() + L"\"";
-  STARTUPINFOW startup{};
-  startup.cb = sizeof(startup);
-  startup.dwFlags = STARTF_USESHOWWINDOW;
-  startup.wShowWindow = SW_HIDE;
+  ScopedHandle secret_read;
+  ScopedHandle secret_write;
+  if (!CreateChildSecretPipe(&secret_read, &secret_write)) {
+    const DWORD error = GetLastError();
+    fp::LogError(L"tsf",
+                 LastErrorMessage(L"Failed to create FluentPinyin core host secret pipe.",
+                                  error));
+    return false;
+  }
+
+  std::wstring command_line =
+      QuoteCommandLineArg(launch_path.wstring()) + L" --pipe-suffix " +
+      QuoteCommandLineArg(pipe_suffix_) + L" --ipc-secret-handle " +
+      std::to_wstring(reinterpret_cast<std::uintptr_t>(secret_read.get())) +
+      L" --parent-pid " + std::to_wstring(GetCurrentProcessId());
+  ScopedAttributeList attributes(1);
+  if (!attributes.valid()) {
+    fp::LogError(L"tsf", L"Failed to allocate FluentPinyin core host startup attributes.");
+    return false;
+  }
+  HANDLE inherited_handles[] = {secret_read.get()};
+  if (!UpdateProcThreadAttribute(attributes.get(),
+                                 0,
+                                 PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
+                                 inherited_handles,
+                                 sizeof(inherited_handles),
+                                 nullptr,
+                                 nullptr)) {
+    const DWORD error = GetLastError();
+    fp::LogError(L"tsf",
+                 LastErrorMessage(L"Failed to configure FluentPinyin core host handle list.",
+                                  error));
+    return false;
+  }
+
+  STARTUPINFOEXW startup{};
+  startup.StartupInfo.cb = sizeof(startup);
+  startup.StartupInfo.dwFlags = STARTF_USESHOWWINDOW;
+  startup.StartupInfo.wShowWindow = SW_HIDE;
+  startup.lpAttributeList = attributes.get();
   PROCESS_INFORMATION process{};
   const BOOL created = CreateProcessW(launch_path.c_str(),
                                       command_line.data(),
                                       nullptr,
                                       nullptr,
-                                      FALSE,
-                                      CREATE_NO_WINDOW,
+                                      TRUE,
+                                      CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT,
                                       nullptr,
                                       launch_path.parent_path().c_str(),
-                                      &startup,
+                                      &startup.StartupInfo,
                                       &process);
   if (!created) {
     const DWORD error = GetLastError();
@@ -263,10 +425,20 @@ bool RimeCoreClient::EnsureHostRunning() {
                  LastErrorMessage(L"Failed to start FluentPinyin core host.", error));
     return false;
   }
+  secret_read.reset();
+  const bool secret_written = WriteChildSecret(secret_write.get(), ipc_secret_);
+  const DWORD secret_write_error = secret_written ? ERROR_SUCCESS : GetLastError();
+  secret_write.reset();
   CloseHandle(process.hThread);
   CloseHandle(process.hProcess);
+  if (!secret_written) {
+    fp::LogError(L"tsf",
+                 LastErrorMessage(L"Failed to send FluentPinyin core host IPC secret.",
+                                  secret_write_error));
+    return false;
+  }
   IpcTrace(L"corehost process launched");
-  if (!WaitForCoreHostPipe(kCoreHostConnectTimeoutMs, &wait_error)) {
+  if (!WaitForCoreHostPipe(pipe_name, kCoreHostConnectTimeoutMs, &wait_error)) {
     IpcTrace(L"timed out waiting for launched corehost", wait_error);
     fp::LogError(L"tsf",
                  LastErrorMessage(L"Timed out waiting for FluentPinyin core host pipe.",
@@ -280,18 +452,18 @@ std::optional<std::string> RimeCoreClient::SendRequest(std::string_view request,
                                                        bool allow_start,
                                                        unsigned long wait_timeout_ms) {
   IpcTrace(allow_start ? L"SendRequest allow_start" : L"SendRequest no_start");
+  const std::wstring pipe_name = fp::coreipc::PipeNameForSuffix(pipe_suffix_);
   if (allow_start) {
     if (!EnsureHostRunning()) {
       IpcTrace(L"EnsureHostRunning failed");
       return std::nullopt;
     }
-  } else if (!WaitForCoreHostPipe(wait_timeout_ms)) {
+  } else if (!WaitForCoreHostPipe(pipe_name, wait_timeout_ms)) {
     IpcTrace(L"WaitForCoreHostPipe without start failed");
     return std::nullopt;
   }
 
   const ULONGLONG deadline = GetTickCount64() + wait_timeout_ms;
-  const std::wstring pipe_name = fp::coreipc::PipeName();
   HANDLE pipe = INVALID_HANDLE_VALUE;
   for (;;) {
     pipe = CreateFileW(pipe_name.c_str(),
@@ -331,7 +503,10 @@ std::optional<std::string> RimeCoreClient::SendRequest(std::string_view request,
 
   std::optional<std::string> response;
   std::string payload;
-  if (WriteMessage(pipe, request) && ReadMessage(pipe, &payload)) {
+  const std::string authenticated_request =
+      fp::coreipc::EncodeAuthenticatedRequest(ipc_secret_, request);
+  if (fp::coreipc::WriteMessage(pipe, authenticated_request) &&
+      fp::coreipc::ReadMessage(pipe, &payload)) {
     IpcTrace(L"request completed");
     response = std::move(payload);
   } else {

@@ -1,29 +1,22 @@
 #include "config_winui/status_tip_blacklist.h"
 
+#include "common/constants.h"
+#include "common/encoding.h"
+#include "config_winui/settings_binding.h"
+
 #include <algorithm>
-#include <cwctype>
 #include <filesystem>
+#include <utility>
 
 namespace fp::config_winui {
 namespace {
 
 std::wstring TrimSettingToken(std::wstring_view value) {
-  size_t first = 0;
-  while (first < value.size() && std::iswspace(value[first])) {
-    ++first;
-  }
-  size_t last = value.size();
-  while (last > first && std::iswspace(value[last - 1])) {
-    --last;
-  }
-  return std::wstring(value.substr(first, last - first));
+  return fp::TrimWhitespace(value);
 }
 
 std::wstring ToLowerSettingToken(std::wstring value) {
-  std::transform(value.begin(), value.end(), value.begin(), [](wchar_t ch) {
-    return static_cast<wchar_t>(std::towlower(ch));
-  });
-  return value;
+  return fp::ToLowerInvariant(std::move(value));
 }
 
 }  // namespace
@@ -74,6 +67,15 @@ std::vector<std::wstring> ParseStatusTipBlacklistSetting(std::wstring_view value
   }
   append_token();
   return result;
+}
+
+std::vector<std::wstring> CurrentStatusTipBlacklistItems() {
+  return ParseStatusTipBlacklistSetting(
+      ReadStringSetting(fp::kStatusTipBlacklistSetting, fp::kDefaultStatusTipBlacklist));
+}
+
+int CurrentStatusTipBlacklistCount() {
+  return static_cast<int>(CurrentStatusTipBlacklistItems().size());
 }
 
 std::wstring JoinStatusTipBlacklistItems(const std::vector<std::wstring>& items) {

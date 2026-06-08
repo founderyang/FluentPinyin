@@ -1,5 +1,7 @@
 #include "sync/sync_service.h"
 
+#include "common/constants.h"
+
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -33,16 +35,17 @@ void TestReadWriteSettings(const std::filesystem::path& settings_path) {
   Expect(fp::sync::ReadSetting(settings_path, L"missing", L"default") == L"default",
          "ReadSetting returns default for a missing file/key");
 
-  Expect(fp::sync::WriteSetting(settings_path, L"sync_provider", L"webdav"),
+  Expect(fp::sync::WriteSetting(settings_path, fp::kSyncProviderSetting, fp::kSyncProviderWebDav),
          "WriteSetting creates settings file");
-  Expect(fp::sync::WriteSetting(settings_path, L"sync_provider", L"object"),
+  Expect(fp::sync::WriteSetting(settings_path, fp::kSyncProviderSetting, fp::kSyncProviderObject),
          "WriteSetting updates existing keys");
-  Expect(fp::sync::WriteSetting(settings_path, L"sync_object_bucket", L"bucket-a"),
+  Expect(fp::sync::WriteSetting(settings_path, fp::kSyncObjectBucketSetting, L"bucket-a"),
          "WriteSetting appends new keys");
 
-  Expect(fp::sync::ReadSetting(settings_path, L"sync_provider", L"") == L"object",
+  Expect(fp::sync::ReadSetting(settings_path, fp::kSyncProviderSetting, L"") ==
+             std::wstring(fp::kSyncProviderObject),
          "ReadSetting returns updated value");
-  Expect(fp::sync::ReadSetting(settings_path, L"sync_object_bucket", L"") == L"bucket-a",
+  Expect(fp::sync::ReadSetting(settings_path, fp::kSyncObjectBucketSetting, L"") == L"bucket-a",
          "ReadSetting returns appended value");
 
   const std::wstring text = ReadFileText(settings_path);
@@ -51,9 +54,9 @@ void TestReadWriteSettings(const std::filesystem::path& settings_path) {
 }
 
 void TestSettingValueSanitization(const std::filesystem::path& settings_path) {
-  Expect(fp::sync::WriteSetting(settings_path, L"sync_device_id", L"desk\r\nline2"),
+  Expect(fp::sync::WriteSetting(settings_path, fp::kSyncDeviceIdSetting, L"desk\r\nline2"),
          "WriteSetting accepts values with line breaks");
-  Expect(fp::sync::ReadSetting(settings_path, L"sync_device_id", L"") == L"desk,,line2",
+  Expect(fp::sync::ReadSetting(settings_path, fp::kSyncDeviceIdSetting, L"") == L"desk,,line2",
          "WriteSetting sanitizes CR/LF to keep settings.ini line-oriented");
 
   const std::wstring text = ReadFileText(settings_path);
@@ -62,14 +65,16 @@ void TestSettingValueSanitization(const std::filesystem::path& settings_path) {
 }
 
 void TestLoadConfig(const std::filesystem::path& settings_path) {
-  fp::sync::WriteSetting(settings_path, L"sync_provider", L" WebDAV ");
-  fp::sync::WriteSetting(settings_path, L"sync_clipboard", L"yes");
-  fp::sync::WriteSetting(settings_path, L"sync_user_data", L"0");
-  fp::sync::WriteSetting(settings_path, L"sync_auto_enabled", L"true");
-  fp::sync::WriteSetting(settings_path, L"sync_auto_interval_minutes", L"2");
-  fp::sync::WriteSetting(settings_path, L"sync_webdav_url", L"https://example.invalid/sync");
-  fp::sync::WriteSetting(settings_path, L"sync_webdav_username", L"user");
-  fp::sync::WriteSetting(settings_path, L"sync_encryption_secret", L"plain-secret");
+  fp::sync::WriteSetting(settings_path, fp::kSyncProviderSetting, L" WebDAV ");
+  fp::sync::WriteSetting(settings_path, fp::kSyncClipboardSetting, L"yes");
+  fp::sync::WriteSetting(settings_path, fp::kSyncUserDataSetting, L"0");
+  fp::sync::WriteSetting(settings_path, fp::kSyncAutoEnabledSetting, L"true");
+  fp::sync::WriteSetting(settings_path, fp::kSyncAutoIntervalMinutesSetting, L"2");
+  fp::sync::WriteSetting(settings_path,
+                         fp::kSyncWebDavUrlSetting,
+                         L"https://example.invalid/sync");
+  fp::sync::WriteSetting(settings_path, fp::kSyncWebDavUsernameSetting, L"user");
+  fp::sync::WriteSetting(settings_path, fp::kSyncEncryptionSecretSetting, L"plain-secret");
 
   const fp::sync::SyncConfig config = fp::sync::LoadConfig(settings_path);
   Expect(config.provider == fp::sync::SyncProvider::WebDav,

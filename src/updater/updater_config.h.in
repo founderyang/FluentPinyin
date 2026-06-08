@@ -1,0 +1,10 @@
+#pragma once
+
+#include <string_view>
+
+namespace fp::updater {
+
+inline constexpr std::wstring_view kExpectedPublisherThumbprints =
+    L"@FP_UPDATER_PUBLISHER_THUMBPRINTS@";
+
+}  // namespace fp::updater

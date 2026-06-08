@@ -86,6 +86,7 @@ class TsfTextService final : public ITfTextInputProcessorEx,
   bool IsKeyHandled(WPARAM wparam, LPARAM lparam) const;
   bool HandleKey(ITfContext* context, WPARAM wparam, LPARAM lparam);
   bool ToggleAsciiModeFromKey(ITfContext* context, bool caps_lock);
+  bool SyncCapsLockAsciiMode(ITfContext* context);
   bool IsRimeReady() const;
   bool EnsureRimeReadyForKey();
   void WarmUpRimeAsync(DWORD delay_ms = 0);

@@ -28,6 +28,7 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <utility>
 #include <vector>
 
 #pragma comment(lib, "bcrypt.lib")
@@ -42,8 +43,6 @@ namespace {
 constexpr std::wstring_view kPackageMagic = L"FPSYNC2";
 constexpr std::wstring_view kTaskName = L"FluentPinyinAutoSync";
 constexpr std::wstring_view kTaskPath = L"\\FluentPinyinAutoSync";
-constexpr int kMinAutoIntervalMinutes = 5;
-constexpr int kMaxAutoIntervalMinutes = 1440;
 constexpr std::uint32_t kPackageVersion = 2;
 constexpr std::uint32_t kPbkdf2Iterations = 150000;
 constexpr std::uint64_t kMaxPackageFileBytes = 256ull * 1024ull * 1024ull;
@@ -80,28 +79,10 @@ constexpr std::array<std::wstring_view, 7> kRimeExcludedTopDirectories{
     L"cache",
 };
 
-std::wstring ToLower(std::wstring value) {
-  std::transform(value.begin(), value.end(), value.begin(), [](wchar_t ch) {
-    return static_cast<wchar_t>(std::towlower(ch));
-  });
-  return value;
-}
-
 bool IsSecretKey(std::wstring_view key) {
-  return key == L"sync_object_secret_key" || key == L"sync_webdav_password" ||
-         key == L"sync_encryption_secret";
-}
-
-std::wstring Trim(std::wstring_view value) {
-  size_t first = 0;
-  while (first < value.size() && std::iswspace(value[first])) {
-    ++first;
-  }
-  size_t last = value.size();
-  while (last > first && std::iswspace(value[last - 1])) {
-    --last;
-  }
-  return std::wstring(value.substr(first, last - first));
+  return key == fp::kSyncObjectSecretKeySetting ||
+         key == fp::kSyncWebDavPasswordSetting ||
+         key == fp::kSyncEncryptionSecretSetting;
 }
 
 std::wstring UrlEncodePathSegment(std::wstring_view value) {
@@ -346,14 +327,14 @@ bool IsExcludedRimeFile(const std::filesystem::path& relative) {
   }
   auto it = relative.begin();
   if (it != relative.end()) {
-    const std::wstring first = ToLower(it->wstring());
+    const std::wstring first = fp::ToLowerInvariant(it->wstring());
     if (std::find(kRimeExcludedTopDirectories.begin(),
                   kRimeExcludedTopDirectories.end(),
                   first) != kRimeExcludedTopDirectories.end()) {
       return true;
     }
   }
-  const std::wstring filename = ToLower(relative.filename().wstring());
+  const std::wstring filename = fp::ToLowerInvariant(relative.filename().wstring());
   if (std::find(kRimeExcludedFileNames.begin(),
                 kRimeExcludedFileNames.end(),
                 filename) != kRimeExcludedFileNames.end()) {
@@ -986,12 +967,12 @@ bool PlainHttpDevExceptionEnabled() {
   if (length == 0 || length >= std::size(buffer)) {
     return false;
   }
-  const std::wstring value = ToLower(std::wstring(buffer, length));
+  const std::wstring value = fp::ToLowerInvariant(std::wstring(buffer, length));
   return value == L"1" || value == L"true" || value == L"yes";
 }
 
 bool IsLoopbackHost(std::wstring_view host) {
-  const std::wstring normalized = ToLower(std::wstring(host));
+  const std::wstring normalized = fp::ToLowerInvariant(std::wstring(host));
   return normalized == L"localhost" || normalized == L"127.0.0.1" ||
          normalized == L"::1" || normalized == L"[::1]";
 }
@@ -1131,7 +1112,7 @@ HttpResult HttpRequest(std::wstring_view method,
 }
 
 std::wstring JoinRemotePath(std::wstring_view base_url, std::wstring_view key) {
-  std::wstring result = Trim(base_url);
+  std::wstring result = fp::TrimWhitespace(base_url);
   while (!result.empty() && result.back() == L'/') {
     result.pop_back();
   }
@@ -1223,11 +1204,11 @@ struct S3Request {
 std::optional<S3Request> BuildS3Request(const SyncConfig& config,
                                         std::wstring_view method,
                                         const std::vector<std::uint8_t>& body) {
-  std::wstring endpoint = Trim(config.object_endpoint);
+  std::wstring endpoint = fp::TrimWhitespace(config.object_endpoint);
   while (!endpoint.empty() && endpoint.back() == L'/') {
     endpoint.pop_back();
   }
-  std::wstring key = Trim(config.object_key);
+  std::wstring key = fp::TrimWhitespace(config.object_key);
   while (!key.empty() && (key.front() == L'/' || key.front() == L'\\')) {
     key.erase(key.begin());
   }
@@ -1400,7 +1381,9 @@ std::wstring XmlEscape(std::wstring_view value) {
 }
 
 std::wstring IsoDurationMinutes(int minutes) {
-  minutes = std::clamp(minutes, kMinAutoIntervalMinutes, kMaxAutoIntervalMinutes);
+  minutes = std::clamp(minutes,
+                       fp::kMinSyncAutoIntervalMinutes,
+                       fp::kMaxSyncAutoIntervalMinutes);
   return L"PT" + std::to_wstring(minutes) + L"M";
 }
 
@@ -1419,7 +1402,7 @@ std::filesystem::path DefaultBackupDirectory() {
 }
 
 std::wstring NormalizeProviderValue(std::wstring_view value) {
-  const std::wstring normalized = ToLower(Trim(value));
+  const std::wstring normalized = fp::ToLowerInvariant(fp::TrimWhitespace(value));
   if (normalized == L"webdav") {
     return L"webdav";
   }
@@ -1427,7 +1410,7 @@ std::wstring NormalizeProviderValue(std::wstring_view value) {
 }
 
 std::wstring DefaultObjectKey() {
-  return L"fluent-pinyin/sync.fpsync";
+  return std::wstring(fp::kDefaultSyncObjectKey);
 }
 
 std::wstring NewTimestampedBackupName() {
@@ -1435,7 +1418,7 @@ std::wstring NewTimestampedBackupName() {
 }
 
 bool IsSecureRemoteUrl(std::wstring_view url) {
-  const auto parsed = ParseUrl(Trim(url));
+  const auto parsed = ParseUrl(fp::TrimWhitespace(url));
   return parsed.has_value() && AllowsRemoteTransport(*parsed);
 }
 
@@ -1518,12 +1501,15 @@ std::optional<std::wstring> UnprotectSecretText(std::wstring_view protected_text
 
 SyncConfig LoadConfig(const std::filesystem::path& settings_path) {
   SyncConfig config;
-  config.provider = NormalizeProviderValue(ReadSetting(settings_path, L"sync_provider", L"object")) ==
-                            L"webdav"
+  config.provider = NormalizeProviderValue(ReadSetting(settings_path,
+                                                       fp::kSyncProviderSetting,
+                                                       fp::kSyncProviderObject)) ==
+                            std::wstring(fp::kSyncProviderWebDav)
                         ? SyncProvider::WebDav
                         : SyncProvider::ObjectStorage;
   const auto read_bool = [&](std::wstring_view key, bool default_value) {
-    const std::wstring value = ToLower(ReadSetting(settings_path, key, default_value ? L"1" : L"0"));
+    const std::wstring value =
+        fp::ToLowerInvariant(ReadSetting(settings_path, key, default_value ? L"1" : L"0"));
     return value == L"1" || value == L"true" || value == L"yes";
   };
   const auto read_int = [&](std::wstring_view key, int default_value) {
@@ -1533,30 +1519,40 @@ SyncConfig LoadConfig(const std::filesystem::path& settings_path) {
       return default_value;
     }
   };
-  config.sync_clipboard = read_bool(L"sync_clipboard", false);
-  config.sync_user_data = read_bool(L"sync_user_data", false);
-  config.auto_enabled = read_bool(L"sync_auto_enabled", false);
+  config.sync_clipboard = read_bool(fp::kSyncClipboardSetting, false);
+  config.sync_user_data = read_bool(fp::kSyncUserDataSetting, false);
+  config.auto_enabled = read_bool(fp::kSyncAutoEnabledSetting, false);
   config.auto_interval_minutes =
-      std::clamp(read_int(L"sync_auto_interval_minutes", 30),
-                 kMinAutoIntervalMinutes,
-                 kMaxAutoIntervalMinutes);
-  config.device_id = ReadSetting(settings_path, L"sync_device_id", DeviceName());
-  config.object_endpoint = ReadSetting(settings_path, L"sync_object_endpoint", L"");
-  config.object_bucket = ReadSetting(settings_path, L"sync_object_bucket", L"");
-  config.object_region = ReadSetting(settings_path, L"sync_object_region", L"auto");
-  config.object_access_key = ReadSetting(settings_path, L"sync_object_access_key", L"");
-  config.object_secret_key = ReadSecretSetting(settings_path, L"sync_object_secret_key");
-  config.object_key = ReadSetting(settings_path, L"sync_object_key", DefaultObjectKey());
-  config.webdav_url = ReadSetting(settings_path, L"sync_webdav_url", L"");
-  config.webdav_username = ReadSetting(settings_path, L"sync_webdav_username", L"");
-  config.webdav_password = ReadSecretSetting(settings_path, L"sync_webdav_password");
-  config.encryption_secret = ReadSecretSetting(settings_path, L"sync_encryption_secret");
+      std::clamp(read_int(fp::kSyncAutoIntervalMinutesSetting,
+                          fp::kDefaultSyncAutoIntervalMinutes),
+                 fp::kMinSyncAutoIntervalMinutes,
+                 fp::kMaxSyncAutoIntervalMinutes);
+  config.device_id = ReadSetting(settings_path, fp::kSyncDeviceIdSetting, DeviceName());
+  config.object_endpoint =
+      ReadSetting(settings_path, fp::kSyncObjectEndpointSetting, L"");
+  config.object_bucket =
+      ReadSetting(settings_path, fp::kSyncObjectBucketSetting, L"");
+  config.object_region =
+      ReadSetting(settings_path, fp::kSyncObjectRegionSetting, fp::kSyncObjectRegionAuto);
+  config.object_access_key =
+      ReadSetting(settings_path, fp::kSyncObjectAccessKeySetting, L"");
+  config.object_secret_key =
+      ReadSecretSetting(settings_path, fp::kSyncObjectSecretKeySetting);
+  config.object_key =
+      ReadSetting(settings_path, fp::kSyncObjectKeySetting, DefaultObjectKey());
+  config.webdav_url = ReadSetting(settings_path, fp::kSyncWebDavUrlSetting, L"");
+  config.webdav_username =
+      ReadSetting(settings_path, fp::kSyncWebDavUsernameSetting, L"");
+  config.webdav_password =
+      ReadSecretSetting(settings_path, fp::kSyncWebDavPasswordSetting);
+  config.encryption_secret =
+      ReadSecretSetting(settings_path, fp::kSyncEncryptionSecretSetting);
   return config;
 }
 
 SyncResult ValidateRemoteConfig(const SyncConfig& config) {
   if (config.provider == SyncProvider::WebDav) {
-    if (Trim(config.webdav_url).empty()) {
+    if (fp::TrimWhitespace(config.webdav_url).empty()) {
       return {false, L"请先配置 WebDAV 地址。"};
     }
     if (!IsSecureRemoteUrl(config.webdav_url)) {
@@ -1564,8 +1560,10 @@ SyncResult ValidateRemoteConfig(const SyncConfig& config) {
     }
     return {true, L""};
   }
-  if (Trim(config.object_endpoint).empty() || Trim(config.object_bucket).empty() ||
-      Trim(config.object_access_key).empty() || Trim(config.object_secret_key).empty()) {
+  if (fp::TrimWhitespace(config.object_endpoint).empty() ||
+      fp::TrimWhitespace(config.object_bucket).empty() ||
+      fp::TrimWhitespace(config.object_access_key).empty() ||
+      fp::TrimWhitespace(config.object_secret_key).empty()) {
     return {false, L"请先配置对象存储 Endpoint、Bucket、Access Key 和 Secret Key。"};
   }
   if (!IsSecureRemoteUrl(config.object_endpoint)) {
@@ -1575,7 +1573,7 @@ SyncResult ValidateRemoteConfig(const SyncConfig& config) {
 }
 
 SyncResult ValidateCryptoConfig(const SyncConfig& config) {
-  if (Trim(config.encryption_secret).size() < 8) {
+  if (fp::TrimWhitespace(config.encryption_secret).size() < 8) {
     return {false, L"请先设置至少 8 个字符的同步加密口令。"};
   }
   if (!config.sync_clipboard && !config.sync_user_data) {
@@ -1604,7 +1602,7 @@ SyncResult RestoreLocalBackup(const std::filesystem::path& package_path,
                               const SyncConfig& config,
                               bool create_pre_restore_backup,
                               PackageMetadata* metadata) {
-  if (Trim(config.encryption_secret).size() < 8) {
+  if (fp::TrimWhitespace(config.encryption_secret).size() < 8) {
     return {false, L"请先输入用于解密的同步加密口令。"};
   }
   if (create_pre_restore_backup) {
@@ -1650,7 +1648,7 @@ SyncResult UploadNow(const SyncConfig& config) {
 SyncResult DownloadNow(const SyncConfig& config,
                        bool create_pre_restore_backup,
                        PackageMetadata* metadata) {
-  if (Trim(config.encryption_secret).size() < 8) {
+  if (fp::TrimWhitespace(config.encryption_secret).size() < 8) {
     return {false, L"请先输入用于解密的同步加密口令。"};
   }
   const auto remote = ValidateRemoteConfig(config);
@@ -1732,8 +1730,9 @@ SyncResult RunAutoSync(const std::filesystem::path& settings_path) {
 
 SyncResult InstallScheduledSync(const std::filesystem::path& sync_exe_path,
                                 int interval_minutes) {
-  interval_minutes =
-      std::clamp(interval_minutes, kMinAutoIntervalMinutes, kMaxAutoIntervalMinutes);
+  interval_minutes = std::clamp(interval_minutes,
+                                fp::kMinSyncAutoIntervalMinutes,
+                                fp::kMaxSyncAutoIntervalMinutes);
   HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
   const bool co_initialized = SUCCEEDED(hr);
   if (hr == RPC_E_CHANGED_MODE) {

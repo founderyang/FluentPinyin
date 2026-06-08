@@ -1,3 +1,5 @@
+#include "common/candidate_font.h"
+#include "common/bundled_fonts.h"
 #include "common/encoding.h"
 #include "common/logging.h"
 #include "common/path_utils.h"
@@ -92,6 +94,46 @@ void TestLogFlushPolicy() {
   Expect(!ShouldRotateLog(2048, 0), "zero log rotation cap disables rotation");
 }
 
+void TestCandidateFontSettings() {
+  Expect(fp::NormalizeCandidateFontFamilySetting(L"misans") ==
+             std::wstring(fp::kDefaultCandidateFontFamily),
+         "MiSans candidate font setting stays canonical");
+  Expect(fp::NormalizeCandidateFontFamilySetting(L"source_han_sans") ==
+             std::wstring(fp::kSourceHanSansCandidateFontFamily),
+         "Source Han Sans candidate font setting stays canonical");
+  Expect(fp::NormalizeCandidateFontFamilySetting(L"plangothic") ==
+             std::wstring(fp::kSourceHanSansCandidateFontFamily),
+         "Legacy Plangothic candidate font setting maps to Source Han Sans");
+  Expect(fp::NormalizeCandidateFontFamilySetting(L"unknown") ==
+             std::wstring(fp::kDefaultCandidateFontFamily),
+         "Unknown candidate font setting falls back to MiSans");
+  Expect(fp::ClampCandidateCount(1) == fp::kMinCandidateCount,
+         "Candidate count clamps to the minimum");
+  Expect(fp::ClampCandidateCount(99) == fp::kMaxCandidateCount,
+         "Candidate count clamps to the maximum");
+  Expect(fp::CandidateFontPointSizeForLevel(-1) == fp::kBaseCandidateFontPointSize,
+         "Small candidate font levels clamp to the base point size");
+  Expect(fp::CandidateFontPointSizeForLevel(99) == 14,
+         "Large candidate font levels clamp to the largest point size");
+  Expect(fp::kCandidateFontSizeLabels.size() == fp::kCandidateFontPointSizes.size(),
+         "Candidate font labels and point sizes stay aligned");
+}
+
+void TestBundledFontSettings() {
+  Expect(fp::kSettingsUiFontFamily == L"MiSans",
+         "Settings UI font family stays on MiSans");
+  Expect(fp::BundledFontRegistryKind(L"MiSans-Regular.ttf") ==
+             fp::kTrueTypeFontRegistryKind,
+         "TTF bundled fonts use TrueType registry kind");
+  Expect(fp::BundledFontRegistryKind(L"SourceHanSansSC-Regular.otf") ==
+             fp::kOpenTypeFontRegistryKind,
+         "OTF bundled fonts use OpenType registry kind");
+  Expect(fp::BundledFontRegistryValueName(fp::kBundledFontEntries[0],
+                                          fp::kTrueTypeFontRegistryKind) ==
+             L"MiSans (TrueType)",
+         "Bundled font registry value names are shared");
+}
+
 void WriteBytes(const std::filesystem::path& path, const std::string& bytes) {
   std::ofstream output(path, std::ios::binary | std::ios::trunc);
   output.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
@@ -164,6 +206,8 @@ int main() {
   TestEncodingInvalidInput();
   TestPaths();
   TestLogFlushPolicy();
+  TestCandidateFontSettings();
+  TestBundledFontSettings();
   TestSettingsStoreReadWrite();
   std::error_code cleanup_error;
   std::filesystem::remove_all(g_isolated_appdata_root, cleanup_error);

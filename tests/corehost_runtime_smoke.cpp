@@ -4,17 +4,18 @@
 #include <windows.h>
 
 #include <chrono>
+#include <cstdint>
 #include <filesystem>
 #include <iostream>
 #include <optional>
 #include <string>
 #include <system_error>
 #include <thread>
+#include <vector>
 
 namespace {
 
-bool WaitForPipeGone(std::chrono::milliseconds timeout) {
-  const std::wstring pipe_name = fp::coreipc::PipeName();
+bool WaitForPipeGone(const std::wstring& pipe_name, std::chrono::milliseconds timeout) {
   const auto deadline = std::chrono::steady_clock::now() + timeout;
   while (std::chrono::steady_clock::now() < deadline) {
     if (!WaitNamedPipeW(pipe_name.c_str(), 50)) {
@@ -144,8 +145,94 @@ struct CoreHostProcess {
   }
 };
 
-bool WaitForPipeReady(std::chrono::milliseconds timeout) {
-  const std::wstring pipe_name = fp::coreipc::PipeName();
+class ScopedHandle {
+ public:
+  ScopedHandle() = default;
+  explicit ScopedHandle(HANDLE handle) : handle_(handle) {}
+  ScopedHandle(const ScopedHandle&) = delete;
+  ScopedHandle& operator=(const ScopedHandle&) = delete;
+  ~ScopedHandle() {
+    reset();
+  }
+
+  [[nodiscard]] HANDLE get() const noexcept { return handle_; }
+  [[nodiscard]] bool valid() const noexcept {
+    return handle_ != nullptr && handle_ != INVALID_HANDLE_VALUE;
+  }
+  void reset(HANDLE handle = nullptr) noexcept {
+    if (valid()) {
+      CloseHandle(handle_);
+    }
+    handle_ = handle;
+  }
+
+ private:
+  HANDLE handle_ = nullptr;
+};
+
+class ScopedAttributeList {
+ public:
+  explicit ScopedAttributeList(DWORD attribute_count) {
+    SIZE_T bytes = 0;
+    InitializeProcThreadAttributeList(nullptr, attribute_count, 0, &bytes);
+    if (bytes == 0) {
+      return;
+    }
+    storage_.resize(bytes);
+    list_ = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(storage_.data());
+    if (!InitializeProcThreadAttributeList(list_, attribute_count, 0, &bytes)) {
+      list_ = nullptr;
+      storage_.clear();
+    }
+  }
+  ScopedAttributeList(const ScopedAttributeList&) = delete;
+  ScopedAttributeList& operator=(const ScopedAttributeList&) = delete;
+  ~ScopedAttributeList() {
+    if (list_ != nullptr) {
+      DeleteProcThreadAttributeList(list_);
+    }
+  }
+
+  [[nodiscard]] LPPROC_THREAD_ATTRIBUTE_LIST get() const noexcept { return list_; }
+  [[nodiscard]] bool valid() const noexcept { return list_ != nullptr; }
+
+ private:
+  std::vector<unsigned char> storage_;
+  LPPROC_THREAD_ATTRIBUTE_LIST list_ = nullptr;
+};
+
+bool CreateChildSecretPipe(ScopedHandle* read_handle, ScopedHandle* write_handle) {
+  SECURITY_ATTRIBUTES attributes{};
+  attributes.nLength = sizeof(attributes);
+  attributes.bInheritHandle = TRUE;
+  HANDLE read = nullptr;
+  HANDLE write = nullptr;
+  if (!CreatePipe(&read, &write, &attributes, 0)) {
+    return false;
+  }
+  read_handle->reset(read);
+  write_handle->reset(write);
+  return true;
+}
+
+bool WriteChildSecret(HANDLE pipe, const std::string& secret) {
+  if (pipe == nullptr || pipe == INVALID_HANDLE_VALUE) {
+    return false;
+  }
+  const auto size = static_cast<std::uint32_t>(secret.size());
+  DWORD written = 0;
+  if (!WriteFile(pipe, &size, sizeof(size), &written, nullptr) ||
+      written != sizeof(size)) {
+    return false;
+  }
+  if (size == 0) {
+    return true;
+  }
+  return WriteFile(pipe, secret.data(), size, &written, nullptr) &&
+         written == size;
+}
+
+bool WaitForPipeReady(const std::wstring& pipe_name, std::chrono::milliseconds timeout) {
   const auto deadline = std::chrono::steady_clock::now() + timeout;
   while (std::chrono::steady_clock::now() < deadline) {
     if (WaitNamedPipeW(pipe_name.c_str(), 50)) {
@@ -158,38 +245,80 @@ bool WaitForPipeReady(std::chrono::milliseconds timeout) {
 
 std::optional<CoreHostProcess> StartIsolatedCoreHost(
     const std::filesystem::path& corehost_path,
-    const std::filesystem::path& temp_root) {
+    const std::filesystem::path& temp_root,
+    const std::wstring& pipe_suffix,
+    const std::string& ipc_secret) {
   const auto user_dir = temp_root / L"user";
   const auto staging_dir = temp_root / L"build";
   const auto log_dir = temp_root / L"log";
+  ScopedHandle secret_read;
+  ScopedHandle secret_write;
+  if (!CreateChildSecretPipe(&secret_read, &secret_write)) {
+    std::wcerr << L"Failed to create isolated corehost secret pipe: "
+               << GetLastError() << L"\n";
+    return std::nullopt;
+  }
   std::wstring command_line =
       Quote(corehost_path.wstring()) + L" --user-data-dir " + Quote(user_dir.wstring()) +
       L" --staging-dir " + Quote(staging_dir.wstring()) +
-      L" --log-dir " + Quote(log_dir.wstring());
-  STARTUPINFOW startup{};
-  startup.cb = sizeof(startup);
-  startup.dwFlags = STARTF_USESHOWWINDOW;
-  startup.wShowWindow = SW_HIDE;
+      L" --log-dir " + Quote(log_dir.wstring()) +
+      L" --pipe-suffix " + Quote(pipe_suffix) +
+      L" --ipc-secret-handle " +
+      std::to_wstring(reinterpret_cast<std::uintptr_t>(secret_read.get())) +
+      L" --parent-pid " + std::to_wstring(GetCurrentProcessId());
+  ScopedAttributeList attributes(1);
+  if (!attributes.valid()) {
+    std::wcerr << L"Failed to allocate isolated corehost startup attributes.\n";
+    return std::nullopt;
+  }
+  HANDLE inherited_handles[] = {secret_read.get()};
+  if (!UpdateProcThreadAttribute(attributes.get(),
+                                 0,
+                                 PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
+                                 inherited_handles,
+                                 sizeof(inherited_handles),
+                                 nullptr,
+                                 nullptr)) {
+    std::wcerr << L"Failed to configure isolated corehost inherited handle list: "
+               << GetLastError() << L"\n";
+    return std::nullopt;
+  }
+  STARTUPINFOEXW startup{};
+  startup.StartupInfo.cb = sizeof(startup);
+  startup.StartupInfo.dwFlags = STARTF_USESHOWWINDOW;
+  startup.StartupInfo.wShowWindow = SW_HIDE;
+  startup.lpAttributeList = attributes.get();
   PROCESS_INFORMATION process{};
   const BOOL created = CreateProcessW(corehost_path.c_str(),
                                       command_line.data(),
                                       nullptr,
                                       nullptr,
-                                      FALSE,
-                                      CREATE_NO_WINDOW,
+                                      TRUE,
+                                      CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT,
                                       nullptr,
                                       corehost_path.parent_path().c_str(),
-                                      &startup,
+                                      &startup.StartupInfo,
                                       &process);
   if (!created) {
     std::wcerr << L"Failed to start isolated corehost: " << GetLastError() << L"\n";
     return std::nullopt;
   }
+  secret_read.reset();
+  const bool secret_written = WriteChildSecret(secret_write.get(), ipc_secret);
+  const DWORD secret_write_error = secret_written ? ERROR_SUCCESS : GetLastError();
+  secret_write.reset();
   CloseHandle(process.hThread);
   CoreHostProcess corehost;
   corehost.process = process.hProcess;
   corehost.process_id = process.dwProcessId;
-  if (!WaitForPipeReady(std::chrono::seconds(5))) {
+  if (!secret_written) {
+    std::wcerr << L"Failed to send isolated corehost IPC secret: "
+               << secret_write_error << L"\n";
+    corehost.TerminateIfRunning();
+    return std::nullopt;
+  }
+  if (!WaitForPipeReady(fp::coreipc::PipeNameForSuffix(pipe_suffix),
+                        std::chrono::seconds(5))) {
     DWORD exit_code = STILL_ACTIVE;
     GetExitCodeProcess(corehost.process, &exit_code);
     std::wcerr << L"Isolated corehost pipe was not ready. pid=" << corehost.process_id
@@ -215,10 +344,11 @@ int wmain(int argc, wchar_t** argv) {
   }
 
   const std::wstring pipe_suffix = RuntimeSmokePipeSuffix();
-  SetEnvironmentVariableW(L"FLUENT_PINYIN_COREHOST_PIPE_SUFFIX", pipe_suffix.c_str());
-  fp::tsf::RimeCoreClient cleanup_client(corehost_path);
+  const std::string ipc_secret = "runtime-smoke-secret-" +
+                                 std::to_string(GetCurrentProcessId());
+  fp::tsf::RimeCoreClient cleanup_client(corehost_path, pipe_suffix, ipc_secret);
   cleanup_client.ShutdownSharedEngine();
-  WaitForPipeGone(std::chrono::seconds(5));
+  WaitForPipeGone(fp::coreipc::PipeNameForSuffix(pipe_suffix), std::chrono::seconds(5));
 
   const auto temp_root =
       std::filesystem::temp_directory_path() / L"FluentPinyin-corehost-runtime-smoke";
@@ -226,12 +356,12 @@ int wmain(int argc, wchar_t** argv) {
   std::filesystem::remove_all(temp_root, error);
   std::filesystem::create_directories(temp_root, error);
   UseIsolatedAppData(temp_root);
-  auto corehost = StartIsolatedCoreHost(corehost_path, temp_root);
+  auto corehost = StartIsolatedCoreHost(corehost_path, temp_root, pipe_suffix, ipc_secret);
   if (!Expect(corehost.has_value(), "isolated corehost starts")) {
     return 1;
   }
 
-  fp::tsf::RimeCoreClient client(corehost_path);
+  fp::tsf::RimeCoreClient client(corehost_path, pipe_suffix, ipc_secret);
   const auto status = client.Initialize();
   if (!Expect(status.initialized, "corehost initializes the shared Rime engine")) {
     std::wcerr << L"Rime status: " << status.message << L"\n";
@@ -265,7 +395,9 @@ int wmain(int argc, wchar_t** argv) {
 
   const bool shutdown_sent = client.ShutdownSharedEngine();
   ok &= Expect(shutdown_sent, "corehost accepts shutdown request");
-  ok &= Expect(WaitForPipeGone(std::chrono::seconds(8)), "corehost exits after shutdown request");
+  ok &= Expect(WaitForPipeGone(fp::coreipc::PipeNameForSuffix(pipe_suffix),
+                               std::chrono::seconds(8)),
+               "corehost exits after shutdown request");
   if (!corehost->WaitForExit(std::chrono::seconds(8))) {
     std::wcerr << L"Corehost still running after shutdown request. pid="
                << corehost->process_id << L"\n";

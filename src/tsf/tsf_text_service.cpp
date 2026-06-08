@@ -1,11 +1,17 @@
 #include "tsf/tsf_text_service.h"
 
+#include "common/broadcast_messages.h"
+#include "common/bundled_fonts.h"
+#include "common/candidate_font.h"
 #include "common/constants.h"
 #include "common/core_ipc_protocol.h"
+#include "common/encoding.h"
 #include "common/logging.h"
 #include "common/path_utils.h"
+#include "common/svg_icons.h"
 #include "common/theme.h"
 #include "tsf/guids.h"
+#include "tsf/input_mode_state.h"
 #include "tsf/module.h"
 #include "tsf/resource.h"
 #include "tsf/tsf_settings_adapter.h"
@@ -82,22 +88,11 @@ enum class CandidateFontFamily {
   kSourceHanSans,
 };
 
-constexpr int kDefaultCompactCandidateCount = 7;
-constexpr int kMinCompactCandidateCount = 3;
-constexpr int kMaxCompactCandidateCount = 9;
 constexpr int kExpandedCandidateMaxColumns = 9;
 constexpr int kVerticalExpandedCandidateColumns = 4;
 constexpr int kVerticalExpandedCandidateRows = 9;
 [[maybe_unused]] constexpr int kExpandedCandidatePageSize =
-    kDefaultCompactCandidateCount + kExpandedCandidateMaxColumns * 3;
-constexpr int kCandidateFontPointSize = 11;
-constexpr int kDefaultCandidateFontSizeLevel = 0;
-constexpr int kMinCandidateFontSizeLevel = 0;
-constexpr int kMaxCandidateFontSizeLevel = 3;
-constexpr std::array<int, 4> kCandidateFontPointSizes{11, 12, 13, 14};
-constexpr std::wstring_view kDefaultCandidateFontFamily = L"misans";
-constexpr std::wstring_view kDefaultStatusTipBlacklist =
-    L"explorer.exe,fluent-pinyin-settings.exe,ShellExperienceHost.exe,StartMenuExperienceHost.exe";
+    fp::kDefaultCandidateCount + kExpandedCandidateMaxColumns * 3;
 constexpr int kCandidateToolButtonSize = 18;
 constexpr int kCandidateToolFeedbackSize = 20;
 constexpr int kCandidateToolGap = 4;
@@ -222,93 +217,71 @@ constexpr int kContextSubmenuCheckSizeDips = 16;
 constexpr int kContextSubmenuRadioDotSizeDips = 6;
 constexpr int kContextSubmenuOverlapDips = 2;
 constexpr std::wstring_view kFluentPinyinWebsiteUrl = L"";
-constexpr std::wstring_view kToolbarVisibleSetting = L"toolbar_visible_v2";
-constexpr std::wstring_view kToolbarPositionUserSetting = L"toolbar_position_user_v2";
-constexpr std::wstring_view kToolbarPositionSetting = L"toolbar_position_v2";
-constexpr std::wstring_view kToolbarLayoutSetting = L"toolbar_layout";
-constexpr std::wstring_view kToolbarItemsSetting = L"toolbar_items";
 constexpr wchar_t kToolbarHostControlWindowClassName[] = L"FluentPinyinToolbarHostControlWindowV3";
 constexpr wchar_t kToolbarWindowClassName[] = L"FluentPinyinToolbarWindowV3";
 constexpr wchar_t kToolbarTooltipWindowClassName[] = L"FluentPinyinToolbarTooltipWindowV3";
 constexpr wchar_t kToolbarWindowOwnerMutexName[] = L"Local\\FluentPinyin.Toolbar.WindowOwner.V3";
 
 UINT RestartInputCoreMessage() {
-  static const UINT message =
-      RegisterWindowMessageW(std::wstring(fp::kRestartInputCoreMessageName).c_str());
+  static const UINT message = fp::RegisteredBroadcastMessage(fp::kRestartInputCoreMessageName);
   return message;
 }
 
 UINT ShutdownInputCoreMessage() {
-  static const UINT message =
-      RegisterWindowMessageW(std::wstring(fp::kShutdownInputCoreMessageName).c_str());
+  static const UINT message = fp::RegisteredBroadcastMessage(fp::kShutdownInputCoreMessageName);
   return message;
 }
 
 UINT ApplyInputConfigMessage() {
-  static const UINT message =
-      RegisterWindowMessageW(std::wstring(fp::kApplyInputConfigMessageName).c_str());
+  static const UINT message = fp::RegisteredBroadcastMessage(fp::kApplyInputConfigMessageName);
   return message;
 }
 
 UINT RefreshInputStateMessage() {
-  static const UINT message =
-      RegisterWindowMessageW(std::wstring(fp::kRefreshInputStateMessageName).c_str());
+  static const UINT message = fp::RegisteredBroadcastMessage(fp::kRefreshInputStateMessageName);
   return message;
 }
 
 UINT LegacyRefreshInputStateMessage() {
   static const UINT message =
-      RegisterWindowMessageW(std::wstring(fp::kLegacyRefreshInputStateMessageName).c_str());
+      fp::RegisteredBroadcastMessage(fp::kLegacyRefreshInputStateMessageName);
   return message;
 }
 
 UINT RefreshCandidateWindowVisualsMessage() {
   static const UINT message =
-      RegisterWindowMessageW(std::wstring(fp::kRefreshCandidateWindowVisualsMessageName).c_str());
+      fp::RegisteredBroadcastMessage(fp::kRefreshCandidateWindowVisualsMessageName);
   return message;
 }
 
 void RequestInputStateRefresh() {
-  const UINT message = RefreshInputStateMessage();
-  if (message != 0) {
-    PostMessageW(HWND_BROADCAST, message, 0, 0);
-  }
+  fp::PostRegisteredBroadcastMessage(fp::kRefreshInputStateMessageName);
 }
 
 UINT ToolbarRefreshMessage() {
-  static const UINT message =
-      RegisterWindowMessageW(std::wstring(fp::kToolbarRefreshMessageName).c_str());
+  static const UINT message = fp::RegisteredBroadcastMessage(fp::kToolbarRefreshMessageName);
   return message;
 }
 
 UINT LegacyToolbarRefreshMessage() {
-  static const UINT message =
-      RegisterWindowMessageW(std::wstring(fp::kLegacyToolbarRefreshMessageName).c_str());
+  static const UINT message = fp::RegisteredBroadcastMessage(fp::kLegacyToolbarRefreshMessageName);
   return message;
 }
 
 UINT ToolbarHostShutdownMessage() {
-  static const UINT message =
-      RegisterWindowMessageW(std::wstring(fp::kToolbarHostShutdownMessageName).c_str());
+  static const UINT message = fp::RegisteredBroadcastMessage(fp::kToolbarHostShutdownMessageName);
   return message;
 }
 
 void RequestToolbarHostRefresh() {
-  const UINT message = ToolbarRefreshMessage();
-  if (message != 0) {
-    PostMessageW(HWND_BROADCAST, message, 0, 0);
-  }
-  const UINT legacy_message = LegacyToolbarRefreshMessage();
-  if (legacy_message != 0 && legacy_message != message) {
-    PostMessageW(HWND_BROADCAST, legacy_message, 0, 0);
+  fp::PostRegisteredBroadcastMessage(fp::kToolbarRefreshMessageName);
+  if (LegacyToolbarRefreshMessage() != ToolbarRefreshMessage()) {
+    fp::PostRegisteredBroadcastMessage(fp::kLegacyToolbarRefreshMessageName);
   }
 }
 
 void RequestToolbarHostShutdown() {
-  const UINT message = ToolbarHostShutdownMessage();
-  if (message != 0) {
-    PostMessageW(HWND_BROADCAST, message, 0, 0);
-  }
+  fp::PostRegisteredBroadcastMessage(fp::kToolbarHostShutdownMessageName);
 }
 
 bool ToolbarHostControlWindowExists() {
@@ -534,7 +507,7 @@ UINT ContextSubmenuCommandForRow(int parent_row, int row, bool toolbar_mode = fa
 }
 
 int CompactCandidateCount(int compact_count) {
-  return std::clamp(compact_count, kMinCompactCandidateCount, kMaxCompactCandidateCount);
+  return fp::ClampCandidateCount(compact_count);
 }
 
 int ExpandedCandidateColumnCount(int compact_count) {
@@ -552,29 +525,28 @@ int ExpandedCandidateRowCount(bool horizontal) {
 int ExpandedCandidatePageSize(bool horizontal, int compact_count) {
   (void)horizontal;
   return CompactCandidateCount(compact_count) +
-         kMaxCompactCandidateCount * kHorizontalExpandedTailRows;
+         fp::kMaxCandidateCount * kHorizontalExpandedTailRows;
 }
 
 int ExpandedCandidatePageSize(int compact_count) {
   return ExpandedCandidatePageSize(true, compact_count);
 }
 
-int CandidateFontPointSizeForLevel(int level) {
-  const int clamped = std::clamp(level, kMinCandidateFontSizeLevel, kMaxCandidateFontSizeLevel);
-  return kCandidateFontPointSizes[static_cast<size_t>(clamped)];
-}
-
 int CandidateItemHeightDips(int base_dips, int candidate_font_point_size) {
-  return base_dips + std::max(0, candidate_font_point_size - kCandidateFontPointSize) * 2;
+  return base_dips +
+         std::max(0, candidate_font_point_size - fp::kBaseCandidateFontPointSize) * 2;
 }
 
 int CandidateRowStepDips(int base_dips, int candidate_font_point_size) {
-  return base_dips + std::max(0, candidate_font_point_size - kCandidateFontPointSize) * 2;
+  return base_dips +
+         std::max(0, candidate_font_point_size - fp::kBaseCandidateFontPointSize) * 2;
 }
 
 int ScaleCandidateSelectionMark(int base_pixels, int item_height, UINT dpi) {
   const int base_item_height =
-      MulDiv(CandidateItemHeightDips(33, kCandidateFontPointSize), static_cast<int>(dpi), 96);
+      MulDiv(CandidateItemHeightDips(33, fp::kBaseCandidateFontPointSize),
+             static_cast<int>(dpi),
+             96);
   return MulDiv(base_pixels, std::max(1, item_height), std::max(1, base_item_height));
 }
 
@@ -593,15 +565,9 @@ std::array<const wchar_t*, 4> UiFontFallbackFamilies(bool traditional) {
 }
 
 CandidateFontFamily CandidateFontFamilyFromSetting(std::wstring_view value) {
-  return value == L"source_han_sans" || value == L"plangothic"
+  return fp::IsSourceHanSansCandidateFontFamily(value)
              ? CandidateFontFamily::kSourceHanSans
              : CandidateFontFamily::kMiSans;
-}
-
-std::wstring NormalizeCandidateFontFamilySetting(std::wstring_view value) {
-  return CandidateFontFamilyFromSetting(value) == CandidateFontFamily::kSourceHanSans
-             ? std::wstring(L"source_han_sans")
-             : std::wstring(kDefaultCandidateFontFamily);
 }
 
 const wchar_t* CandidateUiFontFamily(CandidateFontFamily family, bool traditional) {
@@ -637,8 +603,8 @@ bool IsBaseUiFontFamily(const wchar_t* family) {
   return name == L"MiSans" || name == L"MiSans TC";
 }
 
-void AddPrivateFontIfExists(const std::filesystem::path& font_dir, const wchar_t* file) {
-  const std::filesystem::path path = font_dir / file;
+void AddPrivateFontIfExists(const std::filesystem::path& font_dir, std::wstring_view file) {
+  const std::filesystem::path path = font_dir / std::wstring(file);
   std::error_code error;
   if (std::filesystem::exists(path, error)) {
     AddFontResourceExW(path.c_str(), FR_PRIVATE, nullptr);
@@ -650,15 +616,7 @@ void EnsureUiFontsLoaded(UiFontLoadSet load_set = UiFontLoadSet::kBase) {
   bool expected = false;
   const std::filesystem::path font_dir = ModuleDirectory() / L"fonts";
   if (base_loaded.compare_exchange_strong(expected, true)) {
-    const wchar_t* base_font_files[] = {
-        L"MiSans-Regular.ttf",
-        L"MiSans-Medium.ttf",
-        L"MiSans-Semibold.ttf",
-        L"MiSansTC-Regular.ttf",
-        L"MiSansTC-Medium.ttf",
-        L"MiSansTC-Semibold.ttf",
-    };
-    for (const wchar_t* file : base_font_files) {
+    for (const auto file : fp::kBundledBaseUiFontFiles) {
       AddPrivateFontIfExists(font_dir, file);
     }
   }
@@ -673,14 +631,7 @@ void EnsureUiFontsLoaded(UiFontLoadSet load_set = UiFontLoadSet::kBase) {
     return;
   }
 
-  const wchar_t* fallback_font_files[] = {
-      L"MiSansL3-Regular.ttf",
-      L"SourceHanSansSC-Regular.otf",
-      L"SourceHanSansTC-Regular.otf",
-      L"PlangothicP1-Regular.ttf",
-      L"PlangothicP2-Regular.ttf",
-  };
-  for (const wchar_t* file : fallback_font_files) {
+  for (const auto file : fp::kBundledFallbackUiFontFiles) {
     AddPrivateFontIfExists(font_dir, file);
   }
 }
@@ -2479,8 +2430,7 @@ void DrawFluentPathIcon(HDC dc,
 
 constexpr std::wstring_view kFluentSettings24 =
     L"M12.0122 2.25C12.7462 2.25846 13.4773 2.34326 14.1937 2.50304C14.5064 2.57279 14.7403 2.83351 14.7758 3.15196L14.946 4.67881C15.0231 5.37986 15.615 5.91084 16.3206 5.91158C16.5103 5.91188 16.6979 5.87238 16.8732 5.79483L18.2738 5.17956C18.5651 5.05159 18.9055 5.12136 19.1229 5.35362C20.1351 6.43464 20.8889 7.73115 21.3277 9.14558C21.4223 9.45058 21.3134 9.78203 21.0564 9.9715L19.8149 10.8866C19.4607 11.1468 19.2516 11.56 19.2516 11.9995C19.2516 12.4389 19.4607 12.8521 19.8157 13.1129L21.0582 14.0283C21.3153 14.2177 21.4243 14.5492 21.3297 14.8543C20.8911 16.2685 20.1377 17.5649 19.1261 18.6461C18.9089 18.8783 18.5688 18.9483 18.2775 18.8206L16.8712 18.2045C16.4688 18.0284 16.0068 18.0542 15.6265 18.274C15.2463 18.4937 14.9933 18.8812 14.945 19.3177L14.7759 20.8444C14.741 21.1592 14.5122 21.4182 14.204 21.4915C12.7556 21.8361 11.2465 21.8361 9.79803 21.4915C9.48991 21.4182 9.26105 21.1592 9.22618 20.8444L9.05736 19.32C9.00777 18.8843 8.75434 18.498 8.37442 18.279C7.99451 18.06 7.5332 18.0343 7.1322 18.2094L5.72557 18.8256C5.43422 18.9533 5.09403 18.8833 4.87678 18.6509C3.86462 17.5685 3.11119 16.2705 2.6732 14.8548C2.57886 14.5499 2.68786 14.2186 2.94485 14.0293L4.18818 13.1133C4.54232 12.8531 4.75147 12.4399 4.75147 12.0005C4.75147 11.561 4.54232 11.1478 4.18771 10.8873L2.94516 9.97285C2.6878 9.78345 2.5787 9.45178 2.67337 9.14658C3.11212 7.73215 3.86594 6.43564 4.87813 5.35462C5.09559 5.12236 5.43594 5.05259 5.72724 5.18056L7.12762 5.79572C7.53056 5.97256 7.9938 5.94585 8.37577 5.72269C8.75609 5.50209 9.00929 5.11422 9.05817 4.67764L9.22824 3.15196C9.26376 2.83335 9.49786 2.57254 9.8108 2.50294C10.5281 2.34342 11.26 2.25865 12.0122 2.25ZM12.0124 3.7499C11.5583 3.75524 11.1056 3.79443 10.6578 3.86702L10.5489 4.84418C10.4471 5.75368 9.92003 6.56102 9.13042 7.01903C8.33597 7.48317 7.36736 7.53903 6.52458 7.16917L5.62629 6.77456C5.05436 7.46873 4.59914 8.25135 4.27852 9.09168L5.07632 9.67879C5.81513 10.2216 6.25147 11.0837 6.25147 12.0005C6.25147 12.9172 5.81513 13.7793 5.0771 14.3215L4.27805 14.9102C4.59839 15.752 5.05368 16.5361 5.626 17.2316L6.53113 16.8351C7.36923 16.4692 8.33124 16.5227 9.12353 16.9794C9.91581 17.4361 10.4443 18.2417 10.548 19.1526L10.657 20.1365C11.5466 20.2878 12.4555 20.2878 13.3451 20.1365L13.4541 19.1527C13.5549 18.2421 14.0828 17.4337 14.876 16.9753C15.6692 16.5168 16.6332 16.463 17.4728 16.8305L18.3772 17.2267C18.949 16.5323 19.4041 15.7495 19.7247 14.909L18.9267 14.3211C18.1879 13.7783 17.7516 12.9162 17.7516 11.9995C17.7516 11.0827 18.1879 10.2206 18.9258 9.67847L19.7227 9.09109C19.4021 8.25061 18.9468 7.46784 18.3748 6.77356L17.4783 7.16737C17.113 7.32901 16.7178 7.4122 16.3187 7.41158C14.849 7.41004 13.6155 6.30355 13.4551 4.84383L13.3462 3.8667C12.9007 3.7942 12.4526 3.75512 12.0124 3.7499ZM11.9997 8.24995C14.0708 8.24995 15.7497 9.92888 15.7497 12C15.7497 14.071 14.0708 15.75 11.9997 15.75C9.92863 15.75 8.2497 14.071 8.2497 12C8.2497 9.92888 9.92863 8.24995 11.9997 8.24995ZM11.9997 9.74995C10.7571 9.74995 9.7497 10.7573 9.7497 12C9.7497 13.2426 10.7571 14.25 11.9997 14.25C13.2423 14.25 14.2497 13.2426 14.2497 12C14.2497 10.7573 13.2423 9.74995 11.9997 9.74995Z";
-constexpr std::wstring_view kFluentEmoji24 =
-    L"M12 1.99805C17.5237 1.99805 22.0015 6.47589 22.0015 11.9996C22.0015 17.5233 17.5237 22.0011 12 22.0011C6.47626 22.0011 1.99841 17.5233 1.99841 11.9996C1.99841 6.47589 6.47626 1.99805 12 1.99805ZM12 3.49805C7.30469 3.49805 3.49841 7.30432 3.49841 11.9996C3.49841 16.6949 7.30469 20.5011 12 20.5011C16.6952 20.5011 20.5015 16.6949 20.5015 11.9996C20.5015 7.30432 16.6952 3.49805 12 3.49805ZM8.4617 14.7829C9.31084 15.8606 10.6019 16.5012 11.9999 16.5012C13.3962 16.5012 14.6856 15.8624 15.5349 14.7871C15.7916 14.462 16.2633 14.4066 16.5883 14.6634C16.9134 14.9201 16.9688 15.3917 16.712 15.7168C15.5813 17.1485 13.8601 18.0012 11.9999 18.0012C10.1373 18.0012 8.41408 17.1462 7.28348 15.7112C7.02713 15.3859 7.08307 14.9143 7.40843 14.658C7.73379 14.4016 8.20535 14.4576 8.4617 14.7829ZM9.00041 8.75024C9.69037 8.75024 10.2497 9.30956 10.2497 9.99953C10.2497 10.6895 9.69037 11.2488 9.00041 11.2488C8.31045 11.2488 7.75112 10.6895 7.75112 9.99953C7.75112 9.30956 8.31045 8.75024 9.00041 8.75024ZM15.0004 8.75024C15.6904 8.75024 16.2497 9.30956 16.2497 9.99953C16.2497 10.6895 15.6904 11.2488 15.0004 11.2488C14.3104 11.2488 13.7511 10.6895 13.7511 9.99953C13.7511 9.30956 14.3104 8.75024 15.0004 8.75024Z";
+constexpr std::wstring_view kFluentEmoji24 = fp::svg::kFluentEmoji24Path;
 // Fluent UI System Icons: arrow_clockwise_24_regular.
 constexpr std::wstring_view kFluentArrowClockwise24 =
     L"M12 4.5C7.85786 4.5 4.5 7.85786 4.5 12C4.5 16.1421 7.85786 19.5 12 19.5C16.1421 19.5 19.5 16.1421 19.5 12C19.5 11.6236 19.4723 11.2538 19.4188 10.8923C19.3515 10.4382 19.6839 10 20.1429 10C20.5138 10 20.839 10.2562 20.8953 10.6228C20.9642 11.0718 21 11.5317 21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C14.3051 3 16.4077 3.86656 18 5.29168V4.25C18 3.83579 18.3358 3.5 18.75 3.5C19.1642 3.5 19.5 3.83579 19.5 4.25V7.25C19.5 7.66421 19.1642 8 18.75 8H15.75C15.3358 8 15 7.66421 15 7.25C15 6.83579 15.3358 6.5 15.75 6.5H17.0991C15.7609 5.25883 13.9691 4.5 12 4.5Z";
@@ -2493,23 +2443,23 @@ constexpr std::wstring_view kFluentCheckmark20 =
 constexpr std::wstring_view kFluentBoardHeart24 =
     L"M21.4963 5.56352C21.4007 3.85437 19.9844 2.49805 18.2514 2.49805H6.25065C4.45582 2.49805 3.00081 3.95313 3.0006 5.74796L3 17.7518L3.00514 17.9362C3.10076 19.6454 4.51701 21.0017 6.25006 21.0017H13.3659L11.915 19.4998H11.5V19.501L6.25 19.5017C5.33765 19.5017 4.58839 18.8036 4.50728 17.9124L4.5001 17.7517L4.5 9.49905L11.5 9.49805V12.1729C11.9493 11.7599 12.4601 11.4559 13 11.2611V3.99705L18.2514 3.99805C19.1638 3.99805 19.913 4.69609 19.9941 5.58729L20.0013 5.74802L20.0005 11.0276C20.517 11.086 21.0256 11.2361 21.5011 11.478L21.5014 5.74794L21.4963 5.56352ZM6.25073 3.99805L11.5 3.99705V7.99805L4.5 7.99905L4.5006 5.74808C4.50071 4.82994 5.20785 4.07693 6.10723 4.00386L6.25073 3.99805ZM21.9768 13.0589C23.3411 14.4711 23.3411 16.7605 21.9768 18.1727L17.5345 22.7707C17.3869 22.9235 17.1935 22.9999 17 22.9998C16.8065 22.9999 16.6131 22.9235 16.4655 22.7707L12.0232 18.1727C11.8179 17.9602 11.6435 17.7278 11.5 17.4816C10.8333 16.3376 10.8333 14.894 11.5 13.75C11.6435 13.5038 11.8179 13.2714 12.0232 13.0589C12.3155 12.7564 12.6466 12.5187 13 12.3458C14.2963 11.7116 15.8917 11.9493 16.9637 13.0589L17 13.0965L17.0363 13.0589C17.8443 12.2225 18.9498 11.8815 20.0003 12.0359C20.5295 12.1137 21.0448 12.3172 21.5011 12.6464C21.6683 12.767 21.8276 12.9045 21.9768 13.0589Z";
 constexpr std::wstring_view kFluentTriangleLeft12Filled =
-    L"M1.45866 5.21367C0.847113 5.56267 0.847113 6.43734 1.45866 6.78633L8.62781 10.8776C9.23809 11.2259 10 10.7893 10 10.0913V10.0635L10 10.0586V1.94235L10 1.93748V1.9087C10 1.2107 9.23809 0.774094 8.62781 1.12237L1.45866 5.21367Z";
+    fp::svg::kFluentTriangleLeft12FilledPath;
 constexpr std::wstring_view kFluentTriangleRight12Filled =
-    L"M10.5414 6.78633C11.1529 6.43734 11.1529 5.56267 10.5414 5.21367L3.3722 1.12237C2.76192 0.774094 2.00001 1.2107 2.00001 1.9087L2.00001 1.9365L2 1.94138L2 10.0576L2.00001 10.0625L2.00001 10.0913C2.00001 10.7893 2.76192 11.2259 3.3722 10.8776L10.5414 6.78633Z";
+    fp::svg::kFluentTriangleRight12FilledPath;
 constexpr std::wstring_view kFluentHeart16Filled =
     L"M7.54112 3.94779C6.26943 2.6761 4.21207 2.66992 2.94588 3.93611C1.67969 5.20231 1.68587 7.25966 2.95756 8.53136L7.66505 13.2389C7.86031 13.4341 8.1769 13.4341 8.37216 13.2389L13.0552 8.55858C14.3184 7.28827 14.3144 5.23668 13.0425 3.96476C11.7686 2.69079 9.71024 2.68461 8.44178 3.95306L7.99452 4.40119L7.54112 3.94779Z";
 constexpr std::wstring_view kFluentCircle20Filled =
-    L"M10 2C5.58172 2 2 5.58172 2 10C2 14.4183 5.58172 18 10 18C14.4183 18 18 14.4183 18 10C18 5.58172 14.4183 2 10 2Z";
+    fp::svg::kFluentCircle20FilledPath;
 constexpr std::wstring_view kFluentWeatherMoon24 =
-    L"M20.0258 17.0014C17.2639 21.7851 11.1471 23.4241 6.3634 20.6622C5.06068 19.9101 3.964 18.8926 3.12872 17.6797C2.84945 17.2741 3.0301 16.7141 3.49369 16.5482C7.26112 15.1997 9.27892 13.6372 10.4498 11.4021C11.6825 9.04908 12.001 6.47162 11.1387 2.93862C11.0195 2.45008 11.4053 1.98492 11.9075 2.01186C13.4645 2.09539 14.9856 2.54263 16.3649 3.33903C21.1486 6.10088 22.7876 12.2177 20.0258 17.0014ZM11.7785 12.0981C10.5272 14.4867 8.46706 16.1972 4.96104 17.597C5.5693 18.2929 6.29275 18.8894 7.1134 19.3632C11.1796 21.7108 16.3791 20.3176 18.7267 16.2514C21.0744 12.1852 19.6812 6.98571 15.6149 4.63807C14.7379 4.1317 13.7951 3.79168 12.8228 3.62253C13.4699 7.00652 13.0525 9.66622 11.7785 12.0981Z";
+    fp::svg::kFluentWeatherMoon24Path;
 constexpr std::wstring_view kFluentChevronLeft20 =
-    L"M12.3534 15.8537C12.1585 16.0493 11.8419 16.0499 11.6463 15.855L6.16178 10.39C5.94607 10.1751 5.94607 9.82574 6.16178 9.6108L11.6463 4.14582C11.8419 3.9509 12.1585 3.95147 12.3534 4.14708C12.5483 4.34269 12.5477 4.65927 12.3521 4.85418L7.18753 10.0004L12.3521 15.1466C12.5477 15.3415 12.5483 15.6581 12.3534 15.8537Z";
+    fp::svg::kFluentChevronLeft20Path;
 constexpr std::wstring_view kFluentChevronRight20 =
-    L"M7.64582 4.14708C7.84073 3.95147 8.15731 3.9509 8.35292 4.14582L13.8374 9.6108C14.0531 9.82574 14.0531 10.1751 13.8374 10.39L8.35292 15.855C8.15731 16.0499 7.84073 16.0493 7.64582 15.8537C7.4509 15.6581 7.45147 15.3415 7.64708 15.1466L12.8117 10.0004L7.64708 4.85418C7.45147 4.65927 7.4509 4.34269 7.64582 4.14708Z";
+    fp::svg::kFluentChevronRight20Path;
 constexpr std::wstring_view kFluentChevronDown20 =
-    L"M15.8537 7.64582C16.0493 7.84073 16.0499 8.15731 15.855 8.35292L10.39 13.8374C10.1751 14.0531 9.82574 14.0531 9.6108 13.8374L4.14582 8.35292C3.9509 8.15731 3.95147 7.84073 4.14708 7.64582C4.34269 7.4509 4.65927 7.45147 4.85418 7.64708L10.0004 12.8117L15.1466 7.64708C15.3415 7.45147 15.6581 7.4509 15.8537 7.64582Z";
+    fp::svg::kFluentChevronDown20Path;
 constexpr std::wstring_view kFluentChevronUp20 =
-    L"M4.14708 12.3534C3.95147 12.1585 3.9509 11.8419 4.14582 11.6463L9.6108 6.16178C9.82574 5.94607 10.1751 5.94607 10.39 6.16178L15.855 11.6463C16.0499 11.8419 16.0493 12.1585 15.8537 12.3534C15.6581 12.5483 15.3415 12.5477 15.1466 12.3521L10.0004 7.18753L4.85418 12.3521C4.65927 12.5477 4.34269 12.5483 4.14708 12.3534Z";
+    fp::svg::kFluentChevronUp20Path;
 constexpr float kMicrosoftShapeModeIconScale = 0.78f;
 constexpr float kToolbarShapeModeIconScale = 1.30f;
 
@@ -3463,17 +3413,21 @@ std::wstring ToolbarTooltipText(int item,
   (void)simplified_charset;
   switch (item) {
     case kToolbarItemInputMode:
-      return TextWithShortcut(L"\u4E2D/\u82F1\u6587", L"shortcut_toolbar_input_mode", L"Shift");
+      return TextWithShortcut(L"\u4E2D/\u82F1\u6587",
+                              fp::kShortcutToolbarInputModeSetting,
+                              fp::kDefaultShortcutToolbarInputMode);
     case kToolbarItemShape:
-      return TextWithShortcut(L"\u5168/\u534A\u89D2", L"shortcut_toolbar_shape", L"Shift+.");
+      return TextWithShortcut(L"\u5168/\u534A\u89D2",
+                              fp::kShortcutToolbarShapeSetting,
+                              fp::kDefaultShortcutToolbarShape);
     case kToolbarItemPunctuation:
       return TextWithShortcut(L"\u4E2D/\u82F1\u6587\u6807\u70B9",
-                              L"shortcut_toolbar_punctuation",
-                              L"Ctrl+.");
+                              fp::kShortcutToolbarPunctuationSetting,
+                              fp::kDefaultShortcutToolbarPunctuation);
     case kToolbarItemCharset:
       return TextWithShortcut(L"\u7B80\u4F53/\u7E41\u4F53\u4E2D\u6587\u5B57\u7B26",
-                              L"shortcut_toolbar_charset",
-                              L"Ctrl+Shift+F");
+                              fp::kShortcutToolbarCharsetSetting,
+                              fp::kDefaultShortcutToolbarCharset);
     case kToolbarItemEmoji:
       return L"\u8868\u60C5\u7B26\u53F7/\u7B26\u53F7";
     case kToolbarItemSettings:
@@ -3487,31 +3441,12 @@ int ToolbarTooltipCornerRadius(UINT dpi) {
   return ScaleHalfDipForDpi(kToolbarTooltipCornerRadiusHalfDips, dpi);
 }
 
-std::wstring Trim(std::wstring_view value) {
-  size_t first = 0;
-  while (first < value.size() && std::iswspace(value[first])) {
-    ++first;
-  }
-  size_t last = value.size();
-  while (last > first && std::iswspace(value[last - 1])) {
-    --last;
-  }
-  return std::wstring(value.substr(first, last - first));
-}
-
-std::wstring ToLower(std::wstring value) {
-  std::transform(value.begin(), value.end(), value.begin(), [](wchar_t ch) {
-    return static_cast<wchar_t>(std::towlower(ch));
-  });
-  return value;
-}
-
 bool ContainsToolbarItem(const std::vector<int>& items, int item) {
   return std::find(items.begin(), items.end(), item) != items.end();
 }
 
 std::vector<int> ParseToolbarVisibleItems(std::wstring_view value) {
-  if (Trim(value).empty()) {
+  if (fp::TrimWhitespace(value).empty()) {
     return DefaultToolbarVisibleItems();
   }
   std::vector<int> items;
@@ -3519,7 +3454,8 @@ std::vector<int> ParseToolbarVisibleItems(std::wstring_view value) {
   while (start <= value.size()) {
     const size_t separator = value.find(L',', start);
     const size_t end = separator == std::wstring_view::npos ? value.size() : separator;
-    const std::wstring token = ToLower(Trim(value.substr(start, end - start)));
+    const std::wstring token =
+        fp::ToLowerInvariant(fp::TrimWhitespace(value.substr(start, end - start)));
     for (const auto& definition : kToolbarCustomItemDefinitions) {
       if (token == definition.setting_id && !ContainsToolbarItem(items, definition.id)) {
         items.push_back(definition.id);
@@ -3639,8 +3575,8 @@ std::wstring ForegroundProcessName() {
 }
 
 bool ProcessNameMatchesPattern(std::wstring process_name, std::wstring pattern) {
-  process_name = ToLower(Trim(process_name));
-  pattern = ToLower(Trim(pattern));
+  process_name = fp::ToLowerInvariant(fp::TrimWhitespace(process_name));
+  pattern = fp::ToLowerInvariant(fp::TrimWhitespace(pattern));
   if (process_name.empty() || pattern.empty()) {
     return false;
   }
@@ -3913,15 +3849,19 @@ bool IsCandidateToolEnabled(int tool, bool has_previous_page, bool has_next_page
 std::wstring CandidateToolTooltipText(int tool, bool expanded) {
   switch (tool) {
     case kCandidateToolPrevious:
-      return TextWithShortcut(L"\u4E0A\u4E00\u9875", L"shortcut_candidate_previous_page", L"PgUp");
+      return TextWithShortcut(L"\u4E0A\u4E00\u9875",
+                              fp::kShortcutCandidatePreviousPageSetting,
+                              fp::kDefaultShortcutCandidatePreviousPage);
     case kCandidateToolNext:
-      return TextWithShortcut(L"\u4E0B\u4E00\u9875", L"shortcut_candidate_next_page", L"PgDn");
+      return TextWithShortcut(L"\u4E0B\u4E00\u9875",
+                              fp::kShortcutCandidateNextPageSetting,
+                              fp::kDefaultShortcutCandidateNextPage);
     case kCandidateToolEmoji:
       return std::wstring(L"\u8868\u60C5\u7B26\u53F7");
     case kCandidateToolExpand:
       return TextWithShortcut(expanded ? L"\u6536\u8D77" : L"\u5C55\u5F00",
-                              L"shortcut_candidate_expand",
-                              L"Tab");
+                              fp::kShortcutCandidateExpandSetting,
+                              fp::kDefaultShortcutCandidateExpand);
     case kCandidateToolSettings:
       return std::wstring(L"\u8BBE\u7F6E");
     case kCandidateToolBrand:
@@ -4247,7 +4187,7 @@ CandidateLayoutMetrics CalculateCandidateLayout(HWND window,
     }
     width = std::min(std::max(width, min_width), max_width);
 
-    const int max_tail_columns = kMaxCompactCandidateCount;
+    const int max_tail_columns = fp::kMaxCandidateCount;
     layout.candidate_rects.reserve(count);
     layout.candidate_rows.reserve(count);
     layout.candidate_columns.reserve(count);
@@ -4380,7 +4320,7 @@ CandidateLayoutMetrics CalculateCandidateLayout(HWND window,
     const int tail_rows =
         std::clamp(tail_capacity_track / std::max(1, row_step) + 1,
                    1,
-                   kMaxCompactCandidateCount);
+                   fp::kMaxCandidateCount);
 
     const int first_column_x = left;
     for (int row = 0; row < first_column_count; ++row) {
@@ -4626,7 +4566,7 @@ CandidateLayoutMetrics CalculateCandidateLayout(HWND window,
     const int gap_x = s(7);
     const int item_height = s(CandidateItemHeightDips(33, candidate_font_point_size));
     const int row_step = s(CandidateRowStepDips(34, candidate_font_point_size));
-    const int max_tail_columns = kMaxCompactCandidateCount;
+    const int max_tail_columns = fp::kMaxCandidateCount;
     const int min_item_width = s(59);
     const int tail_width = std::max(0, tail_right - tail_left);
     const int tail_columns =
@@ -7464,19 +7404,29 @@ bool ShortcutMatches(std::wstring_view setting_key, std::wstring_view fallback, 
 }
 
 UINT ToolbarShortcutCommand(WPARAM wparam) {
-  if (ShortcutMatches(L"shortcut_toolbar_input_mode", L"Shift", wparam)) {
+  if (ShortcutMatches(fp::kShortcutToolbarInputModeSetting,
+                      fp::kDefaultShortcutToolbarInputMode,
+                      wparam)) {
     return kMenuInputMode;
   }
-  if (ShortcutMatches(L"shortcut_toolbar_shape", L"Shift+.", wparam)) {
+  if (ShortcutMatches(fp::kShortcutToolbarShapeSetting,
+                      fp::kDefaultShortcutToolbarShape,
+                      wparam)) {
     return kMenuFullShape;
   }
-  if (ShortcutMatches(L"shortcut_toolbar_punctuation", L"Ctrl+.", wparam)) {
+  if (ShortcutMatches(fp::kShortcutToolbarPunctuationSetting,
+                      fp::kDefaultShortcutToolbarPunctuation,
+                      wparam)) {
     return kMenuPunctuation;
   }
-  if (ShortcutMatches(L"shortcut_toolbar_charset", L"Ctrl+Shift+F", wparam)) {
+  if (ShortcutMatches(fp::kShortcutToolbarCharsetSetting,
+                      fp::kDefaultShortcutToolbarCharset,
+                      wparam)) {
     return kMenuCharset;
   }
-  if (ShortcutMatches(L"shortcut_toolbar_emoji", L"Win+.", wparam)) {
+  if (ShortcutMatches(fp::kShortcutToolbarEmojiSetting,
+                      fp::kDefaultShortcutToolbarEmoji,
+                      wparam)) {
     return kMenuEmoji;
   }
   return 0;
@@ -7490,13 +7440,19 @@ enum class CandidateShortcutCommand {
 };
 
 CandidateShortcutCommand CandidateShortcutForKey(WPARAM wparam) {
-  if (ShortcutMatches(L"shortcut_candidate_expand", L"Tab", wparam)) {
+  if (ShortcutMatches(fp::kShortcutCandidateExpandSetting,
+                      fp::kDefaultShortcutCandidateExpand,
+                      wparam)) {
     return CandidateShortcutCommand::kExpand;
   }
-  if (ShortcutMatches(L"shortcut_candidate_previous_page", L"PgUp", wparam)) {
+  if (ShortcutMatches(fp::kShortcutCandidatePreviousPageSetting,
+                      fp::kDefaultShortcutCandidatePreviousPage,
+                      wparam)) {
     return CandidateShortcutCommand::kPreviousPage;
   }
-  if (ShortcutMatches(L"shortcut_candidate_next_page", L"PgDn", wparam)) {
+  if (ShortcutMatches(fp::kShortcutCandidateNextPageSetting,
+                      fp::kDefaultShortcutCandidateNextPage,
+                      wparam)) {
     return CandidateShortcutCommand::kNextPage;
   }
   return CandidateShortcutCommand::kNone;
@@ -7936,7 +7892,8 @@ STDMETHODIMP TsfTextService::OnTestKeyUp(ITfContext* context,
 
   const bool shift_key =
       wparam == VK_SHIFT || wparam == VK_LSHIFT || wparam == VK_RSHIFT;
-  *eaten = ((input_mode_shortcut_down_ &&
+  *eaten = (wparam == VK_CAPITAL ||
+            (input_mode_shortcut_down_ &&
              ShortcutKeyEquals(input_mode_shortcut_key_, wparam)) ||
             (shift_key && shift_key_down_ && !IsModifierShortcutActive()))
                ? TRUE
@@ -7959,6 +7916,14 @@ STDMETHODIMP TsfTextService::OnKeyUp(ITfContext* context,
     input_mode_shortcut_key_ = 0;
     shift_key_down_ = false;
     *eaten = ToggleAsciiModeFromKey(context, false) ? TRUE : FALSE;
+    return S_OK;
+  }
+
+  if (wparam == VK_CAPITAL) {
+    input_mode_shortcut_down_ = false;
+    input_mode_shortcut_key_ = 0;
+    shift_key_down_ = false;
+    *eaten = SyncCapsLockAsciiMode(context) ? TRUE : FALSE;
     return S_OK;
   }
 
@@ -8111,21 +8076,23 @@ void TsfTextService::LoadUserSettings(bool force, bool allow_candidate_changes_d
   const bool previous_toolbar_visible = toolbar_visible_;
   const std::wstring legacy_theme =
       ReadStringSetting(fp::kLegacyThemeSetting, fp::kThemeModeDark);
-  const std::wstring candidate_layout = ReadStringSetting(L"candidate_layout");
-  if (candidate_layout == L"horizontal") {
+  const std::wstring candidate_layout = ReadStringSetting(fp::kCandidateLayoutSetting);
+  if (candidate_layout == std::wstring(fp::kCandidateLayoutHorizontal)) {
     horizontal_candidate_layout_ = true;
-  } else if (candidate_layout == L"vertical") {
+  } else if (candidate_layout == std::wstring(fp::kCandidateLayoutVertical)) {
     horizontal_candidate_layout_ = false;
   } else {
-    horizontal_candidate_layout_ = ReadBoolSetting(L"candidate_horizontal", true);
+    horizontal_candidate_layout_ = ReadBoolSetting(fp::kCandidateHorizontalSetting, true);
   }
-  toolbar_visible_ = ReadToolbarVisibleSetting(kToolbarVisibleSetting, toolbar_visible_);
-  toolbar_vertical_layout_ = ReadStringSetting(kToolbarLayoutSetting, L"horizontal") == L"vertical";
-  toolbar_visible_items_ = ParseToolbarVisibleItems(ReadStringSetting(kToolbarItemsSetting));
-  super_abbrev_enabled_ = ReadBoolSetting(L"super_abbrev", true);
-  toolbar_position_user_ = ReadBoolSetting(kToolbarPositionUserSetting, false);
+  toolbar_visible_ = ReadToolbarVisibleSetting(fp::kToolbarVisibleSetting, toolbar_visible_);
+  toolbar_vertical_layout_ =
+      ReadStringSetting(fp::kToolbarLayoutSetting, fp::kToolbarLayoutHorizontal) ==
+      std::wstring(fp::kToolbarLayoutVertical);
+  toolbar_visible_items_ = ParseToolbarVisibleItems(ReadStringSetting(fp::kToolbarItemsSetting));
+  super_abbrev_enabled_ = ReadBoolSetting(fp::kSuperAbbrevSetting, true);
+  toolbar_position_user_ = ReadBoolSetting(fp::kToolbarPositionUserSetting, false);
   std::optional<POINT> toolbar_point =
-      toolbar_position_user_ ? ReadPointSetting(kToolbarPositionSetting) : std::nullopt;
+      toolbar_position_user_ ? ReadPointSetting(fp::kToolbarPositionSetting) : std::nullopt;
   if (toolbar_point) {
     toolbar_position_ = *toolbar_point;
     has_toolbar_position_ = true;
@@ -8135,18 +8102,19 @@ void TsfTextService::LoadUserSettings(bool force, bool allow_candidate_changes_d
     has_toolbar_position_ = keep_existing_user_position;
   }
   SaveToolbarSetting();
-  status_tip_enabled_ = ReadBoolSetting(L"status_tip_enabled", true);
-  status_tip_blacklist_ = ReadStringSetting(L"status_tip_blacklist", kDefaultStatusTipBlacklist);
-  compact_candidate_count_ = ReadIntSetting(L"candidate_count",
-                                            kDefaultCompactCandidateCount,
-                                            kMinCompactCandidateCount,
-                                            kMaxCompactCandidateCount);
-  candidate_font_size_level_ = ReadIntSetting(L"candidate_font_size_level",
-                                              kDefaultCandidateFontSizeLevel,
-                                              kMinCandidateFontSizeLevel,
-                                              kMaxCandidateFontSizeLevel);
-  candidate_font_family_ = NormalizeCandidateFontFamilySetting(
-      ReadStringSetting(L"candidate_font_family", kDefaultCandidateFontFamily));
+  status_tip_enabled_ = ReadBoolSetting(fp::kStatusTipEnabledSetting, true);
+  status_tip_blacklist_ =
+      ReadStringSetting(fp::kStatusTipBlacklistSetting, fp::kDefaultStatusTipBlacklist);
+  compact_candidate_count_ = ReadIntSetting(fp::kCandidateCountSetting,
+                                            fp::kDefaultCandidateCount,
+                                            fp::kMinCandidateCount,
+                                            fp::kMaxCandidateCount);
+  candidate_font_size_level_ = ReadIntSetting(fp::kCandidateFontSizeLevelSetting,
+                                              fp::kDefaultCandidateFontSizeLevel,
+                                              fp::kMinCandidateFontSizeLevel,
+                                              fp::kMaxCandidateFontSizeLevel);
+  candidate_font_family_ = fp::NormalizeCandidateFontFamilySetting(
+      ReadStringSetting(fp::kCandidateFontFamilySetting, fp::kDefaultCandidateFontFamily));
   theme_mode_ =
       fp::NormalizeThemeModeSetting(ReadStringSetting(fp::kThemeModeSetting, legacy_theme));
   theme_preset_ =
@@ -8184,11 +8152,15 @@ void TsfTextService::ApplyInputStateFromSettings(bool allow_during_composition) 
     return;
   }
 
-  ascii_mode_ = ReadStringSetting(L"default_input_mode", L"zh") == L"en";
+  ascii_mode_ = ReadStringSetting(fp::kDefaultInputModeSetting,
+                                  fp::kDefaultInputMode) ==
+                std::wstring(fp::kInputModeEnglish);
   caps_lock_ascii_mode_ = false;
-  simplified_charset_ = ReadStringSetting(L"default_charset", L"simplified") != L"traditional";
-  full_shape_mode_ = !ReadBoolSetting(L"default_shape_half", true);
-  chinese_punctuation_mode_ = ReadBoolSetting(L"default_chinese_punctuation", true);
+  simplified_charset_ =
+      ReadStringSetting(fp::kDefaultCharsetSetting,
+                        fp::kDefaultCharset) != std::wstring(fp::kCharsetTraditional);
+  full_shape_mode_ = !ReadBoolSetting(fp::kDefaultShapeHalfSetting, true);
+  chinese_punctuation_mode_ = ReadBoolSetting(fp::kDefaultChinesePunctuationSetting, true);
   if (status_tip_icon_mode_ == StatusTipIconMode::kChinesePunctuation ||
       status_tip_icon_mode_ == StatusTipIconMode::kEnglishPunctuation) {
     status_tip_icon_mode_ = chinese_punctuation_mode_ ? StatusTipIconMode::kChinesePunctuation
@@ -8351,24 +8323,24 @@ void TsfTextService::RefreshCandidateWindowVisualSettings() {
 }
 
 void TsfTextService::ReloadCandidateWindowVisualSettings() {
-  const std::wstring candidate_layout = ReadStringSetting(L"candidate_layout");
-  if (candidate_layout == L"horizontal") {
+  const std::wstring candidate_layout = ReadStringSetting(fp::kCandidateLayoutSetting);
+  if (candidate_layout == std::wstring(fp::kCandidateLayoutHorizontal)) {
     horizontal_candidate_layout_ = true;
-  } else if (candidate_layout == L"vertical") {
+  } else if (candidate_layout == std::wstring(fp::kCandidateLayoutVertical)) {
     horizontal_candidate_layout_ = false;
   } else {
-    horizontal_candidate_layout_ = ReadBoolSetting(L"candidate_horizontal", true);
+    horizontal_candidate_layout_ = ReadBoolSetting(fp::kCandidateHorizontalSetting, true);
   }
-  compact_candidate_count_ = ReadIntSetting(L"candidate_count",
-                                            kDefaultCompactCandidateCount,
-                                            kMinCompactCandidateCount,
-                                            kMaxCompactCandidateCount);
-  candidate_font_size_level_ = ReadIntSetting(L"candidate_font_size_level",
-                                              kDefaultCandidateFontSizeLevel,
-                                              kMinCandidateFontSizeLevel,
-                                              kMaxCandidateFontSizeLevel);
-  candidate_font_family_ = NormalizeCandidateFontFamilySetting(
-      ReadStringSetting(L"candidate_font_family", kDefaultCandidateFontFamily));
+  compact_candidate_count_ = ReadIntSetting(fp::kCandidateCountSetting,
+                                            fp::kDefaultCandidateCount,
+                                            fp::kMinCandidateCount,
+                                            fp::kMaxCandidateCount);
+  candidate_font_size_level_ = ReadIntSetting(fp::kCandidateFontSizeLevelSetting,
+                                              fp::kDefaultCandidateFontSizeLevel,
+                                              fp::kMinCandidateFontSizeLevel,
+                                              fp::kMaxCandidateFontSizeLevel);
+  candidate_font_family_ = fp::NormalizeCandidateFontFamilySetting(
+      ReadStringSetting(fp::kCandidateFontFamilySetting, fp::kDefaultCandidateFontFamily));
   const std::wstring legacy_theme =
       ReadStringSetting(fp::kLegacyThemeSetting, fp::kThemeModeDark);
   theme_mode_ =
@@ -8378,15 +8350,19 @@ void TsfTextService::ReloadCandidateWindowVisualSettings() {
 }
 
 void TsfTextService::PersistInputModeDefaults() const {
-  WriteStringSetting(L"default_input_mode", ascii_mode_ ? L"en" : L"zh");
-  WriteStringSetting(L"default_charset", simplified_charset_ ? L"simplified" : L"traditional");
-  WriteBoolSetting(L"default_shape_half", !full_shape_mode_);
-  WriteBoolSetting(L"default_chinese_punctuation", chinese_punctuation_mode_);
+  WriteStringSetting(fp::kDefaultInputModeSetting,
+                     ascii_mode_ ? fp::kInputModeEnglish : fp::kInputModeChinese);
+  WriteStringSetting(fp::kDefaultCharsetSetting,
+                     simplified_charset_ ? fp::kCharsetSimplified : fp::kCharsetTraditional);
+  WriteBoolSetting(fp::kDefaultShapeHalfSetting, !full_shape_mode_);
+  WriteBoolSetting(fp::kDefaultChinesePunctuationSetting, chinese_punctuation_mode_);
 }
 
 void TsfTextService::SaveCandidateLayoutSetting() const {
-  WriteBoolSetting(L"candidate_horizontal", horizontal_candidate_layout_);
-  WriteStringSetting(L"candidate_layout", horizontal_candidate_layout_ ? L"horizontal" : L"vertical");
+  WriteBoolSetting(fp::kCandidateHorizontalSetting, horizontal_candidate_layout_);
+  WriteStringSetting(fp::kCandidateLayoutSetting,
+                     horizontal_candidate_layout_ ? fp::kCandidateLayoutHorizontal
+                                                  : fp::kCandidateLayoutVertical);
 }
 
 void TsfTextService::SaveToolbarSetting() const {
@@ -8394,8 +8370,8 @@ void TsfTextService::SaveToolbarSetting() const {
   bool save_has_position = has_toolbar_position_;
   POINT save_position = toolbar_position_;
   if ((!save_position_user || !save_has_position) &&
-      ReadBoolSetting(kToolbarPositionUserSetting, false)) {
-    if (std::optional<POINT> saved_point = ReadPointSetting(kToolbarPositionSetting)) {
+      ReadBoolSetting(fp::kToolbarPositionUserSetting, false)) {
+    if (std::optional<POINT> saved_point = ReadPointSetting(fp::kToolbarPositionSetting)) {
       save_position_user = true;
       save_has_position = true;
       save_position = *saved_point;
@@ -8403,16 +8379,16 @@ void TsfTextService::SaveToolbarSetting() const {
   }
 
   std::vector<fp::SettingUpdate> updates{
-      {std::wstring(kToolbarVisibleSetting), toolbar_visible_ ? L"1" : L"0"},
-      {std::wstring(kToolbarPositionUserSetting), save_position_user ? L"1" : L"0"},
-      {std::wstring(kToolbarLayoutSetting),
-       toolbar_vertical_layout_ ? L"vertical" : L"horizontal"},
-      {std::wstring(kToolbarItemsSetting),
+      {std::wstring(fp::kToolbarVisibleSetting), toolbar_visible_ ? L"1" : L"0"},
+      {std::wstring(fp::kToolbarPositionUserSetting), save_position_user ? L"1" : L"0"},
+      {std::wstring(fp::kToolbarLayoutSetting),
+       toolbar_vertical_layout_ ? fp::kToolbarLayoutVertical : fp::kToolbarLayoutHorizontal},
+      {std::wstring(fp::kToolbarItemsSetting),
        SerializeToolbarVisibleItems(toolbar_visible_items_)},
       {L"toolbar_visible", L"0"},
   };
   if (save_position_user && save_has_position) {
-    updates.push_back({std::wstring(kToolbarPositionSetting),
+    updates.push_back({std::wstring(fp::kToolbarPositionSetting),
                        std::to_wstring(save_position.x) + L"," +
                            std::to_wstring(save_position.y)});
   }
@@ -8470,7 +8446,7 @@ void TsfTextService::ToggleToolbarLayout() {
 }
 
 int TsfTextService::CandidateFontPointSize() const noexcept {
-  return CandidateFontPointSizeForLevel(candidate_font_size_level_);
+  return fp::CandidateFontPointSizeForLevel(candidate_font_size_level_);
 }
 
 ATOM TsfTextService::EnsureControlWindowClass() {
@@ -9121,7 +9097,7 @@ size_t TsfTextService::CandidateIndexForDigit(size_t digit_index) const {
                                           CandidateFontFamilyFromSetting(candidate_font_family_),
                                           candidates_,
                                           &layout);
-  if (digit_index >= kMaxCompactCandidateCount || selectable_indices.empty()) {
+  if (digit_index >= fp::kMaxCandidateCount || selectable_indices.empty()) {
     return candidates_.size();
   }
   if (!expanded_candidate_window_) {
@@ -10792,8 +10768,10 @@ LRESULT CALLBACK TsfTextService::StaticContextSubmenuWindowProc(HWND window,
 }
 
 void TsfTextService::ToggleAsciiMode() {
-  ascii_mode_ = !ascii_mode_;
-  caps_lock_ascii_mode_ = false;
+  const CapsLockTransition transition =
+      ResolveToggleAsciiTransition(ascii_mode_, false);
+  ascii_mode_ = transition.ascii_mode;
+  caps_lock_ascii_mode_ = transition.caps_lock_ascii_mode;
   if (status_tip_icon_mode_ == StatusTipIconMode::kChinesePunctuation ||
       status_tip_icon_mode_ == StatusTipIconMode::kEnglishPunctuation) {
     status_tip_icon_mode_ = chinese_punctuation_mode_ ? StatusTipIconMode::kChinesePunctuation
@@ -10814,8 +10792,41 @@ bool TsfTextService::ToggleAsciiModeFromKey(ITfContext* context, bool caps_lock)
       return false;
     }
   }
-  ascii_mode_ = !ascii_mode_;
-  caps_lock_ascii_mode_ = ascii_mode_ && caps_lock;
+  const CapsLockTransition transition =
+      ResolveToggleAsciiTransition(ascii_mode_, caps_lock);
+  ascii_mode_ = transition.ascii_mode;
+  caps_lock_ascii_mode_ = transition.caps_lock_ascii_mode;
+  if (status_tip_icon_mode_ == StatusTipIconMode::kChinesePunctuation ||
+      status_tip_icon_mode_ == StatusTipIconMode::kEnglishPunctuation) {
+    status_tip_icon_mode_ = chinese_punctuation_mode_ ? StatusTipIconMode::kChinesePunctuation
+                                                      : StatusTipIconMode::kEnglishPunctuation;
+  }
+  PersistInputModeDefaults();
+  NotifyInputModeChanged();
+  RefreshToolbarHostIfVisible(toolbar_visible_);
+  if (toolbar_window_ != nullptr) {
+    RenderToolbarLayeredWindow();
+  }
+  ShowStatusTip(context);
+  return true;
+}
+
+bool TsfTextService::SyncCapsLockAsciiMode(ITfContext* context) {
+  const CapsLockTransition transition =
+      ResolveCapsLockTransition(ascii_mode_, caps_lock_ascii_mode_, IsCapsLockOn());
+  if (ascii_mode_ == transition.ascii_mode &&
+      caps_lock_ascii_mode_ == transition.caps_lock_ascii_mode) {
+    return true;
+  }
+
+  if (IsComposing() && !composition_input_.empty()) {
+    if (!CommitText(context, AsciiToWide(composition_input_))) {
+      return false;
+    }
+  }
+
+  ascii_mode_ = transition.ascii_mode;
+  caps_lock_ascii_mode_ = transition.caps_lock_ascii_mode;
   if (status_tip_icon_mode_ == StatusTipIconMode::kChinesePunctuation ||
       status_tip_icon_mode_ == StatusTipIconMode::kEnglishPunctuation) {
     status_tip_icon_mode_ = chinese_punctuation_mode_ ? StatusTipIconMode::kChinesePunctuation
@@ -11004,11 +11015,11 @@ void TsfTextService::OpenFluentPinyinWebsite() {
 }
 
 bool TsfTextService::toolbar_visible() const {
-  return ReadToolbarVisibleSetting(kToolbarVisibleSetting, toolbar_visible_);
+  return ReadToolbarVisibleSetting(fp::kToolbarVisibleSetting, toolbar_visible_);
 }
 
 void TsfTextService::ToggleToolbarWindow() {
-  toolbar_visible_ = !ReadToolbarVisibleSetting(kToolbarVisibleSetting, toolbar_visible_);
+  toolbar_visible_ = !ReadToolbarVisibleSetting(fp::kToolbarVisibleSetting, toolbar_visible_);
   SaveToolbarSetting();
   RequestInputStateRefresh();
   if (toolbar_visible_) {
@@ -11025,7 +11036,7 @@ void TsfTextService::ToggleToolbarWindow() {
 
 void TsfTextService::ShowToolbarWindow() {
   toolbar_visible_ = true;
-  WriteBoolSetting(L"toolbar_visible", false);
+  WriteBoolSetting(fp::kLegacyToolbarVisibleSetting, false);
   if (toolbar_window_ != nullptr && !IsWindow(toolbar_window_)) {
     toolbar_window_ = nullptr;
     ReleaseToolbarWindowOwnership();
@@ -11088,7 +11099,7 @@ void TsfTextService::ShowToolbarWindow() {
 }
 
 void TsfTextService::RefreshToolbarFromSettings() {
-  const bool visible = ReadToolbarVisibleSetting(kToolbarVisibleSetting, toolbar_visible_);
+  const bool visible = ReadToolbarVisibleSetting(fp::kToolbarVisibleSetting, toolbar_visible_);
   const std::wstring legacy_theme =
       ReadStringSetting(fp::kLegacyThemeSetting, fp::kThemeModeDark);
   theme_mode_ =
@@ -11097,14 +11108,16 @@ void TsfTextService::RefreshToolbarFromSettings() {
       fp::NormalizeThemePresetSetting(ReadStringSetting(fp::kThemePresetSetting, legacy_theme));
   apps_use_light_theme_ = AppsUseLightTheme();
   system_uses_light_theme_ = SystemUsesLightTheme();
-  toolbar_vertical_layout_ = ReadStringSetting(kToolbarLayoutSetting, L"horizontal") == L"vertical";
-  toolbar_visible_items_ = ParseToolbarVisibleItems(ReadStringSetting(kToolbarItemsSetting));
+  toolbar_vertical_layout_ =
+      ReadStringSetting(fp::kToolbarLayoutSetting, fp::kToolbarLayoutHorizontal) ==
+      std::wstring(fp::kToolbarLayoutVertical);
+  toolbar_visible_items_ = ParseToolbarVisibleItems(ReadStringSetting(fp::kToolbarItemsSetting));
   ApplyInputStateFromSettings(true);
   toolbar_visible_ = visible;
 
-  toolbar_position_user_ = ReadBoolSetting(kToolbarPositionUserSetting, false);
+  toolbar_position_user_ = ReadBoolSetting(fp::kToolbarPositionUserSetting, false);
   std::optional<POINT> toolbar_point =
-      toolbar_position_user_ ? ReadPointSetting(kToolbarPositionSetting) : std::nullopt;
+      toolbar_position_user_ ? ReadPointSetting(fp::kToolbarPositionSetting) : std::nullopt;
   if (toolbar_point) {
     toolbar_position_ = *toolbar_point;
     has_toolbar_position_ = true;
@@ -11962,7 +11975,7 @@ LRESULT TsfTextService::ToolbarWindowProc(HWND window,
         }
         return 0;
       }
-      toolbar_visible_ = ReadToolbarVisibleSetting(kToolbarVisibleSetting, toolbar_visible_);
+      toolbar_visible_ = ReadToolbarVisibleSetting(fp::kToolbarVisibleSetting, toolbar_visible_);
       if (!toolbar_visible_) {
         DestroyToolbarWindow();
       } else {
@@ -13019,7 +13032,7 @@ void TsfTextService::DrawCandidateWindow(HDC dc) {
       }
 
       SetTextColor(dc, palette.candidate_number);
-      int number_base = static_cast<int>(index) % kMaxCompactCandidateCount;
+      int number_base = static_cast<int>(index) % fp::kMaxCandidateCount;
       if (expanded_candidate_window_) {
         if (!horizontal_candidate_layout_ && index < layout.candidate_rows.size()) {
           number_base = layout.candidate_rows[index];
@@ -13035,7 +13048,7 @@ void TsfTextService::DrawCandidateWindow(HDC dc) {
           horizontal_candidate_layout_ &&
           (index >= layout.candidate_rows.size() ||
            layout.candidate_rows[index] != 0);
-      const bool show_number = number_base >= 0 && number_base < kMaxCompactCandidateCount;
+      const bool show_number = number_base >= 0 && number_base < fp::kMaxCandidateCount;
       const bool compact_vertical =
           !horizontal_candidate_layout_;
       const int number_left =

@@ -2,6 +2,7 @@
 
 #include "common/constants.h"
 #include "common/encoding.h"
+#include "common/fuzzy_pinyin.h"
 #include "common/logging.h"
 #include "common/path_utils.h"
 #include "common/settings_store.h"
@@ -97,22 +98,15 @@ std::wstring ReadStringSetting(std::wstring_view key, std::wstring_view default_
   return store.ReadString(key, default_value);
 }
 
-constexpr const char* kDefaultFuzzyPinyinRules =
-    "nl,ry,hf,rl,kg,en_eng,in_ing,c_ch,z_zh,s_sh";
-
 const std::vector<std::string>& FuzzyPinyinRuleIds() {
-  static const std::vector<std::string> rules{
-      "nl",
-      "ry",
-      "hf",
-      "rl",
-      "kg",
-      "en_eng",
-      "in_ing",
-      "c_ch",
-      "z_zh",
-      "s_sh",
-  };
+  static const std::vector<std::string> rules = [] {
+    std::vector<std::string> values;
+    values.reserve(fp::kFuzzyPinyinRuleIds.size());
+    for (const auto rule : fp::kFuzzyPinyinRuleIds) {
+      values.push_back(WideToUtf8(rule));
+    }
+    return values;
+  }();
   return rules;
 }
 
@@ -498,53 +492,70 @@ void AppendMainTranslatorUserDictFingerprint(InputSchemaSelection* selection) {
 InputSchemaSelection CurrentInputSchemaSelection() {
   InputSchemaSelection selection;
   const std::wstring input_scheme =
-      ReadStringSetting(L"input_scheme", fp::kDefaultInputScheme);
+      ReadStringSetting(fp::kInputSchemeSetting, fp::kDefaultInputScheme);
   const std::wstring double_pinyin_scheme =
-      ReadStringSetting(L"double_pinyin_scheme", fp::kDefaultDoublePinyinScheme);
-  selection.auto_pinyin_correction = ReadBoolSetting(L"auto_pinyin_correction", true);
-  selection.smart_fuzzy_pinyin = ReadBoolSetting(L"smart_fuzzy_pinyin", true);
-  selection.fuzzy_pinyin = ReadBoolSetting(L"fuzzy_pinyin", false);
-  selection.user_lexicon_enabled = ReadBoolSetting(L"user_lexicon_enabled", true);
-  selection.imported_lexicons_enabled = ReadBoolSetting(L"imported_lexicons_enabled", true);
-  selection.custom_phrases_enabled = ReadBoolSetting(L"custom_phrases_enabled", true);
-  selection.name_input_enabled = ReadBoolSetting(L"name_input", true);
+      ReadStringSetting(fp::kDoublePinyinSchemeSetting,
+                        fp::kDefaultDoublePinyinScheme);
+  selection.auto_pinyin_correction =
+      ReadBoolSetting(fp::kAutoPinyinCorrectionSetting, true);
+  selection.smart_fuzzy_pinyin =
+      ReadBoolSetting(fp::kSmartFuzzyPinyinSetting, true);
+  selection.fuzzy_pinyin = ReadBoolSetting(fp::kFuzzyPinyinSetting, false);
+  selection.user_lexicon_enabled =
+      ReadBoolSetting(fp::kUserLexiconEnabledSetting, true);
+  selection.imported_lexicons_enabled =
+      ReadBoolSetting(fp::kImportedLexiconsEnabledSetting, true);
+  selection.custom_phrases_enabled =
+      ReadBoolSetting(fp::kCustomPhrasesEnabledSetting, true);
+  selection.name_input_enabled = ReadBoolSetting(fp::kNameInputSetting, true);
   selection.wanxiang_reverse_lookup_enabled =
-      WanxiangModeSetting(L"wanxiang_reverse_lookup_enabled", true, L"u_mode");
+      WanxiangModeSetting(fp::kWanxiangReverseLookupEnabledSetting,
+                          true,
+                          fp::kLegacyUModeSetting);
   selection.wanxiang_unicode_enabled =
-      WanxiangModeSetting(L"wanxiang_unicode_enabled", true, L"u_mode");
+      WanxiangModeSetting(fp::kWanxiangUnicodeEnabledSetting,
+                          true,
+                          fp::kLegacyUModeSetting);
   selection.wanxiang_number_enabled =
-      WanxiangModeSetting(L"wanxiang_number_enabled", true, L"v_mode");
+      WanxiangModeSetting(fp::kWanxiangNumberEnabledSetting,
+                          true,
+                          fp::kLegacyVModeSetting);
   selection.wanxiang_date_enabled =
-      WanxiangModeSetting(L"wanxiang_date_enabled", true, L"v_mode");
+      WanxiangModeSetting(fp::kWanxiangDateEnabledSetting,
+                          true,
+                          fp::kLegacyVModeSetting);
   selection.wanxiang_calculator_enabled =
-      WanxiangModeSetting(L"wanxiang_calculator_enabled", true, L"v_mode");
+      WanxiangModeSetting(fp::kWanxiangCalculatorEnabledSetting,
+                          true,
+                          fp::kLegacyVModeSetting);
   selection.wanxiang_symbol_enabled =
-      WanxiangModeSetting(L"wanxiang_symbol_enabled", true);
+      WanxiangModeSetting(fp::kWanxiangSymbolEnabledSetting, true);
   selection.wanxiang_quick_symbol_enabled =
-      WanxiangModeSetting(L"wanxiang_quick_symbol_enabled", false);
+      WanxiangModeSetting(fp::kWanxiangQuickSymbolEnabledSetting, false);
   selection.wanxiang_paired_symbol_enabled =
-      WanxiangModeSetting(L"wanxiang_paired_symbol_enabled", true);
+      WanxiangModeSetting(fp::kWanxiangPairedSymbolEnabledSetting, true);
   selection.wanxiang_english_enabled =
-      WanxiangModeSetting(L"wanxiang_english_enabled", true);
+      WanxiangModeSetting(fp::kWanxiangEnglishEnabledSetting, true);
   selection.wanxiang_mixed_code_enabled =
-      WanxiangModeSetting(L"wanxiang_mixed_code_enabled", true);
+      WanxiangModeSetting(fp::kWanxiangMixedCodeEnabledSetting, true);
   selection.wanxiang_input_statistics_enabled =
-      WanxiangModeSetting(L"wanxiang_input_statistics_enabled", false);
+      WanxiangModeSetting(fp::kWanxiangInputStatisticsEnabledSetting, false);
   selection.wanxiang_auto_phrase_enabled =
-      WanxiangModeSetting(L"wanxiang_auto_phrase_enabled", true);
+      WanxiangModeSetting(fp::kWanxiangAutoPhraseEnabledSetting, true);
   selection.wanxiang_user_phrase_enabled =
-      WanxiangModeSetting(L"wanxiang_user_phrase_enabled", false);
+      WanxiangModeSetting(fp::kWanxiangUserPhraseEnabledSetting, false);
   selection.wanxiang_schema_shortcuts_enabled =
-      WanxiangModeSetting(L"wanxiang_schema_shortcuts_enabled", false);
+      WanxiangModeSetting(fp::kWanxiangSchemaShortcutsEnabledSetting, false);
   const std::wstring missing_fuzzy_rules_marker = L"__fluent_default_fuzzy_rules__";
   const std::wstring fuzzy_rules_raw =
-      ReadStringSetting(L"fuzzy_pinyin_rules", missing_fuzzy_rules_marker.c_str());
+      ReadStringSetting(fp::kFuzzyPinyinRulesSetting,
+                        missing_fuzzy_rules_marker.c_str());
   selection.fuzzy_pinyin_rules =
       ParseFuzzyPinyinRules(fuzzy_rules_raw,
                             selection.fuzzy_pinyin &&
                                 fuzzy_rules_raw == missing_fuzzy_rules_marker);
   selection.fuzzy_pinyin_custom_rules = ParseFuzzyPinyinCustomRules(
-      ReadStringSetting(L"fuzzy_pinyin_custom_rules", L""));
+      ReadStringSetting(fp::kFuzzyPinyinCustomRulesSetting, L""));
   const std::string fuzzy_rules_fingerprint =
       selection.fuzzy_pinyin ? JoinFuzzyPinyinRules(selection.fuzzy_pinyin_rules) : "";
   const std::string custom_rules_fingerprint =

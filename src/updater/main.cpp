@@ -3,10 +3,13 @@
 #include "common/logging.h"
 #include "common/path_utils.h"
 #include "updater/release_json.h"
+#include "updater/updater_config.h"
 
 #include <windows.h>
+#include <bcrypt.h>
 #include <shellapi.h>
 #include <softpub.h>
+#include <wincrypt.h>
 #include <wininet.h>
 #include <wintrust.h>
 #include <mscat.h>
@@ -21,6 +24,7 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -30,10 +34,7 @@ using fp::updater::ReleaseInfo;
 constexpr DWORD kHttpConnectTimeoutMs = 10000;
 constexpr DWORD kHttpSendTimeoutMs = 15000;
 constexpr DWORD kHttpReceiveTimeoutMs = 30000;
-constexpr std::wstring_view kExpectedPublisherSubject = L"FluentPinyin";
-constexpr std::array<std::wstring_view, 1> kExpectedPublisherThumbprints{
-    L""
-};
+using fp::updater::kExpectedPublisherThumbprints;
 
 bool SetInternetTimeouts(HINTERNET handle) {
   if (handle == nullptr) {
@@ -158,20 +159,30 @@ bool LaunchInstaller(const std::filesystem::path& installer_path, std::string_vi
              ShellExecuteW(nullptr, L"runas", L"msiexec.exe", params.c_str(), nullptr, SW_SHOWNORMAL)) > 32;
 }
 
-std::wstring CertificateThumbprint(PCCERT_CONTEXT cert) {
+std::wstring CertificateSha256Thumbprint(PCCERT_CONTEXT cert) {
   if (cert == nullptr) {
     return {};
   }
-  DWORD size = 0;
-  if (!CertGetCertificateContextProperty(cert, CERT_SHA1_HASH_PROP_ID, nullptr, &size) ||
-      size == 0) {
+
+  DWORD hash_size = 0;
+  if (!CryptHashCertificate2(BCRYPT_SHA256_ALGORITHM,
+                             0,
+                             nullptr,
+                             cert->pbCertEncoded,
+                             cert->cbCertEncoded,
+                             nullptr,
+                             &hash_size) ||
+      hash_size == 0) {
     return {};
   }
-  std::vector<BYTE> hash(size);
-  if (!CertGetCertificateContextProperty(cert,
-                                         CERT_SHA1_HASH_PROP_ID,
-                                         hash.data(),
-                                         &size)) {
+  std::vector<BYTE> hash(hash_size);
+  if (!CryptHashCertificate2(BCRYPT_SHA256_ALGORITHM,
+                             0,
+                             nullptr,
+                             cert->pbCertEncoded,
+                             cert->cbCertEncoded,
+                             hash.data(),
+                             &hash_size)) {
     return {};
   }
   constexpr wchar_t hex[] = L"0123456789ABCDEF";
@@ -221,6 +232,15 @@ std::wstring NormalizeThumbprint(std::wstring_view value) {
   return normalized;
 }
 
+bool IsSha256Thumbprint(std::wstring_view value) {
+  if (value.size() != 64) {
+    return false;
+  }
+  return std::all_of(value.begin(), value.end(), [](wchar_t ch) {
+    return (ch >= L'0' && ch <= L'9') || (ch >= L'A' && ch <= L'F');
+  });
+}
+
 PCCERT_CONTEXT PrimarySignerCertificate(const WINTRUST_DATA& trust_data) {
   CRYPT_PROVIDER_DATA* provider =
       WTHelperProvDataFromStateData(trust_data.hWVTStateData);
@@ -235,12 +255,30 @@ PCCERT_CONTEXT PrimarySignerCertificate(const WINTRUST_DATA& trust_data) {
   return cert == nullptr ? nullptr : cert->pCert;
 }
 
-bool ExpectedThumbprintsConfigured() {
-  return std::any_of(kExpectedPublisherThumbprints.begin(),
-                     kExpectedPublisherThumbprints.end(),
-                     [](std::wstring_view thumbprint) {
-                       return !thumbprint.empty();
-                     });
+bool ParseExpectedPublisherThumbprints(std::vector<std::wstring>* thumbprints) {
+  if (thumbprints == nullptr) {
+    return false;
+  }
+  thumbprints->clear();
+  size_t offset = 0;
+  while (offset <= kExpectedPublisherThumbprints.size()) {
+    const size_t comma = kExpectedPublisherThumbprints.find(L',', offset);
+    const size_t end =
+        comma == std::wstring_view::npos ? kExpectedPublisherThumbprints.size() : comma;
+    std::wstring normalized =
+        NormalizeThumbprint(kExpectedPublisherThumbprints.substr(offset, end - offset));
+    if (!normalized.empty()) {
+      if (!IsSha256Thumbprint(normalized)) {
+        return false;
+      }
+      thumbprints->push_back(std::move(normalized));
+    }
+    if (comma == std::wstring_view::npos) {
+      break;
+    }
+    offset = comma + 1;
+  }
+  return !thumbprints->empty();
 }
 
 bool VerifyInstallerPublisher(const WINTRUST_DATA& trust_data,
@@ -253,38 +291,29 @@ bool VerifyInstallerPublisher(const WINTRUST_DATA& trust_data,
     return false;
   }
 
-  const std::wstring thumbprint = CertificateThumbprint(cert);
+  const std::wstring thumbprint = CertificateSha256Thumbprint(cert);
   const std::wstring subject = CertificateSubject(cert);
-  const bool thumbprints_configured = ExpectedThumbprintsConfigured();
-  if (thumbprints_configured) {
-    const std::wstring actual_thumbprint = NormalizeThumbprint(thumbprint);
-    const bool matched = std::any_of(
-        kExpectedPublisherThumbprints.begin(),
-        kExpectedPublisherThumbprints.end(),
-        [&actual_thumbprint](std::wstring_view expected) {
-          return !expected.empty() &&
-                 actual_thumbprint == NormalizeThumbprint(expected);
-        });
-    if (!matched) {
-      fp::LogWarning(L"updater",
-                     L"Installer publisher thumbprint mismatch. subject=" + subject +
-                         L", thumbprint=" + thumbprint);
-      return false;
-    }
-    fp::LogInfo(L"updater",
-                L"Installer publisher thumbprint verified: " + thumbprint);
-    return true;
+  std::vector<std::wstring> expected_thumbprints;
+  if (!ParseExpectedPublisherThumbprints(&expected_thumbprints)) {
+    fp::LogWarning(
+        L"updater",
+        L"Updater publisher thumbprints are not configured or invalid; refusing installer. subject=" +
+            subject + L", sha256=" + thumbprint);
+    return false;
   }
 
-  if (subject.find(kExpectedPublisherSubject) == std::wstring::npos) {
+  const std::wstring actual_thumbprint = NormalizeThumbprint(thumbprint);
+  const bool matched =
+      std::find(expected_thumbprints.begin(), expected_thumbprints.end(), actual_thumbprint) !=
+      expected_thumbprints.end();
+  if (!matched) {
     fp::LogWarning(L"updater",
-                   L"Installer publisher subject mismatch. subject=" + subject +
-                       L", thumbprint=" + thumbprint);
+                   L"Installer publisher SHA-256 thumbprint mismatch. subject=" + subject +
+                       L", sha256=" + thumbprint);
     return false;
   }
   fp::LogInfo(L"updater",
-              L"Installer publisher subject verified without thumbprint pin: " +
-                  subject);
+              L"Installer publisher SHA-256 thumbprint verified: " + thumbprint);
   return true;
 }
 

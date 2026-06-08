@@ -76,12 +76,26 @@ void TestHandshakeRoundTrip() {
          "handshake response rejects mismatched nonce");
 }
 
+void TestAuthenticatedRequestRoundTrip() {
+  constexpr std::string_view secret = "secret-123";
+  const std::string inner = fp::coreipc::EncodeResetCompositionRequest();
+  const std::string request = fp::coreipc::EncodeAuthenticatedRequest(secret, inner);
+
+  std::string decoded;
+  Expect(fp::coreipc::DecodeAuthenticatedRequest(request, secret, &decoded),
+         "authenticated request accepts matching secret");
+  Expect(decoded == inner, "authenticated request preserves inner payload");
+  Expect(!fp::coreipc::DecodeAuthenticatedRequest(request, "wrong", &decoded),
+         "authenticated request rejects wrong secret");
+}
+
 }  // namespace
 
 int main() {
   TestCandidatePageRoundTrip();
   TestCommandRoundTrip();
   TestHandshakeRoundTrip();
+  TestAuthenticatedRequestRoundTrip();
   if (g_failures != 0) {
     std::cerr << g_failures << " core IPC protocol unit test failure(s)\n";
     return 1;

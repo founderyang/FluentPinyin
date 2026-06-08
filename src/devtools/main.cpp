@@ -1,5 +1,7 @@
 ﻿#include "common/constants.h"
 #include "tsf/guids.h"
+#include "common/broadcast_messages.h"
+#include "common/bundled_fonts.h"
 #include "common/encoding.h"
 #include "common/logging.h"
 #include "common/path_utils.h"
@@ -23,6 +25,7 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -255,25 +258,6 @@ bool EnsureCurrentUserFluentPinyinLanguageProfile() {
   return ok;
 }
 
-struct FontEntry {
-  std::wstring_view file;
-  std::wstring_view name;
-};
-
-constexpr std::array kFontEntries{
-    FontEntry{L"MiSans-Regular.ttf", L"MiSans"},
-    FontEntry{L"MiSans-Medium.ttf", L"MiSans Medium"},
-    FontEntry{L"MiSans-Semibold.ttf", L"MiSans Semibold"},
-    FontEntry{L"MiSansTC-Regular.ttf", L"MiSans TC"},
-    FontEntry{L"MiSansTC-Medium.ttf", L"MiSans TC Medium"},
-    FontEntry{L"MiSansTC-Semibold.ttf", L"MiSans TC Semibold"},
-    FontEntry{L"MiSansL3-Regular.ttf", L"MiSans L3"},
-    FontEntry{L"SourceHanSansSC-Regular.otf", L"Source Han Sans SC"},
-    FontEntry{L"SourceHanSansTC-Regular.otf", L"Source Han Sans TC"},
-    FontEntry{L"PlangothicP1-Regular.ttf", L"Plangothic P1"},
-    FontEntry{L"PlangothicP2-Regular.ttf", L"Plangothic P2"},
-};
-
 constexpr std::wstring_view kTaskName = L"FluentPinyinAutoSync";
 constexpr std::wstring_view kInstallDirName = L"FluentPinyin";
 constexpr wchar_t kSettingsProcessName[] = L"fluent-pinyin-settings.exe";
@@ -292,88 +276,21 @@ constexpr std::wstring_view kWindowsAppRuntimePackageFamily =
 constexpr std::wstring_view kWindowsAppRuntimeRequiredVersion =
     L"8000.806.2252.0";
 
-std::wstring ToLower(std::wstring value) {
-  std::transform(value.begin(), value.end(), value.begin(), [](wchar_t ch) {
-    return static_cast<wchar_t>(std::towlower(ch));
-  });
-  return value;
-}
-
 bool EqualsInsensitive(std::wstring_view left, std::wstring_view right) {
-  return ToLower(std::wstring(left)) == ToLower(std::wstring(right));
+  return fp::ToLowerInvariant(std::wstring(left)) ==
+         fp::ToLowerInvariant(std::wstring(right));
 }
 
 bool ContainsInsensitive(std::wstring_view value, std::wstring_view needle) {
   if (needle.empty()) {
     return true;
   }
-  return ToLower(std::wstring(value)).find(ToLower(std::wstring(needle))) !=
-         std::wstring::npos;
+  return fp::ToLowerInvariant(std::wstring(value))
+             .find(fp::ToLowerInvariant(std::wstring(needle))) != std::wstring::npos;
 }
 
 bool HasOptionPrefix(std::wstring_view arg) {
   return arg.starts_with(L"--") || arg.starts_with(L"/");
-}
-
-std::filesystem::path ModuleDirectory() {
-  std::wstring buffer(MAX_PATH, L'\0');
-  DWORD length = 0;
-  for (;;) {
-    length = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
-    if (length == 0) {
-      return std::filesystem::current_path();
-    }
-    if (length < buffer.size() - 1) {
-      break;
-    }
-    buffer.resize(buffer.size() * 2);
-  }
-
-  buffer.resize(length);
-  return std::filesystem::path(buffer).parent_path();
-}
-
-std::filesystem::path ModuleExecutablePath() {
-  std::wstring buffer(MAX_PATH, L'\0');
-  DWORD length = 0;
-  for (;;) {
-    length = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
-    if (length == 0) {
-      return {};
-    }
-    if (length < buffer.size() - 1) {
-      break;
-    }
-    buffer.resize(buffer.size() * 2);
-  }
-
-  buffer.resize(length);
-  return std::filesystem::path(buffer);
-}
-
-std::filesystem::path SystemDirectoryPath() {
-  std::wstring buffer(MAX_PATH, L'\0');
-  const UINT length = GetSystemDirectoryW(buffer.data(), static_cast<UINT>(buffer.size()));
-  if (length == 0) {
-    return L"C:\\Windows\\System32";
-  }
-  if (length >= buffer.size()) {
-    buffer.resize(length + 1);
-    const UINT retry_length =
-        GetSystemDirectoryW(buffer.data(), static_cast<UINT>(buffer.size()));
-    if (retry_length == 0 || retry_length >= buffer.size()) {
-      return L"C:\\Windows\\System32";
-    }
-    buffer.resize(retry_length);
-    return std::filesystem::path(buffer);
-  }
-  buffer.resize(length);
-  return std::filesystem::path(buffer);
-}
-
-void UseSafeCurrentDirectory() {
-  const auto system_dir = SystemDirectoryPath();
-  SetCurrentDirectoryW(system_dir.c_str());
 }
 
 std::filesystem::path EnvironmentPath(const wchar_t* name) {
@@ -397,19 +314,6 @@ std::filesystem::path DefaultInstallDir() {
     program_files = L"C:\\Program Files";
   }
   return program_files / std::wstring(kInstallDirName);
-}
-
-std::wstring FontRegistryName(const FontEntry& font, std::wstring_view kind) {
-  std::wstring name(font.name);
-  name.append(L" (");
-  name.append(kind);
-  name.push_back(L')');
-  return name;
-}
-
-std::wstring FontRegistryKind(const FontEntry& font) {
-  const auto lower = ToLower(std::wstring(font.file));
-  return lower.ends_with(L".otf") ? L"OpenType" : L"TrueType";
 }
 
 void BroadcastFontChange() {
@@ -680,20 +584,7 @@ std::vector<std::wstring> ParseMultiStringWithEmptyItems(const std::vector<BYTE>
 }
 
 void RemoveStalePendingDeletes() {
-  constexpr std::array kNeedles{
-      std::wstring_view{L"\\FluentPinyin"},
-      std::wstring_view{L"MiSans-Regular.ttf"},
-      std::wstring_view{L"MiSans-Medium.ttf"},
-      std::wstring_view{L"MiSans-Semibold.ttf"},
-      std::wstring_view{L"MiSansTC-Regular.ttf"},
-      std::wstring_view{L"MiSansTC-Medium.ttf"},
-      std::wstring_view{L"MiSansTC-Semibold.ttf"},
-      std::wstring_view{L"MiSansL3-Regular.ttf"},
-      std::wstring_view{L"SourceHanSansSC-Regular.otf"},
-      std::wstring_view{L"SourceHanSansTC-Regular.otf"},
-      std::wstring_view{L"PlangothicP1-Regular.ttf"},
-      std::wstring_view{L"PlangothicP2-Regular.ttf"},
-  };
+  constexpr std::wstring_view kInstallDirNeedle = L"\\FluentPinyin";
 
   HKEY key = nullptr;
   if (RegOpenKeyExW(HKEY_LOCAL_MACHINE,
@@ -723,18 +614,25 @@ void RemoveStalePendingDeletes() {
   data.resize(bytes);
 
   const auto entries = ParseMultiStringWithEmptyItems(data);
+  const auto font_match = [](std::wstring_view value) {
+    return std::any_of(fp::kBundledFontEntries.begin(),
+                       fp::kBundledFontEntries.end(),
+                       [&](const auto& font) {
+                         return ContainsInsensitive(value, font.file);
+                       });
+  };
   std::vector<std::wstring> filtered;
   bool changed = false;
   for (size_t index = 0; index < entries.size(); index += 2) {
     const auto& source = entries[index];
     const std::wstring target = index + 1 < entries.size() ? entries[index + 1] : L"";
     bool remove = false;
-    for (const auto needle : kNeedles) {
-      if (ContainsInsensitive(source, needle) || ContainsInsensitive(target, needle)) {
-        remove = true;
-        changed = true;
-        break;
-      }
+    const bool install_dir_match =
+        ContainsInsensitive(source, kInstallDirNeedle) ||
+        ContainsInsensitive(target, kInstallDirNeedle);
+    if (install_dir_match || font_match(source) || font_match(target)) {
+      remove = true;
+      changed = true;
     }
     if (!remove) {
       filtered.push_back(source);
@@ -769,14 +667,16 @@ void RemoveStalePendingDeletes() {
   RegCloseKey(key);
 }
 
-void RegisterDeleteOnReboot(const std::filesystem::path& path) {
+void LogDeferredDeleteSkipped(const std::filesystem::path& path) {
   if (path.empty()) {
     return;
   }
-  MoveFileExW(path.c_str(), nullptr, MOVEFILE_DELAY_UNTIL_REBOOT);
+  fp::LogWarning(L"installer",
+                 L"cleanup left path in place to avoid Windows restart prompts: " +
+                     path.wstring());
 }
 
-bool RemoveFileNowOrOnReboot(const std::filesystem::path& path) {
+bool RemoveFileNow(const std::filesystem::path& path) {
   if (path.empty()) {
     return true;
   }
@@ -805,7 +705,7 @@ bool RemoveFileNowOrOnReboot(const std::filesystem::path& path) {
     error.clear();
   }
 
-  RegisterDeleteOnReboot(path);
+  LogDeferredDeleteSkipped(path);
   return false;
 }
 
@@ -860,13 +760,13 @@ void RemovePathTree(const std::filesystem::path& path) {
             });
   for (const auto& child : remaining) {
     if (std::filesystem::is_regular_file(child, error)) {
-      RemoveFileNowOrOnReboot(child);
+      RemoveFileNow(child);
     } else {
-      RegisterDeleteOnReboot(child);
+      LogDeferredDeleteSkipped(child);
     }
     error.clear();
   }
-  RegisterDeleteOnReboot(path);
+  LogDeferredDeleteSkipped(path);
 }
 
 bool IsSafeInstallDirectory(const std::filesystem::path& path) {
@@ -888,19 +788,25 @@ FontCleanupSummary RemoveFontFilesAndRegistry() {
   const auto target_dir = fp::GetLocalAppDataPath() / L"Microsoft" / L"Windows" / L"Fonts";
   FontCleanupSummary summary;
 
-  for (const auto& font : kFontEntries) {
+  for (const auto& font : fp::kBundledFontEntries) {
     const auto target = target_dir / std::wstring(font.file);
     for (int attempt = 0; attempt < 4; ++attempt) {
       RemoveFontResourceExW(target.c_str(), 0, nullptr);
       ++summary.resource_remove_attempts;
     }
-    if (DeleteRegistryValue(HKEY_CURRENT_USER, kFontsRegistry, FontRegistryName(font, L"TrueType"))) {
+    if (DeleteRegistryValue(
+            HKEY_CURRENT_USER,
+            kFontsRegistry,
+            fp::BundledFontRegistryValueName(font, fp::kTrueTypeFontRegistryKind))) {
       ++summary.registry_values_deleted;
     }
-    if (DeleteRegistryValue(HKEY_CURRENT_USER, kFontsRegistry, FontRegistryName(font, L"OpenType"))) {
+    if (DeleteRegistryValue(
+            HKEY_CURRENT_USER,
+            kFontsRegistry,
+            fp::BundledFontRegistryValueName(font, fp::kOpenTypeFontRegistryKind))) {
       ++summary.registry_values_deleted;
     }
-    RemoveFileNowOrOnReboot(target);
+    RemoveFileNow(target);
     ++summary.file_delete_requests;
   }
   BroadcastFontChange();
@@ -1150,7 +1056,7 @@ std::wstring NormalizePathForCompare(const std::filesystem::path& path) {
   while (value.size() > 3 && (value.back() == L'\\' || value.back() == L'/')) {
     value.pop_back();
   }
-  return ToLower(value);
+  return fp::ToLowerInvariant(std::move(value));
 }
 
 bool IsPathWithinDirectory(const std::filesystem::path& path,
@@ -1448,7 +1354,8 @@ int EnsureWindowsAppRuntime() {
     return 0;
   }
 
-  const auto installer = ModuleDirectory() / std::wstring(kWindowsAppRuntimeInstallerName);
+  const auto installer =
+      fp::GetSiblingExecutablePath(kWindowsAppRuntimeInstallerName);
   std::error_code error;
   if (!std::filesystem::exists(installer, error)) {
     fp::LogError(L"installer",
@@ -1533,7 +1440,7 @@ int FinalizeInstall() {
 
 int StartRimeWarmupProcess() {
   const ULONGLONG start_tick = GetTickCount64();
-  const auto executable = ModuleExecutablePath();
+  const auto executable = fp::GetModuleExecutablePath();
   if (executable.empty()) {
     fp::LogWarning(L"installer", L"Failed to resolve devtools path for Rime warmup.");
     return 1;
@@ -1847,20 +1754,13 @@ int ActiveProfile() {
   return IsFpProfile(profile) || IsMicrosoftPinyinProfile(profile) ? 0 : 2;
 }
 
-int BroadcastRegisteredMessage(std::wstring_view message_name, const char* label) {
-  const UINT message = RegisterWindowMessageW(std::wstring(message_name).c_str());
-  if (message == 0) {
+int SendRegisteredBroadcastCommand(std::wstring_view message_name, const char* label) {
+  if (fp::RegisteredBroadcastMessage(message_name) == 0) {
     std::wcerr << L"RegisterWindowMessage failed.\n";
     return 1;
   }
 
-  SendMessageTimeoutW(HWND_BROADCAST,
-                      message,
-                      0,
-                      0,
-                      SMTO_ABORTIFHUNG | SMTO_NORMAL,
-                      3000,
-                      nullptr);
+  fp::SendRegisteredBroadcastMessage(message_name, 3000);
   std::cout << label << " broadcast sent.\n";
   return 0;
 }
@@ -2160,7 +2060,7 @@ void PrintUsage() {
 }  // namespace
 
 int wmain(int argc, wchar_t** argv) {
-  UseSafeCurrentDirectory();
+  fp::UseSystemCurrentDirectory();
   if (argc < 2) {
     PrintUsage();
     return 1;
@@ -2195,7 +2095,8 @@ int wmain(int argc, wchar_t** argv) {
     return ActiveProfile();
   }
   if (command == L"shutdown-core") {
-    return BroadcastRegisteredMessage(fp::kShutdownInputCoreMessageName, "Input core shutdown");
+    return SendRegisteredBroadcastCommand(fp::kShutdownInputCoreMessageName,
+                                          "Input core shutdown");
   }
   if (command == L"smoke") {
     return SmokeTestService();
@@ -2253,7 +2154,7 @@ int wmain(int argc, wchar_t** argv) {
 }
 
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
-  UseSafeCurrentDirectory();
+  fp::UseSystemCurrentDirectory();
   int argc = 0;
   wchar_t** argv = CommandLineToArgvW(GetCommandLineW(), &argc);
   if (argv == nullptr) {

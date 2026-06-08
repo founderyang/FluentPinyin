@@ -14,8 +14,155 @@ inline constexpr std::wstring_view kGitHubLatestReleaseApiUrl =
     L"https://api.github.com/repos/founderyang/FluentPinyin/releases/latest";
 inline constexpr std::wstring_view kReleaseMsiAssetName = L"FluentPinyin.msi";
 inline constexpr std::wstring_view kLogsDirectoryName = L"Logs";
-inline constexpr std::wstring_view kDefaultInputScheme = L"pinyin";
+inline constexpr std::wstring_view kInputSchemePinyin = L"pinyin";
+inline constexpr std::wstring_view kInputSchemeDoublePinyin = L"double_pinyin";
+inline constexpr std::wstring_view kDefaultInputScheme = kInputSchemePinyin;
 inline constexpr std::wstring_view kDefaultDoublePinyinScheme = L"zrm";
+inline constexpr std::wstring_view kInputProfileBase = L"base";
+inline constexpr std::wstring_view kInputModeChinese = L"zh";
+inline constexpr std::wstring_view kInputModeEnglish = L"en";
+inline constexpr std::wstring_view kDefaultInputMode = kInputModeChinese;
+inline constexpr std::wstring_view kCharsetSimplified = L"simplified";
+inline constexpr std::wstring_view kCharsetTraditional = L"traditional";
+inline constexpr std::wstring_view kDefaultCharset = kCharsetSimplified;
+inline constexpr std::wstring_view kLayoutHorizontal = L"horizontal";
+inline constexpr std::wstring_view kLayoutVertical = L"vertical";
+inline constexpr std::wstring_view kCandidateLayoutHorizontal = kLayoutHorizontal;
+inline constexpr std::wstring_view kCandidateLayoutVertical = kLayoutVertical;
+inline constexpr std::wstring_view kDefaultCandidateLayout = kCandidateLayoutHorizontal;
+inline constexpr std::wstring_view kDefaultCandidateFontFamily = L"misans";
+inline constexpr std::wstring_view kDefaultStatusTipBlacklist =
+    L"explorer.exe,fluent-pinyin-settings.exe,ShellExperienceHost.exe,StartMenuExperienceHost.exe";
+inline constexpr std::wstring_view kDefaultFuzzyPinyinRules =
+    L"nl,ry,hf,rl,kg,en_eng,in_ing,c_ch,z_zh,s_sh";
+inline constexpr std::wstring_view kDefaultCommonFuzzyPinyinRules =
+    L"en_eng,in_ing,c_ch,z_zh,s_sh";
+inline constexpr std::wstring_view kInputSchemeSetting = L"input_scheme";
+inline constexpr std::wstring_view kDoublePinyinSchemeSetting =
+    L"double_pinyin_scheme";
+inline constexpr std::wstring_view kInputProfileSetting = L"input_profile";
+inline constexpr std::wstring_view kAutoPinyinCorrectionSetting =
+    L"auto_pinyin_correction";
+inline constexpr std::wstring_view kSuperAbbrevSetting = L"super_abbrev";
+inline constexpr std::wstring_view kSmartFuzzyPinyinSetting =
+    L"smart_fuzzy_pinyin";
+inline constexpr std::wstring_view kFuzzyPinyinSetting = L"fuzzy_pinyin";
+inline constexpr std::wstring_view kFuzzyPinyinRulesSetting =
+    L"fuzzy_pinyin_rules";
+inline constexpr std::wstring_view kFuzzyPinyinCustomRulesSetting =
+    L"fuzzy_pinyin_custom_rules";
+inline constexpr std::wstring_view kUserLexiconEnabledSetting =
+    L"user_lexicon_enabled";
+inline constexpr std::wstring_view kCustomPhrasesEnabledSetting =
+    L"custom_phrases_enabled";
+inline constexpr std::wstring_view kImportedLexiconsEnabledSetting =
+    L"imported_lexicons_enabled";
+inline constexpr std::wstring_view kNameInputSetting = L"name_input";
+inline constexpr std::wstring_view kLegacyUModeSetting = L"u_mode";
+inline constexpr std::wstring_view kLegacyVModeSetting = L"v_mode";
+inline constexpr std::wstring_view kWanxiangReverseLookupEnabledSetting =
+    L"wanxiang_reverse_lookup_enabled";
+inline constexpr std::wstring_view kWanxiangUnicodeEnabledSetting =
+    L"wanxiang_unicode_enabled";
+inline constexpr std::wstring_view kWanxiangNumberEnabledSetting =
+    L"wanxiang_number_enabled";
+inline constexpr std::wstring_view kWanxiangDateEnabledSetting =
+    L"wanxiang_date_enabled";
+inline constexpr std::wstring_view kWanxiangCalculatorEnabledSetting =
+    L"wanxiang_calculator_enabled";
+inline constexpr std::wstring_view kWanxiangSymbolEnabledSetting =
+    L"wanxiang_symbol_enabled";
+inline constexpr std::wstring_view kWanxiangQuickSymbolEnabledSetting =
+    L"wanxiang_quick_symbol_enabled";
+inline constexpr std::wstring_view kWanxiangPairedSymbolEnabledSetting =
+    L"wanxiang_paired_symbol_enabled";
+inline constexpr std::wstring_view kWanxiangEnglishEnabledSetting =
+    L"wanxiang_english_enabled";
+inline constexpr std::wstring_view kWanxiangMixedCodeEnabledSetting =
+    L"wanxiang_mixed_code_enabled";
+inline constexpr std::wstring_view kWanxiangInputStatisticsEnabledSetting =
+    L"wanxiang_input_statistics_enabled";
+inline constexpr std::wstring_view kWanxiangAutoPhraseEnabledSetting =
+    L"wanxiang_auto_phrase_enabled";
+inline constexpr std::wstring_view kWanxiangUserPhraseEnabledSetting =
+    L"wanxiang_user_phrase_enabled";
+inline constexpr std::wstring_view kWanxiangSchemaShortcutsEnabledSetting =
+    L"wanxiang_schema_shortcuts_enabled";
+inline constexpr std::wstring_view kCandidateCountSetting = L"candidate_count";
+inline constexpr std::wstring_view kCandidateFontSizeLevelSetting =
+    L"candidate_font_size_level";
+inline constexpr std::wstring_view kCandidateFontFamilySetting = L"candidate_font_family";
+inline constexpr std::wstring_view kCandidateHorizontalSetting = L"candidate_horizontal";
+inline constexpr std::wstring_view kCandidateLayoutSetting = L"candidate_layout";
+inline constexpr std::wstring_view kStatusTipEnabledSetting = L"status_tip_enabled";
+inline constexpr std::wstring_view kStatusTipBlacklistSetting = L"status_tip_blacklist";
+inline constexpr std::wstring_view kDefaultInputModeSetting = L"default_input_mode";
+inline constexpr std::wstring_view kDefaultCharsetSetting = L"default_charset";
+inline constexpr std::wstring_view kDefaultShapeHalfSetting = L"default_shape_half";
+inline constexpr std::wstring_view kDefaultChinesePunctuationSetting =
+    L"default_chinese_punctuation";
+inline constexpr std::wstring_view kToolbarVisibleSetting = L"toolbar_visible_v2";
+inline constexpr std::wstring_view kLegacyToolbarVisibleSetting = L"toolbar_visible";
+inline constexpr std::wstring_view kToolbarPositionUserSetting = L"toolbar_position_user_v2";
+inline constexpr std::wstring_view kToolbarPositionSetting = L"toolbar_position_v2";
+inline constexpr std::wstring_view kToolbarLayoutSetting = L"toolbar_layout";
+inline constexpr std::wstring_view kToolbarLayoutHorizontal = kLayoutHorizontal;
+inline constexpr std::wstring_view kToolbarLayoutVertical = kLayoutVertical;
+inline constexpr std::wstring_view kToolbarItemsSetting = L"toolbar_items";
+inline constexpr std::wstring_view kSyncProviderSetting = L"sync_provider";
+inline constexpr std::wstring_view kSyncProviderObject = L"object";
+inline constexpr std::wstring_view kSyncProviderWebDav = L"webdav";
+inline constexpr std::wstring_view kSyncClipboardSetting = L"sync_clipboard";
+inline constexpr std::wstring_view kSyncUserDataSetting = L"sync_user_data";
+inline constexpr std::wstring_view kSyncAutoEnabledSetting = L"sync_auto_enabled";
+inline constexpr std::wstring_view kSyncAutoIntervalMinutesSetting =
+    L"sync_auto_interval_minutes";
+inline constexpr int kMinSyncAutoIntervalMinutes = 5;
+inline constexpr int kMaxSyncAutoIntervalMinutes = 1440;
+inline constexpr int kDefaultSyncAutoIntervalMinutes = 30;
+inline constexpr std::wstring_view kSyncDeviceIdSetting = L"sync_device_id";
+inline constexpr std::wstring_view kSyncObjectEndpointSetting =
+    L"sync_object_endpoint";
+inline constexpr std::wstring_view kSyncObjectBucketSetting = L"sync_object_bucket";
+inline constexpr std::wstring_view kSyncObjectRegionSetting = L"sync_object_region";
+inline constexpr std::wstring_view kSyncObjectAccessKeySetting =
+    L"sync_object_access_key";
+inline constexpr std::wstring_view kSyncObjectSecretKeySetting =
+    L"sync_object_secret_key";
+inline constexpr std::wstring_view kSyncObjectKeySetting = L"sync_object_key";
+inline constexpr std::wstring_view kDefaultSyncObjectKey = L"fluent-pinyin/sync.fpsync";
+inline constexpr std::wstring_view kSyncObjectRegionAuto = L"auto";
+inline constexpr std::wstring_view kSyncWebDavUrlSetting = L"sync_webdav_url";
+inline constexpr std::wstring_view kSyncWebDavUsernameSetting =
+    L"sync_webdav_username";
+inline constexpr std::wstring_view kSyncWebDavPasswordSetting =
+    L"sync_webdav_password";
+inline constexpr std::wstring_view kSyncEncryptionSecretSetting =
+    L"sync_encryption_secret";
+inline constexpr std::wstring_view kShortcutToolbarInputModeSetting =
+    L"shortcut_toolbar_input_mode";
+inline constexpr std::wstring_view kDefaultShortcutToolbarInputMode = L"Shift";
+inline constexpr std::wstring_view kShortcutToolbarShapeSetting =
+    L"shortcut_toolbar_shape";
+inline constexpr std::wstring_view kDefaultShortcutToolbarShape = L"Shift+.";
+inline constexpr std::wstring_view kShortcutToolbarPunctuationSetting =
+    L"shortcut_toolbar_punctuation";
+inline constexpr std::wstring_view kDefaultShortcutToolbarPunctuation = L"Ctrl+.";
+inline constexpr std::wstring_view kShortcutToolbarCharsetSetting =
+    L"shortcut_toolbar_charset";
+inline constexpr std::wstring_view kDefaultShortcutToolbarCharset = L"Ctrl+Shift+F";
+inline constexpr std::wstring_view kShortcutToolbarEmojiSetting =
+    L"shortcut_toolbar_emoji";
+inline constexpr std::wstring_view kDefaultShortcutToolbarEmoji = L"Win+.";
+inline constexpr std::wstring_view kShortcutCandidateExpandSetting =
+    L"shortcut_candidate_expand";
+inline constexpr std::wstring_view kDefaultShortcutCandidateExpand = L"Tab";
+inline constexpr std::wstring_view kShortcutCandidatePreviousPageSetting =
+    L"shortcut_candidate_previous_page";
+inline constexpr std::wstring_view kDefaultShortcutCandidatePreviousPage = L"PgUp";
+inline constexpr std::wstring_view kShortcutCandidateNextPageSetting =
+    L"shortcut_candidate_next_page";
+inline constexpr std::wstring_view kDefaultShortcutCandidateNextPage = L"PgDn";
 inline constexpr std::wstring_view kApplyInputConfigMessageName =
     L"FluentPinyin.RequestApplyInputConfig";
 inline constexpr std::wstring_view kRestartInputCoreMessageName =

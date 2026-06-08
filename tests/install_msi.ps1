@@ -36,6 +36,26 @@ function Test-InstallSucceeded {
          $tail -match "安装成功或错误状态:\s*0"
 }
 
+function Assert-NoRestartPromptMarkers {
+  param([string]$Path)
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+    return
+  }
+  $text = Get-Content -LiteralPath $Path -Raw -Encoding UTF8
+  foreach ($marker in @(
+    "ScheduleReboot",
+    "ForceReboot",
+    "PendingFileRenameOperations",
+    "REBOOTPROMPT",
+    "MsiRMFilesInUse",
+    "FilesInUse"
+  )) {
+    if ($text -match [regex]::Escape($marker)) {
+      throw "MSI log contains restart prompt marker '$marker': $Path"
+    }
+  }
+}
+
 $resolvedMsi = (Resolve-Path -LiteralPath $MsiPath).Path
 $resolvedLog = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($LogPath)
 $logDir = Split-Path -Parent $resolvedLog
@@ -63,6 +83,7 @@ while ((Get-Date) -lt $deadline) {
   $running = Get-Process -Id $process.Id -ErrorAction SilentlyContinue
   if (-not $running) {
     if (Test-InstallSucceeded -Path $resolvedLog) {
+      Assert-NoRestartPromptMarkers -Path $resolvedLog
       Write-Host "MSI install completed successfully"
       exit 0
     }
@@ -72,6 +93,7 @@ while ((Get-Date) -lt $deadline) {
     throw "MSI install process exited with code $exitCode.`n$tail"
   }
   if (Test-InstallSucceeded -Path $resolvedLog) {
+    Assert-NoRestartPromptMarkers -Path $resolvedLog
     Write-Host "MSI install completed successfully"
     exit 0
   }

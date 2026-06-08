@@ -1,6 +1,6 @@
 ﻿cmake_minimum_required(VERSION 3.24)
 
-project(FluentPinyin VERSION 00.00.07 LANGUAGES CXX)
+project(FluentPinyin VERSION 00.00.08 LANGUAGES CXX)
 
 include(CTest)
 
@@ -20,10 +20,27 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded")
 if(MSVC)
   add_compile_options(/utf-8)
   add_compile_options(/sdl)
-  add_compile_definitions($<$<CONFIG:Debug>:_ITERATOR_DEBUG_LEVEL=0>)
   add_link_options($<$<CONFIG:Release>:/guard:cf>)
-  add_compile_options($<$<CONFIG:Release>:/Z7>)
+  add_compile_options($<$<CONFIG:Release>:/Zi>)
   add_link_options($<$<CONFIG:Release>:/DEBUG:FULL> $<$<CONFIG:Release>:/OPT:REF> $<$<CONFIG:Release>:/OPT:ICF>)
+endif()
+
+option(FP_ENABLE_STRICT_WARNINGS "Build FluentPinyin targets with MSVC /W4." OFF)
+option(FP_WARNINGS_AS_ERRORS "Treat FluentPinyin compiler warnings as errors." OFF)
+option(FP_ENABLE_DEBUG_ITERATOR_CHECKS
+       "Keep MSVC Debug iterator checks enabled; may conflict with release-built dependencies."
+       OFF)
+
+if(MSVC)
+  if(FP_ENABLE_STRICT_WARNINGS)
+    add_compile_options(/W4)
+  endif()
+  if(FP_WARNINGS_AS_ERRORS)
+    add_compile_options(/WX)
+  endif()
+  if(NOT FP_ENABLE_DEBUG_ITERATOR_CHECKS)
+    add_compile_definitions($<$<CONFIG:Debug>:_ITERATOR_DEBUG_LEVEL=0>)
+  endif()
 endif()
 
 set(FP_ICON_FILES
@@ -83,10 +100,16 @@ function(fp_resolve_nuget_package out_var package_id)
   set(${out_var} "${resolved_package}" PARENT_SCOPE)
 endfunction()
 
-set(FP_LIBRIME_ROOT "${CMAKE_SOURCE_DIR}/third_party/librime/rime/dist")
-set(FP_OPENCC_ROOT "${CMAKE_SOURCE_DIR}/third_party/librime/deps")
-set(FP_OPENCC_DATA_DIR "${CMAKE_SOURCE_DIR}/third_party/librime/deps/share/opencc")
-set(FP_WANXIANG_SOURCE_DIR "${CMAKE_SOURCE_DIR}/schemas/wanxiang/current")
+set(FP_LIBRIME_ROOT "${CMAKE_SOURCE_DIR}/third_party/librime/rime/dist" CACHE PATH
+    "librime distribution root containing include/rime_api.h and lib/rime.lib")
+set(FP_OPENCC_ROOT "${CMAKE_SOURCE_DIR}/third_party/librime/deps" CACHE PATH
+    "OpenCC dependency root containing include/opencc/opencc.h and lib/opencc.lib")
+set(FP_OPENCC_DATA_DIR "${FP_OPENCC_ROOT}/share/opencc" CACHE PATH
+    "OpenCC data directory copied into rime-data/opencc")
+set(FP_WANXIANG_SOURCE_DIR "${CMAKE_SOURCE_DIR}/schemas/wanxiang/current" CACHE PATH
+    "Wanxiang schema source directory copied into rime-data")
+set(FP_UPDATER_PUBLISHER_THUMBPRINTS "" CACHE STRING
+    "Comma-separated SHA-256 certificate thumbprints accepted by fluent-pinyin-updater.")
 set(FP_WITH_LIBRIME OFF)
 if(EXISTS "${FP_LIBRIME_ROOT}/include/rime_api.h" AND EXISTS "${FP_LIBRIME_ROOT}/lib/rime.lib")
   set(FP_WITH_LIBRIME ON)
@@ -106,14 +129,23 @@ configure_file(
   @ONLY
 )
 
+configure_file(
+  "${CMAKE_SOURCE_DIR}/src/updater/updater_config.h.in"
+  "${CMAKE_BINARY_DIR}/generated/updater/updater_config.h"
+  @ONLY
+)
+
 foreach(config DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)
   string(TOUPPER "${config}" config_upper)
   set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_${config_upper} "${CMAKE_BINARY_DIR}/bin/${config}")
   set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_${config_upper} "${CMAKE_BINARY_DIR}/bin/${config}")
   set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_${config_upper} "${CMAKE_BINARY_DIR}/lib/${config}")
+  set(CMAKE_PDB_OUTPUT_DIRECTORY_${config_upper} "${CMAKE_BINARY_DIR}/bin/${config}")
+  set(CMAKE_COMPILE_PDB_OUTPUT_DIRECTORY_${config_upper} "${CMAKE_BINARY_DIR}/pdb/${config}")
 endforeach()
 
 add_library(fluent_pinyin_common STATIC
+  src/common/broadcast_messages.cpp
   src/common/core_ipc_protocol.cpp
   src/common/encoding.cpp
   src/common/logging.cpp
@@ -164,6 +196,7 @@ endif()
 add_library(fluent_pinyin_tsf SHARED
   src/tsf/class_factory.cpp
   src/tsf/dllmain.cpp
+  src/tsf/input_mode_state.cpp
   src/tsf/rime_core_client.cpp
   src/tsf/registration.cpp
   src/tsf/tsf_settings_adapter.cpp
@@ -175,6 +208,7 @@ add_library(fluent_pinyin_tsf SHARED
 target_link_libraries(fluent_pinyin_tsf PRIVATE
   fluent_pinyin_common
   advapi32
+  bcrypt
   dwmapi
   gdiplus
   gdi32
@@ -223,6 +257,7 @@ target_link_libraries(fluent_pinyin_corehost PRIVATE
   fluent_pinyin_common
   fluent_pinyin_core
   advapi32
+  shell32
 )
 
 set_target_properties(fluent_pinyin_corehost PROPERTIES OUTPUT_NAME "fluent-pinyin-corehost")
@@ -344,12 +379,20 @@ add_custom_target(fluent_pinyin_winui_projection DEPENDS "${FP_WINUI_PROJECTION_
 add_executable(fluent_pinyin_settings WIN32
   src/config_winui/main.cpp
   src/config_winui/app_paths.cpp
+  src/config_winui/candidate_layout_settings.cpp
+  src/config_winui/default_settings.cpp
+  src/config_winui/file_dialogs.cpp
   src/config_winui/fuzzy_pinyin_custom_rules.cpp
+  src/config_winui/fuzzy_pinyin_rules.cpp
   src/config_winui/hotkey_helpers.cpp
   src/config_winui/lexicon_store.cpp
   src/config_winui/settings_binding.cpp
+  src/config_winui/settings_navigation.cpp
+  src/config_winui/settings_options.cpp
+  src/config_winui/settings_ui_helpers.cpp
   src/config_winui/status_tip_blacklist.cpp
   src/config_winui/theme_helpers.cpp
+  src/config_winui/wanxiang_modes.cpp
   src/config_winui/window_helpers.cpp
   src/sync/sync_service.cpp
   src/config_winui/fluent-pinyin-settings.rc
@@ -404,9 +447,11 @@ add_executable(fluent_pinyin_updater WIN32
 target_include_directories(fluent_pinyin_updater PRIVATE "${FP_WINDOWS_SDK_CPPWINRT_INCLUDE}")
 target_link_libraries(fluent_pinyin_updater PRIVATE
   fluent_pinyin_common
+  shell32
   wininet
   wintrust
   crypt32
+  bcrypt
   runtimeobject
 )
 set_target_properties(fluent_pinyin_updater PROPERTIES OUTPUT_NAME "fluent-pinyin-updater")
@@ -425,7 +470,9 @@ target_link_libraries(fluent_pinyin_devtools PRIVATE
   gdi32
   ole32
   oleaut32
+  shell32
   taskschd
+  user32
   uuid
 )
 
@@ -450,6 +497,12 @@ if(BUILD_TESTING)
   )
   target_link_libraries(core_ipc_protocol_unit PRIVATE fluent_pinyin_common)
 
+  add_executable(tsf_input_mode_state_unit
+    tests/tsf_input_mode_state_unit.cpp
+    src/tsf/input_mode_state.cpp
+  )
+  target_link_libraries(tsf_input_mode_state_unit PRIVATE fluent_pinyin_common)
+
   add_executable(config_settings_binding_unit
     tests/config_settings_binding_unit.cpp
     src/config_winui/settings_binding.cpp
@@ -462,11 +515,36 @@ if(BUILD_TESTING)
   )
   target_link_libraries(config_app_paths_unit PRIVATE fluent_pinyin_common user32 gdi32 advapi32)
 
+  add_executable(config_candidate_layout_settings_unit
+    tests/config_candidate_layout_settings_unit.cpp
+    src/config_winui/candidate_layout_settings.cpp
+    src/config_winui/settings_binding.cpp
+  )
+  target_link_libraries(config_candidate_layout_settings_unit PRIVATE
+    fluent_pinyin_common
+    advapi32
+    user32
+  )
+
   add_executable(config_hotkey_helpers_unit
     tests/config_hotkey_helpers_unit.cpp
     src/config_winui/hotkey_helpers.cpp
   )
   target_link_libraries(config_hotkey_helpers_unit PRIVATE fluent_pinyin_common user32)
+
+  add_executable(config_default_settings_unit
+    tests/config_default_settings_unit.cpp
+    src/config_winui/default_settings.cpp
+    src/config_winui/hotkey_helpers.cpp
+    src/config_winui/settings_binding.cpp
+    src/config_winui/theme_helpers.cpp
+    src/config_winui/wanxiang_modes.cpp
+  )
+  target_link_libraries(config_default_settings_unit PRIVATE
+    fluent_pinyin_common
+    advapi32
+    user32
+  )
 
   add_executable(config_fuzzy_pinyin_custom_rules_unit
     tests/config_fuzzy_pinyin_custom_rules_unit.cpp
@@ -474,11 +552,34 @@ if(BUILD_TESTING)
   )
   target_link_libraries(config_fuzzy_pinyin_custom_rules_unit PRIVATE fluent_pinyin_common)
 
+  add_executable(config_fuzzy_pinyin_rules_unit
+    tests/config_fuzzy_pinyin_rules_unit.cpp
+    src/config_winui/fuzzy_pinyin_rules.cpp
+  )
+  target_link_libraries(config_fuzzy_pinyin_rules_unit PRIVATE fluent_pinyin_common)
+
   add_executable(config_status_tip_blacklist_unit
     tests/config_status_tip_blacklist_unit.cpp
     src/config_winui/status_tip_blacklist.cpp
+    src/config_winui/settings_binding.cpp
   )
-  target_link_libraries(config_status_tip_blacklist_unit PRIVATE fluent_pinyin_common)
+  target_link_libraries(config_status_tip_blacklist_unit PRIVATE
+    fluent_pinyin_common
+    advapi32
+    user32
+  )
+
+  add_executable(config_settings_options_unit
+    tests/config_settings_options_unit.cpp
+    src/config_winui/settings_options.cpp
+  )
+  target_link_libraries(config_settings_options_unit PRIVATE fluent_pinyin_common)
+
+  add_executable(config_settings_navigation_unit
+    tests/config_settings_navigation_unit.cpp
+    src/config_winui/settings_navigation.cpp
+  )
+  target_link_libraries(config_settings_navigation_unit PRIVATE fluent_pinyin_common)
 
   add_executable(config_theme_helpers_unit
     tests/config_theme_helpers_unit.cpp
@@ -486,6 +587,12 @@ if(BUILD_TESTING)
     src/config_winui/theme_helpers.cpp
   )
   target_link_libraries(config_theme_helpers_unit PRIVATE fluent_pinyin_common advapi32)
+
+  add_executable(config_wanxiang_modes_unit
+    tests/config_wanxiang_modes_unit.cpp
+    src/config_winui/wanxiang_modes.cpp
+  )
+  target_link_libraries(config_wanxiang_modes_unit PRIVATE fluent_pinyin_common)
 
   add_executable(config_window_helpers_unit
     tests/config_window_helpers_unit.cpp
@@ -521,7 +628,7 @@ if(BUILD_TESTING)
     tests/corehost_runtime_smoke.cpp
     src/tsf/rime_core_client.cpp
   )
-  target_link_libraries(corehost_runtime_smoke PRIVATE fluent_pinyin_common wintrust)
+  target_link_libraries(corehost_runtime_smoke PRIVATE fluent_pinyin_common wintrust bcrypt)
 
   add_executable(sync_package_integrity
     tests/sync_package_integrity.cpp
@@ -593,6 +700,10 @@ if(BUILD_TESTING)
     COMMAND core_ipc_protocol_unit
   )
   add_test(
+    NAME tsf_input_mode_state_unit
+    COMMAND tsf_input_mode_state_unit
+  )
+  add_test(
     NAME config_settings_binding_unit
     COMMAND config_settings_binding_unit
   )
@@ -601,20 +712,44 @@ if(BUILD_TESTING)
     COMMAND config_app_paths_unit
   )
   add_test(
+    NAME config_candidate_layout_settings_unit
+    COMMAND config_candidate_layout_settings_unit
+  )
+  add_test(
     NAME config_hotkey_helpers_unit
     COMMAND config_hotkey_helpers_unit
+  )
+  add_test(
+    NAME config_default_settings_unit
+    COMMAND config_default_settings_unit
   )
   add_test(
     NAME config_fuzzy_pinyin_custom_rules_unit
     COMMAND config_fuzzy_pinyin_custom_rules_unit
   )
   add_test(
+    NAME config_fuzzy_pinyin_rules_unit
+    COMMAND config_fuzzy_pinyin_rules_unit
+  )
+  add_test(
     NAME config_status_tip_blacklist_unit
     COMMAND config_status_tip_blacklist_unit
   )
   add_test(
+    NAME config_settings_options_unit
+    COMMAND config_settings_options_unit
+  )
+  add_test(
+    NAME config_settings_navigation_unit
+    COMMAND config_settings_navigation_unit
+  )
+  add_test(
     NAME config_theme_helpers_unit
     COMMAND config_theme_helpers_unit
+  )
+  add_test(
+    NAME config_wanxiang_modes_unit
+    COMMAND config_wanxiang_modes_unit
   )
   add_test(
     NAME config_window_helpers_unit

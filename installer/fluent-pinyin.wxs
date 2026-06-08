@@ -13,6 +13,8 @@
     <MediaTemplate EmbedCab="yes" />
     <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
     <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+    <Property Id="REBOOT" Value="ReallySuppress" />
+    <Property Id="MSIRESTARTMANAGERCONTROL" Value="DisableShutdown" />
     <Icon Id="AppIcon" SourceFile="assets\icons\fluent-pinyin.ico" />
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="FluentPinyin">

@@ -2,6 +2,9 @@
 
 #include <windows.h>
 
+#include <algorithm>
+#include <cwctype>
+
 namespace fp {
 
 std::string WideToUtf8(std::wstring_view value) {
@@ -64,6 +67,25 @@ std::wstring Utf8ToWide(std::string_view value) {
 
 std::wstring Utf8ToWideStrict(std::string_view value) {
   return Utf8ToWideWithFlags(value, MB_ERR_INVALID_CHARS);
+}
+
+std::wstring ToLowerInvariant(std::wstring value) {
+  std::transform(value.begin(), value.end(), value.begin(), [](wchar_t ch) {
+    return static_cast<wchar_t>(std::towlower(ch));
+  });
+  return value;
+}
+
+std::wstring TrimWhitespace(std::wstring_view value) {
+  size_t first = 0;
+  while (first < value.size() && std::iswspace(value[first])) {
+    ++first;
+  }
+  size_t last = value.size();
+  while (last > first && std::iswspace(value[last - 1])) {
+    --last;
+  }
+  return std::wstring(value.substr(first, last - first));
 }
 
 }  // namespace fp

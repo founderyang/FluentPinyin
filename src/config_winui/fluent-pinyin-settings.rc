@@ -6,8 +6,8 @@ IDI_FLUENT_PINYIN_DARK ICON "../../assets/icons/fluent-pinyin-dark.ico"
 IDI_FLUENT_PINYIN_LIGHT ICON "../../assets/icons/fluent-pinyin-light.ico"
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 0,0,7,0
- PRODUCTVERSION 0,0,7,0
+ FILEVERSION 0,0,8,0
+ PRODUCTVERSION 0,0,8,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -24,11 +24,11 @@ BEGIN
     BEGIN
       VALUE "CompanyName", L"FluentPinyin"
       VALUE "FileDescription", L"\x6D41\x7545\x62FC\x97F3\x8F93\x5165\x6CD5\x8BBE\x7F6E"
-      VALUE "FileVersion", L"0.0.7.0"
+      VALUE "FileVersion", L"0.0.8.0"
       VALUE "InternalName", L"fluent-pinyin-settings"
       VALUE "OriginalFilename", L"fluent-pinyin-settings.exe"
       VALUE "ProductName", L"\x6D41\x7545\x62FC\x97F3"
-      VALUE "ProductVersion", L"0.0.7.0"
+      VALUE "ProductVersion", L"0.0.8.0"
     END
   END
   BLOCK "VarFileInfo"

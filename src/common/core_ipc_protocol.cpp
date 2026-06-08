@@ -4,14 +4,41 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <charconv>
 #include <cstdint>
 #include <limits>
 #include <optional>
 #include <string>
+#include <utility>
 
 namespace fp::coreipc {
 namespace {
+
+bool IsSafePipeSuffix(std::wstring_view suffix) {
+  for (wchar_t ch : suffix) {
+    const bool safe = (ch >= L'a' && ch <= L'z') || (ch >= L'A' && ch <= L'Z') ||
+                      (ch >= L'0' && ch <= L'9') || ch == L'.' || ch == L'_' ||
+                      ch == L'-';
+    if (!safe) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool ConstantTimeEquals(std::string_view left, std::string_view right) {
+  size_t diff = left.size() ^ right.size();
+  const size_t max_size = (std::max)(left.size(), right.size());
+  for (size_t index = 0; index < max_size; ++index) {
+    const unsigned char left_byte =
+        index < left.size() ? static_cast<unsigned char>(left[index]) : 0;
+    const unsigned char right_byte =
+        index < right.size() ? static_cast<unsigned char>(right[index]) : 0;
+    diff |= static_cast<size_t>(left_byte ^ right_byte);
+  }
+  return diff == 0;
+}
 
 std::wstring SafePipeSuffixFromEnvironment() {
   wchar_t buffer[128]{};
@@ -22,13 +49,8 @@ std::wstring SafePipeSuffixFromEnvironment() {
     return {};
   }
   std::wstring suffix(buffer, length);
-  for (wchar_t ch : suffix) {
-    const bool safe = (ch >= L'a' && ch <= L'z') || (ch >= L'A' && ch <= L'Z') ||
-                      (ch >= L'0' && ch <= L'9') || ch == L'.' || ch == L'_' ||
-                      ch == L'-';
-    if (!safe) {
-      return {};
-    }
+  if (!IsSafePipeSuffix(suffix)) {
+    return {};
   }
   return suffix;
 }
@@ -148,19 +170,31 @@ bool DecodeResponse(std::string_view payload, Status* status, std::vector<std::s
 }  // namespace
 
 std::wstring PipeName() {
-  const std::wstring suffix = SafePipeSuffixFromEnvironment();
+  return PipeNameForSuffix(SafePipeSuffixFromEnvironment());
+}
+
+std::wstring PipeNameForSuffix(std::wstring_view suffix) {
   if (suffix.empty()) {
     return kPipeName;
   }
-  return L"\\\\.\\pipe\\FluentPinyin.CoreHost.V1." + suffix;
+  if (!IsSafePipeSuffix(suffix)) {
+    return kPipeName;
+  }
+  return L"\\\\.\\pipe\\FluentPinyin.CoreHost.V1." + std::wstring(suffix);
 }
 
 std::wstring CoreHostMutexName() {
-  const std::wstring suffix = SafePipeSuffixFromEnvironment();
+  return CoreHostMutexNameForSuffix(SafePipeSuffixFromEnvironment());
+}
+
+std::wstring CoreHostMutexNameForSuffix(std::wstring_view suffix) {
   if (suffix.empty()) {
     return kCoreHostMutexName;
   }
-  return std::wstring(kCoreHostMutexName) + L"." + suffix;
+  if (!IsSafePipeSuffix(suffix)) {
+    return kCoreHostMutexName;
+  }
+  return std::wstring(kCoreHostMutexName) + L"." + std::wstring(suffix);
 }
 
 std::string EncodeInitializeRequest() {
@@ -197,6 +231,73 @@ std::string EncodeRedeployRequest() {
 
 std::string EncodeHandshakeRequest(std::string_view nonce) {
   return EncodeMessage(Command::kHandshake, {nonce});
+}
+
+std::string EncodeAuthenticatedRequest(std::string_view secret, std::string_view request) {
+  return EncodeMessage(Command::kAuthenticatedRequest, {secret, request});
+}
+
+bool DecodeAuthenticatedRequest(std::string_view payload,
+                                std::string_view expected_secret,
+                                std::string* request) {
+  if (request == nullptr) {
+    return false;
+  }
+  Command command{};
+  std::vector<std::string> fields;
+  if (!DecodeCommand(payload, &command, &fields) ||
+      command != Command::kAuthenticatedRequest || fields.size() != 2 ||
+      !ConstantTimeEquals(fields[0], expected_secret)) {
+    return false;
+  }
+  *request = std::move(fields[1]);
+  return true;
+}
+
+bool ReadExact(HANDLE pipe, void* buffer, DWORD bytes) {
+  auto* cursor = static_cast<unsigned char*>(buffer);
+  DWORD remaining = bytes;
+  while (remaining > 0) {
+    DWORD read = 0;
+    if (!ReadFile(pipe, cursor, remaining, &read, nullptr) || read == 0) {
+      return false;
+    }
+    cursor += read;
+    remaining -= read;
+  }
+  return true;
+}
+
+bool WriteExact(HANDLE pipe, const void* buffer, DWORD bytes) {
+  const auto* cursor = static_cast<const unsigned char*>(buffer);
+  DWORD remaining = bytes;
+  while (remaining > 0) {
+    DWORD written = 0;
+    if (!WriteFile(pipe, cursor, remaining, &written, nullptr) || written == 0) {
+      return false;
+    }
+    cursor += written;
+    remaining -= written;
+  }
+  return true;
+}
+
+bool ReadMessage(HANDLE pipe, std::string* payload, DWORD size_limit) {
+  std::uint32_t size = 0;
+  if (payload == nullptr || !ReadExact(pipe, &size, sizeof(size)) || size > size_limit) {
+    return false;
+  }
+  payload->assign(size, '\0');
+  return size == 0 || ReadExact(pipe, payload->data(), size);
+}
+
+bool WriteMessage(HANDLE pipe, std::string_view payload, DWORD size_limit) {
+  if (payload.size() > size_limit) {
+    return false;
+  }
+  const auto size = static_cast<std::uint32_t>(payload.size());
+  return WriteExact(pipe, &size, sizeof(size)) &&
+         (size == 0 || WriteExact(pipe, payload.data(), size));
 }
 
 bool DecodeCommand(std::string_view payload, Command* command, std::vector<std::string>* fields) {
@@ -277,6 +378,7 @@ bool DecodeCandidatePageResponse(std::string_view payload, fp::core::RimeCandida
   }
   size_t candidate_count = 0;
   if (!ParseSize(fields[3], &candidate_count) ||
+      candidate_count > ((std::numeric_limits<size_t>::max)() - 4) / 2 ||
       fields.size() != 4 + candidate_count * 2) {
     return false;
   }

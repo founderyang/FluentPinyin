@@ -1,8 +1,11 @@
 #include "config_winui/hotkey_helpers.h"
 
+#include "common/constants.h"
+
 #include <windows.h>
 
 #include <iostream>
+#include <string>
 #include <string_view>
 
 namespace {
@@ -54,12 +57,41 @@ void TestModifierHelpers() {
          "does not match different modifier families");
 }
 
+void TestShortcutDefinitionsAndConflicts() {
+  namespace hotkey = fp::config_winui;
+
+  Expect(hotkey::HotkeyShortcutDefinitions().size() == 8,
+         "exposes all configurable shortcut definitions");
+  Expect(hotkey::HotkeyShortcutDefinitions().front().key ==
+             fp::kShortcutToolbarInputModeSetting,
+         "keeps input-mode shortcut first for conflict labels");
+
+  const auto read_defaults = [](std::wstring_view,
+                                std::wstring_view fallback) {
+    return std::wstring(fallback);
+  };
+  Expect(hotkey::ShortcutConflictTooltip(fp::kShortcutToolbarShapeSetting,
+                                         L"Shift",
+                                         read_defaults) ==
+             L"与 中/英文模式 使用相同热键",
+         "reports conflicts against another shortcut");
+  Expect(hotkey::ShortcutConflictTooltip(fp::kShortcutToolbarShapeSetting,
+                                         L"",
+                                         read_defaults) == L"已清除",
+         "reports cleared shortcuts");
+  Expect(hotkey::ShortcutConflictTooltip(fp::kShortcutToolbarShapeSetting,
+                                         L"Ctrl+Alt+K",
+                                         read_defaults) == L"点击后按新的组合键",
+         "reports non-conflicting shortcuts");
+}
+
 }  // namespace
 
 int main() {
   TestNormalizeShortcutDisplay();
   TestVirtualKeyDisplay();
   TestModifierHelpers();
+  TestShortcutDefinitionsAndConflicts();
   if (g_failures != 0) {
     std::cerr << g_failures << " config hotkey helper failure(s)\n";
     return 1;
