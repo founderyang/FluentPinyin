@@ -141,6 +141,7 @@ using fp::config_winui::ShortcutDisplayForKey;
 using fp::config_winui::IsShortcutModifierKey;
 using fp::config_winui::ShortcutModifierKeyEquals;
 using fp::config_winui::RecordedShortcutFromKey;
+using fp::config_winui::ApplySettingsDialogBase;
 using fp::config_winui::ApplySettingsResources;
 using fp::config_winui::ApplySettingsUIFont;
 using fp::config_winui::Brush;
@@ -160,6 +161,16 @@ using fp::config_winui::SettingsSurfaceBrush;
 using fp::config_winui::SettingsTextBrush;
 using fp::config_winui::SettingsUiFontFamily;
 using fp::config_winui::SettingsWindowHandle;
+using fp::config_winui::EllipseShape;
+using fp::config_winui::Icon;
+using fp::config_winui::IconHost;
+using fp::config_winui::PathShape;
+using fp::config_winui::RawPathShape;
+using fp::config_winui::ScaledIconCanvas;
+using fp::config_winui::SetIconChild;
+using fp::config_winui::SetSettingsToolTip;
+using fp::config_winui::Text;
+using fp::config_winui::TextIcon;
 using fp::config_winui::TransparentBrush;
 using fp::config_winui::UniformThickness;
 using fp::config_winui::CurrentStatusTipBlacklistItems;
@@ -223,12 +234,6 @@ using fp::config_winui::ModuleDirectory;
 constexpr std::wstring_view kSettingsAppTitle = L"流畅拼音输入法设置";
 constexpr std::wstring_view kSettingsSingleInstanceMutexName =
     L"Local\\FluentPinyinSettingsSingleInstance";
-constexpr double kSettingIconBackdropSize = 36.0;
-constexpr double kSettingIconBackdropRadius = 8.0;
-constexpr double kSettingIconHostSize = 22.0;
-constexpr double kSettingIconVisualSize = 18.0;
-constexpr double kInlineButtonIconHostSize = 16.0;
-constexpr double kActionButtonIconHostSize = 18.0;
 constexpr double kNavigationOpenPaneLength = 248.0;
 constexpr double kTitleBarDragHeight = 40.0;
 constexpr double kTitleBarCaptionButtonReservedWidth = 150.0;
@@ -390,155 +395,6 @@ void ApplyMinimumWindowSize(Window const& window, SizeInt32 const& min_size) {
   }
   g_settings_window_proc =
       reinterpret_cast<WNDPROC>(SetWindowLongPtrW(hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(SettingsWindowProc)));
-}
-
-TextBlock Text(std::wstring_view value, double size, int weight = FW_NORMAL) {
-  TextBlock text;
-  text.Text(value);
-  ApplySettingsUIFont(text);
-  text.FontSize(size);
-  text.Foreground(SettingsTextBrush());
-  text.TextWrapping(TextWrapping::Wrap);
-  if (weight >= FW_SEMIBOLD) {
-    text.FontWeight(FontWeights::SemiBold());
-  }
-  return text;
-}
-
-ToolTip SettingsToolTip(std::wstring_view value) {
-  ToolTip tooltip;
-  ApplySettingsUIFont(tooltip);
-  tooltip.RequestedTheme(CurrentSettingsElementTheme());
-  tooltip.Content(Text(value, 12));
-  ApplySettingsResources(tooltip.Resources());
-  return tooltip;
-}
-
-void SetSettingsToolTip(DependencyObject const& target, std::wstring_view value) {
-  ToolTipService::SetToolTip(target, SettingsToolTip(value));
-}
-
-void ApplySettingsDialogBase(ContentDialog const& dialog, XamlRoot const& xaml_root) {
-  dialog.XamlRoot(xaml_root);
-  dialog.RequestedTheme(CurrentSettingsElementTheme());
-  dialog.Title(nullptr);
-  dialog.FontFamily(SettingsUiFontFamily());
-  ApplySettingsResources(dialog.Resources());
-}
-
-void PrepareIconElement(FrameworkElement const& element,
-                        double host_size = kSettingIconHostSize) {
-  element.Width(host_size);
-  element.Height(host_size);
-  element.MinWidth(host_size);
-  element.MinHeight(host_size);
-  element.HorizontalAlignment(HorizontalAlignment::Center);
-  element.VerticalAlignment(VerticalAlignment::Center);
-  element.UseLayoutRounding(true);
-}
-
-FontIcon Icon(std::wstring_view glyph, double size = kSettingIconVisualSize) {
-  FontIcon icon;
-  icon.Glyph(glyph);
-  icon.FontFamily(FontFamily(L"Segoe Fluent Icons"));
-  icon.FontSize(size);
-  icon.Foreground(SettingsIconBrush());
-  icon.FontWeight(FontWeights::Normal());
-  PrepareIconElement(icon, kSettingIconHostSize);
-  return icon;
-}
-
-TextBlock TextIcon(std::wstring_view value, double size = 15.0) {
-  auto icon = Text(value, size, FW_SEMIBOLD);
-  icon.Foreground(SettingsIconBrush());
-  PrepareIconElement(icon, kSettingIconHostSize);
-  icon.TextAlignment(TextAlignment::Center);
-  icon.TextWrapping(TextWrapping::NoWrap);
-  icon.LineHeight(kSettingIconHostSize);
-  icon.LineStackingStrategy(LineStackingStrategy::BlockLineHeight);
-  return icon;
-}
-
-Grid IconHost(UIElement const& icon_content) {
-  Grid host;
-  PrepareIconElement(host, kSettingIconHostSize);
-  host.Children().Append(icon_content);
-  return host;
-}
-
-Shapes::Path PathShape(std::wstring_view data,
-                       double size,
-                       double view_box_size,
-                       double scale = 1.0,
-                       double dx = 0.0,
-                       double dy = 0.0,
-                       double scale_y = 0.0) {
-  auto xaml = L"<Path xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" "
-              L"Data=\"" +
-              std::wstring(data) +
-              L"\" Fill=\"#FFF2F2F2\" Stretch=\"None\" Width=\"" +
-              std::to_wstring(view_box_size) + L"\" Height=\"" +
-              std::to_wstring(view_box_size) + L"\"/>";
-  auto path = Markup::XamlReader::Load(xaml).as<Shapes::Path>();
-  path.Fill(SettingsIconBrush());
-  path.HorizontalAlignment(HorizontalAlignment::Center);
-  path.VerticalAlignment(VerticalAlignment::Center);
-  path.UseLayoutRounding(true);
-  path.RenderTransformOrigin(Windows::Foundation::Point{0.5f, 0.5f});
-  Media::CompositeTransform transform;
-  const double normalized_scale = scale * size / view_box_size;
-  transform.ScaleX(normalized_scale);
-  transform.ScaleY((scale_y > 0.0 ? scale_y : scale) * size / view_box_size);
-  transform.TranslateX(size * dx);
-  transform.TranslateY(size * dy);
-  path.RenderTransform(transform);
-  return path;
-}
-
-Shapes::Path RawPathShape(std::wstring_view data) {
-  auto xaml = L"<Path xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" "
-              L"Data=\"" +
-              std::wstring(data) + L"\" Fill=\"#FFF2F2F2\" Stretch=\"None\"/>";
-  auto path = Markup::XamlReader::Load(xaml).as<Shapes::Path>();
-  path.Fill(SettingsIconBrush());
-  path.UseLayoutRounding(true);
-  return path;
-}
-
-Canvas ScaledIconCanvas(double size, double view_box_size, double scale = 1.0) {
-  Canvas canvas;
-  canvas.Width(view_box_size);
-  canvas.Height(view_box_size);
-  canvas.HorizontalAlignment(HorizontalAlignment::Center);
-  canvas.VerticalAlignment(VerticalAlignment::Center);
-  canvas.UseLayoutRounding(true);
-  canvas.RenderTransformOrigin(Windows::Foundation::Point{0.5f, 0.5f});
-  Media::CompositeTransform transform;
-  const double normalized_scale = scale * size / view_box_size;
-  transform.ScaleX(normalized_scale);
-  transform.ScaleY(normalized_scale);
-  canvas.RenderTransform(transform);
-  return canvas;
-}
-
-void SetIconChild(Grid const& root, UIElement const& child) {
-  root.Children().Clear();
-  root.Children().Append(child);
-}
-
-Shapes::Ellipse EllipseShape(double left,
-                             double top,
-                             double width,
-                             double height,
-                             SolidColorBrush const& fill) {
-  Shapes::Ellipse ellipse;
-  ellipse.Width(width);
-  ellipse.Height(height);
-  ellipse.Fill(fill);
-  ellipse.UseLayoutRounding(true);
-  Canvas::SetLeft(ellipse, left);
-  Canvas::SetTop(ellipse, top);
-  return ellipse;
 }
 
 constexpr std::wstring_view kFluentCircle20FilledPath =

@@ -5,7 +5,12 @@
 
 #include <windows.h>
 
+#include <winrt/Microsoft.UI.Xaml.Markup.h>
+#include <winrt/Microsoft.UI.Xaml.Shapes.h>
+#include <winrt/Windows.UI.Text.h>
+
 #include <algorithm>
+#include <string>
 
 namespace fp::config_winui {
 namespace {
@@ -14,9 +19,12 @@ using namespace winrt;
 using namespace Microsoft::UI::Xaml;
 using namespace Microsoft::UI::Xaml::Controls;
 using namespace Microsoft::UI::Xaml::Media;
+namespace Markup = Microsoft::UI::Xaml::Markup;
+namespace Shapes = Microsoft::UI::Xaml::Shapes;
 using Windows::Foundation::IInspectable;
 using Windows::Foundation::IReference;
 using Windows::UI::Color;
+using Windows::UI::Text::FontWeights;
 
 HWND g_settings_window_hwnd = nullptr;
 
@@ -370,6 +378,154 @@ void ApplySettingsResources(ResourceDictionary const& resources) {
   resources.Insert(box_value(L"TextControlSelectionHighlightColor"), accent);
   resources.Insert(box_value(L"NavigationViewDefaultPaneBackground"), surface);
   resources.Insert(box_value(L"NavigationViewContentBackground"), surface);
+}
+
+TextBlock Text(std::wstring_view value, double size, int weight) {
+  TextBlock text;
+  text.Text(value);
+  ApplySettingsUIFont(text);
+  text.FontSize(size);
+  text.Foreground(SettingsTextBrush());
+  text.TextWrapping(TextWrapping::Wrap);
+  if (weight >= FW_SEMIBOLD) {
+    text.FontWeight(FontWeights::SemiBold());
+  }
+  return text;
+}
+
+ToolTip SettingsToolTip(std::wstring_view value) {
+  ToolTip tooltip;
+  ApplySettingsUIFont(tooltip);
+  tooltip.RequestedTheme(CurrentSettingsElementTheme());
+  tooltip.Content(Text(value, 12));
+  ApplySettingsResources(tooltip.Resources());
+  return tooltip;
+}
+
+void SetSettingsToolTip(DependencyObject const& target, std::wstring_view value) {
+  ToolTipService::SetToolTip(target, SettingsToolTip(value));
+}
+
+void ApplySettingsDialogBase(ContentDialog const& dialog, XamlRoot const& xaml_root) {
+  dialog.XamlRoot(xaml_root);
+  dialog.RequestedTheme(CurrentSettingsElementTheme());
+  dialog.Title(nullptr);
+  dialog.FontFamily(SettingsUiFontFamily());
+  ApplySettingsResources(dialog.Resources());
+}
+
+void PrepareIconElement(FrameworkElement const& element, double host_size) {
+  element.Width(host_size);
+  element.Height(host_size);
+  element.MinWidth(host_size);
+  element.MinHeight(host_size);
+  element.HorizontalAlignment(HorizontalAlignment::Center);
+  element.VerticalAlignment(VerticalAlignment::Center);
+  element.UseLayoutRounding(true);
+}
+
+FontIcon Icon(std::wstring_view glyph, double size) {
+  FontIcon icon;
+  icon.Glyph(glyph);
+  icon.FontFamily(FontFamily(L"Segoe Fluent Icons"));
+  icon.FontSize(size);
+  icon.Foreground(SettingsIconBrush());
+  icon.FontWeight(FontWeights::Normal());
+  PrepareIconElement(icon, kSettingIconHostSize);
+  return icon;
+}
+
+TextBlock TextIcon(std::wstring_view value, double size) {
+  auto icon = Text(value, size, FW_SEMIBOLD);
+  icon.Foreground(SettingsIconBrush());
+  PrepareIconElement(icon, kSettingIconHostSize);
+  icon.TextAlignment(TextAlignment::Center);
+  icon.TextWrapping(TextWrapping::NoWrap);
+  icon.LineHeight(kSettingIconHostSize);
+  icon.LineStackingStrategy(LineStackingStrategy::BlockLineHeight);
+  return icon;
+}
+
+Grid IconHost(UIElement const& icon_content) {
+  Grid host;
+  PrepareIconElement(host, kSettingIconHostSize);
+  host.Children().Append(icon_content);
+  return host;
+}
+
+Shapes::Path PathShape(std::wstring_view data,
+                       double size,
+                       double view_box_size,
+                       double scale,
+                       double dx,
+                       double dy,
+                       double scale_y) {
+  auto xaml = L"<Path xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" "
+              L"Data=\"" +
+              std::wstring(data) +
+              L"\" Fill=\"#FFF2F2F2\" Stretch=\"None\" Width=\"" +
+              std::to_wstring(view_box_size) + L"\" Height=\"" +
+              std::to_wstring(view_box_size) + L"\"/>";
+  auto path = Markup::XamlReader::Load(xaml).as<Shapes::Path>();
+  path.Fill(SettingsIconBrush());
+  path.HorizontalAlignment(HorizontalAlignment::Center);
+  path.VerticalAlignment(VerticalAlignment::Center);
+  path.UseLayoutRounding(true);
+  path.RenderTransformOrigin(Windows::Foundation::Point{0.5f, 0.5f});
+  CompositeTransform transform;
+  const double normalized_scale = scale * size / view_box_size;
+  transform.ScaleX(normalized_scale);
+  transform.ScaleY((scale_y > 0.0 ? scale_y : scale) * size / view_box_size);
+  transform.TranslateX(size * dx);
+  transform.TranslateY(size * dy);
+  path.RenderTransform(transform);
+  return path;
+}
+
+Shapes::Path RawPathShape(std::wstring_view data) {
+  auto xaml = L"<Path xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" "
+              L"Data=\"" +
+              std::wstring(data) + L"\" Fill=\"#FFF2F2F2\" Stretch=\"None\"/>";
+  auto path = Markup::XamlReader::Load(xaml).as<Shapes::Path>();
+  path.Fill(SettingsIconBrush());
+  path.UseLayoutRounding(true);
+  return path;
+}
+
+Canvas ScaledIconCanvas(double size, double view_box_size, double scale) {
+  Canvas canvas;
+  canvas.Width(view_box_size);
+  canvas.Height(view_box_size);
+  canvas.HorizontalAlignment(HorizontalAlignment::Center);
+  canvas.VerticalAlignment(VerticalAlignment::Center);
+  canvas.UseLayoutRounding(true);
+  canvas.RenderTransformOrigin(Windows::Foundation::Point{0.5f, 0.5f});
+  CompositeTransform transform;
+  const double normalized_scale = scale * size / view_box_size;
+  transform.ScaleX(normalized_scale);
+  transform.ScaleY(normalized_scale);
+  canvas.RenderTransform(transform);
+  return canvas;
+}
+
+void SetIconChild(Grid const& root, UIElement const& child) {
+  root.Children().Clear();
+  root.Children().Append(child);
+}
+
+Shapes::Ellipse EllipseShape(double left,
+                             double top,
+                             double width,
+                             double height,
+                             SolidColorBrush const& fill) {
+  Shapes::Ellipse ellipse;
+  ellipse.Width(width);
+  ellipse.Height(height);
+  ellipse.Fill(fill);
+  ellipse.UseLayoutRounding(true);
+  Canvas::SetLeft(ellipse, left);
+  Canvas::SetTop(ellipse, top);
+  return ellipse;
 }
 
 }  // namespace fp::config_winui
