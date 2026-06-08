@@ -1,6 +1,9 @@
 #include "config_winui/fuzzy_pinyin_rules.h"
 
+#include "common/constants.h"
 #include "common/fuzzy_pinyin.h"
+#include "config_winui/fuzzy_pinyin_custom_rules.h"
+#include "config_winui/settings_binding.h"
 
 #include <algorithm>
 
@@ -77,6 +80,28 @@ std::wstring JoinFuzzyPinyinRules(const std::vector<std::wstring>& rules) {
     value += rule;
   }
   return value;
+}
+
+std::vector<std::wstring> CurrentFuzzyPinyinRules(bool default_to_all) {
+  constexpr std::wstring_view marker = L"__fluent_default_fuzzy_rules__";
+  const std::wstring raw = ReadStringSetting(fp::kFuzzyPinyinRulesSetting, marker);
+  return ParseFuzzyPinyinRuleSetting(raw, default_to_all || raw == marker);
+}
+
+std::wstring CurrentFuzzyPinyinCustomRulesText() {
+  return JoinFuzzyPinyinCustomRules(
+      ParseFuzzyPinyinCustomRuleSetting(
+          ReadStringSetting(fp::kFuzzyPinyinCustomRulesSetting, L"")),
+      L'\n');
+}
+
+int CurrentFuzzyPinyinCustomRuleCount() {
+  return static_cast<int>(ParseFuzzyPinyinCustomRuleSetting(
+      ReadStringSetting(fp::kFuzzyPinyinCustomRulesSetting, L"")).size());
+}
+
+std::wstring FuzzyPinyinRuleIconText() {
+  return ReadBoolSetting(fp::kFuzzyPinyinSetting, false) ? L"\u6a21" : L"\u89c4";
 }
 
 }  // namespace fp::config_winui

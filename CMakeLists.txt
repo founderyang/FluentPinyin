@@ -556,9 +556,15 @@ if(BUILD_TESTING)
 
   add_executable(config_fuzzy_pinyin_rules_unit
     tests/config_fuzzy_pinyin_rules_unit.cpp
+    src/config_winui/fuzzy_pinyin_custom_rules.cpp
     src/config_winui/fuzzy_pinyin_rules.cpp
+    src/config_winui/settings_binding.cpp
   )
-  target_link_libraries(config_fuzzy_pinyin_rules_unit PRIVATE fluent_pinyin_common)
+  target_link_libraries(config_fuzzy_pinyin_rules_unit PRIVATE
+    fluent_pinyin_common
+    advapi32
+    user32
+  )
 
   add_executable(config_status_tip_blacklist_unit
     tests/config_status_tip_blacklist_unit.cpp

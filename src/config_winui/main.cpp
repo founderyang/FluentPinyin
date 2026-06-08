@@ -112,6 +112,10 @@ using fp::config_winui::DefaultPresetForThemeMode;
 using fp::config_winui::DefaultShapeChoices;
 using fp::config_winui::DoublePinyinSchemeChoices;
 using fp::config_winui::EffectiveThemePreset;
+using fp::config_winui::CurrentFuzzyPinyinCustomRuleCount;
+using fp::config_winui::CurrentFuzzyPinyinCustomRulesText;
+using fp::config_winui::CurrentFuzzyPinyinRules;
+using fp::config_winui::FuzzyPinyinRuleIconText;
 using fp::config_winui::FuzzyPinyinRuleSelected;
 using fp::config_winui::PickRimeDictionaryFile;
 using fp::config_winui::PickSyncBackupFile;
@@ -239,28 +243,6 @@ bool g_syncing_toolbar_visible_switches = false;
 std::wstring InitialPageTagFromProcess() {
   const wchar_t* command_line = GetCommandLineW();
   return InitialSettingsPageTag(command_line != nullptr ? command_line : L"");
-}
-
-std::vector<std::wstring> CurrentFuzzyPinyinRules(bool default_to_all = false) {
-  constexpr std::wstring_view marker = L"__fluent_default_fuzzy_rules__";
-  const std::wstring raw = ReadStringSetting(fp::kFuzzyPinyinRulesSetting, marker);
-  return ParseFuzzyPinyinRuleSetting(raw, default_to_all || raw == marker);
-}
-
-std::wstring CurrentFuzzyPinyinCustomRulesText() {
-  return JoinFuzzyPinyinCustomRules(
-      ParseFuzzyPinyinCustomRuleSetting(
-          ReadStringSetting(fp::kFuzzyPinyinCustomRulesSetting, L"")),
-      L'\n');
-}
-
-int CurrentFuzzyPinyinCustomRuleCount() {
-  return static_cast<int>(ParseFuzzyPinyinCustomRuleSetting(
-      ReadStringSetting(fp::kFuzzyPinyinCustomRulesSetting, L"")).size());
-}
-
-std::wstring FuzzyPinyinRuleIconText() {
-  return ReadBoolSetting(fp::kFuzzyPinyinSetting, false) ? L"模" : L"规";
 }
 
 IReference<bool> NullableBool(bool value) {
