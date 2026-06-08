@@ -76,6 +76,14 @@ int main() {
   const RECT expected_brand_feedback{10, 5, 80, 35};
   Expect(RectEquals(brand_feedback, expected_brand_feedback),
          "brand feedback expands vertically");
+  Expect(fp::tsf::CandidateToolTooltipHorizontalPadding(96) == 10,
+         "tooltip padding scales at base dpi");
+  Expect(fp::tsf::CandidateToolTooltipHeight(96) == 33,
+         "tooltip height scales at base dpi");
+  Expect(fp::tsf::CandidateToolTooltipOverlap(192) == 12,
+         "tooltip overlap scales with dpi");
+  Expect(fp::tsf::CandidateToolTooltipCornerRadius(96) == 2,
+         "tooltip corner radius preserves half-dip floor behavior");
 
   return g_failures == 0 ? 0 : 1;
 }

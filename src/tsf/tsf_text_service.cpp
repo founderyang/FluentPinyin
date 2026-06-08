@@ -92,11 +92,7 @@ constexpr DWORD kStatusTipSettingsRefreshMs = 1500;
 constexpr int kCandidateWindowClassExtraLastWidth = 0;
 constexpr int kCandidateWindowClassExtraLastHeight = sizeof(LONG_PTR);
 constexpr int kCandidateToolTooltipFontPointSize = 11;
-constexpr int kCandidateToolTooltipHeightDips = 33;
-constexpr int kCandidateToolTooltipOverlapDips = 6;
-constexpr int kCandidateToolTooltipPaddingDips = 10;
 constexpr int kCandidateToolTooltipOverhangGuardDips = 2;
-constexpr int kCandidateToolTooltipCornerRadiusHalfDips = 5;
 constexpr int kStatusTipTextIconGapDips = 6;
 constexpr int kStatusTipIconSizeDips = 24;
 constexpr float kStatusTipDetailIconScale = 0.78f;
@@ -3083,22 +3079,6 @@ std::wstring CandidateToolTooltipText(int tool, bool expanded) {
     default:
       return std::wstring();
   }
-}
-
-int CandidateToolTooltipHorizontalPadding(UINT dpi) {
-  return ScaleForDpi(kCandidateToolTooltipPaddingDips, dpi);
-}
-
-int CandidateToolTooltipHeight(UINT dpi) {
-  return ScaleForDpi(kCandidateToolTooltipHeightDips, dpi);
-}
-
-int CandidateToolTooltipOverlap(UINT dpi) {
-  return ScaleForDpi(kCandidateToolTooltipOverlapDips, dpi);
-}
-
-int CandidateToolTooltipCornerRadius(UINT dpi) {
-  return ScaleHalfDipForDpi(kCandidateToolTooltipCornerRadiusHalfDips, dpi);
 }
 
 void DrawCandidateToolFeedback(HDC dc,

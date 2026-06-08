@@ -230,6 +230,11 @@ Status: already implemented and now guarded by package smoke checks.
   Status: done. `src/tsf/toolbar_model.*` now owns toolbar visible-item parsing
   plus item geometry, toolbar pixel sizing, drag/item hit testing, and icon
   inset rectangles with focused unit coverage.
+- Share status-tip blacklist parsing and runtime process matching.
+  Status: done. `src/common/status_tip_blacklist.*` now owns blacklist token
+  normalization, setting parsing/joining, duplicate checks, wildcard process
+  matching, and list matching. The settings UI keeps only persisted-setting
+  wrappers, while TSF uses the shared runtime matcher.
 
 ### Phase 2: TSF Split
 
@@ -248,7 +253,8 @@ Status: in progress for 00.00.08. The highest-confidence pure model seams have
 already been extracted without moving COM/window lifetimes: input mode state,
 candidate layout math, candidate layout metrics, candidate tool geometry,
 toolbar visible-item and geometry models, context menu command mapping,
-shortcut parsing, and font-family rules. The remaining window/rendering splits
+shortcut parsing, font-family rules, and status-tip blacklist matching. The
+remaining window/rendering splits
 should be done after a full Release build and UI smoke pass because they touch
 message dispatch, layered-window painting, and TSF edit-session lifetimes.
 

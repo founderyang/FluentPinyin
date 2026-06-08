@@ -153,4 +153,20 @@ RECT CandidateToolFeedbackRect(RECT rect, int tool, UINT dpi, bool centered_tool
   return RECT{left, top, left + side, top + side};
 }
 
+int CandidateToolTooltipHorizontalPadding(UINT dpi) {
+  return ScaleForDpi(kCandidateToolTooltipPaddingDips, dpi);
+}
+
+int CandidateToolTooltipHeight(UINT dpi) {
+  return ScaleForDpi(kCandidateToolTooltipHeightDips, dpi);
+}
+
+int CandidateToolTooltipOverlap(UINT dpi) {
+  return ScaleForDpi(kCandidateToolTooltipOverlapDips, dpi);
+}
+
+int CandidateToolTooltipCornerRadius(UINT dpi) {
+  return ScaleHalfDipForDpi(kCandidateToolTooltipCornerRadiusHalfDips, dpi);
+}
+
 }  // namespace fp::tsf
