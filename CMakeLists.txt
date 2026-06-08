@@ -400,6 +400,7 @@ add_executable(fluent_pinyin_settings WIN32
   src/config_winui/status_tip_blacklist.cpp
   src/config_winui/status_tip_blacklist_dialog.cpp
   src/config_winui/theme_helpers.cpp
+  src/config_winui/theme_preset_dialog.cpp
   src/config_winui/toolbar_visibility_state.cpp
   src/config_winui/wanxiang_modes.cpp
   src/config_winui/window_helpers.cpp
