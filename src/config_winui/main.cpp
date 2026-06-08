@@ -28,14 +28,12 @@
 #include "config_winui/shell_actions.h"
 #include "config_winui/status_tip_blacklist.h"
 #include "config_winui/status_tip_blacklist_dialog.h"
-#include "config_winui/sync_settings_actions.h"
+#include "config_winui/sync_page.h"
 #include "config_winui/theme_helpers.h"
 #include "config_winui/theme_preset_dialog.h"
 #include "config_winui/toolbar_visibility_state.h"
 #include "config_winui/wanxiang_modes.h"
 #include "config_winui/window_helpers.h"
-#include "sync/sync_service.h"
-
 #include <windows.h>
 #include <MddBootstrap.h>
 #include <microsoft.ui.xaml.window.h>
@@ -126,8 +124,6 @@ using fp::config_winui::BoolIconText;
 using fp::config_winui::CandidateFontIconText;
 using fp::config_winui::ChoiceIconText;
 using fp::config_winui::PickRimeDictionaryFile;
-using fp::config_winui::PickSyncBackupFile;
-using fp::config_winui::PickSyncBackupSaveFile;
 using fp::config_winui::InputSchemeChoices;
 using fp::config_winui::InputSchemeIconText;
 using fp::config_winui::FirstIconText;
@@ -166,12 +162,6 @@ using fp::config_winui::TransparentBrush;
 using fp::config_winui::UniformThickness;
 using fp::config_winui::CurrentStatusTipBlacklistCount;
 using fp::config_winui::ShowStatusTipBlacklistDialog;
-using fp::config_winui::SyncAutoIntervalChoices;
-using fp::config_winui::SyncAutoIntervalMinutesFromValue;
-using fp::config_winui::ApplyAutoSyncSchedule;
-using fp::config_winui::CurrentSyncConfigFromSettings;
-using fp::config_winui::RunSyncActionAsync;
-using fp::config_winui::ShowSyncProviderDialog;
 using fp::config_winui::RequestApplyInputConfig;
 using fp::config_winui::RequestApplyInputConfigDeferred;
 using fp::config_winui::RequestCandidateWindowVisualRefresh;
@@ -500,7 +490,8 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
     } else if (tag == L"hotkeys") {
       page = BuildHotkeysPage();
     } else if (tag == L"sync") {
-      page = BuildSyncPage();
+      page = fp::config_winui::BuildSyncPage(
+          SettingsWindowHandle(), window_.Content().as<FrameworkElement>().XamlRoot());
     } else {
       page = BuildAboutPage();
     }
@@ -1133,153 +1124,6 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
         176));
     return Scroll(page);
   }
-  UIElement BuildSyncPage() {
-    auto page = PageShell(L"同步", L"剪贴板、配置、词库和备份。");
-    page.Children().Append(SectionHeader(L"同步内容", true));
-    page.Children().Append(SettingRowWithIcon(L"剪贴板同步",
-                                              L"在设备之间同步剪贴板。",
-                                              SettingSwitch(fp::kSyncClipboardSetting, false),
-                                              FluentPathIcon(kFluentIconClipboard20RegularPath, 0.94),
-                                              L"已保存"));
-    page.Children().Append(SettingRowWithIcon(L"配置和词库同步",
-                                              L"同步设置、词库和输入数据。",
-                                              SettingSwitch(fp::kSyncUserDataSetting, false),
-                                              FluentPathIcon(kFluentIconBookDatabase20RegularPath, 0.90),
-                                              L"已保存"));
-    page.Children().Append(SectionHeader(L"云端服务"));
-    auto edit_provider = StableIconToolButton(
-        kFluentIconEditSettings20RegularPath,
-        L"同步配置",
-        0.86,
-        [this]() {
-          ShowSyncProviderDialog(window_.Content().as<FrameworkElement>().XamlRoot());
-        });
-    page.Children().Append(SettingRowWithIcon(
-        L"同步提供商",
-        L"编辑云端连接和加密配置。",
-        edit_provider,
-        FluentPathIcon(kFluentIconCloud20RegularPath, 0.94),
-        L"需配置",
-        48.0));
-
-    StackPanel sync_actions;
-    sync_actions.Orientation(Orientation::Horizontal);
-    sync_actions.Spacing(10);
-    auto upload = ActionPathButton(L"上传", kFluentIconArrowUpload20RegularPath, 0.82);
-    upload.Click([this](auto const&, auto const&) {
-      const auto config = CurrentSyncConfigFromSettings();
-      RunSyncActionAsync(L"同步上传",
-                         [config]() { return fp::sync::UploadNow(config); },
-                         false);
-    });
-    auto download = ActionPathButton(L"下载", kFluentIconArrowDownload20RegularPath, 0.84);
-    download.Click([this](auto const&, auto const&) {
-      const auto config = CurrentSyncConfigFromSettings();
-      RunSyncActionAsync(L"同步下载",
-                         [config]() {
-                           fp::sync::PackageMetadata metadata;
-                           return fp::sync::DownloadNow(config, true, &metadata);
-                         },
-                         true);
-    });
-    sync_actions.Children().Append(upload);
-    sync_actions.Children().Append(download);
-    page.Children().Append(SettingWideRowWithIcon(L"立即同步",
-                                                  L"上传或下载同步包。",
-                                                  sync_actions,
-                                                  FluentPathIcon(kFluentIconCloudSync20RegularPath, 0.94),
-                                                  L"已接入"));
-
-    page.Children().Append(SectionHeader(L"定时自动同步"));
-    const int current_interval =
-        ReadIntSetting(fp::kSyncAutoIntervalMinutesSetting,
-                       fp::kDefaultSyncAutoIntervalMinutes,
-                       fp::kMinSyncAutoIntervalMinutes,
-                       fp::kMaxSyncAutoIntervalMinutes);
-    auto auto_sync_switch = SettingSwitch(
-        fp::kSyncAutoEnabledSetting,
-        false,
-        [this, current_interval](bool enabled) {
-          ApplyAutoSyncSchedule(enabled,
-                                ReadIntSetting(fp::kSyncAutoIntervalMinutesSetting,
-                                               current_interval,
-                                               fp::kMinSyncAutoIntervalMinutes,
-                                               fp::kMaxSyncAutoIntervalMinutes));
-        });
-    page.Children().Append(SettingRowWithIcon(L"自动同步",
-                                              L"按固定间隔自动同步。",
-                                              auto_sync_switch,
-                                              FluentPathIcon(kFluentIconCalendarClock20RegularPath, 0.92),
-                                              L"计划任务"));
-    page.Children().Append(SettingRowWithIcon(
-        L"同步间隔",
-        L"设置自动同步频率。",
-        StringChoiceCombo(fp::kSyncAutoIntervalMinutesSetting,
-                          SyncAutoIntervalChoices(),
-                          std::to_wstring(fp::kDefaultSyncAutoIntervalMinutes),
-                          L"",
-                          false,
-                          [this](std::wstring_view value) {
-                            if (!ReadBoolSetting(fp::kSyncAutoEnabledSetting, false)) {
-                              return;
-                            }
-                            ApplyAutoSyncSchedule(true, SyncAutoIntervalMinutesFromValue(value));
-                          }),
-        FluentPathIcon(kFluentIconCalendarClock20RegularPath, 0.92),
-        L"已保存"));
-
-    page.Children().Append(SectionHeader(L"备份和恢复"));
-    StackPanel actions;
-    actions.Orientation(Orientation::Horizontal);
-    actions.Spacing(10);
-    auto backup = ActionPathButton(L"备份配置", kFluentIconArchive20RegularPath, 0.84);
-    backup.Click([this](auto const&, auto const&) {
-      const auto selected = PickSyncBackupSaveFile(SettingsWindowHandle());
-      if (!selected) {
-        return;
-      }
-      auto config = CurrentSyncConfigFromSettings();
-      config.sync_clipboard = false;
-      config.sync_user_data = true;
-      RunSyncActionAsync(L"备份配置",
-                         [config, path = *selected]() {
-                           return fp::sync::CreateLocalBackup(path, config);
-                         },
-                         false);
-    });
-    auto restore = ActionPathButton(L"恢复配置", kFluentIconHistory20RegularPath, 0.84);
-    restore.Click([this](auto const&, auto const&) {
-      const auto selected = PickSyncBackupFile(SettingsWindowHandle());
-      if (!selected) {
-        return;
-      }
-      const int confirm = MessageBoxW(SettingsWindowHandle(),
-                                      L"恢复会覆盖本机设置和用户词库；恢复前会自动备份。是否继续？",
-                                      L"恢复配置",
-                                      MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2);
-      if (confirm != IDYES) {
-        return;
-      }
-      auto config = CurrentSyncConfigFromSettings();
-      config.sync_clipboard = false;
-      config.sync_user_data = true;
-      RunSyncActionAsync(L"恢复配置",
-                         [config, path = *selected]() {
-                           fp::sync::PackageMetadata metadata;
-                           return fp::sync::RestoreLocalBackup(path, config, true, &metadata);
-                         },
-                         true);
-    });
-    actions.Children().Append(backup);
-    actions.Children().Append(restore);
-    page.Children().Append(SettingWideRowWithIcon(L"备份和恢复",
-                                                  L"备份或恢复本机数据。",
-                                                  actions,
-                                                  FluentPathIcon(kFluentIconArchive20RegularPath, 0.94),
-                                                  L"已接入"));
-    return Scroll(page);
-  }
-
   Window window_{nullptr};
   Grid root_{nullptr};
   Grid title_bar_drag_region_{nullptr};
