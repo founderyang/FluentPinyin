@@ -8,6 +8,7 @@
 #include "common/encoding.h"
 #include "common/logging.h"
 #include "common/path_utils.h"
+#include "common/status_tip_blacklist.h"
 #include "common/svg_icons.h"
 #include "common/theme.h"
 #include "tsf/candidate_layout_math.h"
@@ -2932,41 +2933,6 @@ std::wstring ProcessNameFromWindow(HWND window) {
 
 std::wstring ForegroundProcessName() {
   return ProcessNameFromWindow(GetForegroundWindow());
-}
-
-bool ProcessNameMatchesPattern(std::wstring process_name, std::wstring pattern) {
-  process_name = fp::ToLowerInvariant(fp::TrimWhitespace(process_name));
-  pattern = fp::ToLowerInvariant(fp::TrimWhitespace(pattern));
-  if (process_name.empty() || pattern.empty()) {
-    return false;
-  }
-  if (pattern.find_first_of(L"*?") != std::wstring::npos) {
-    return PathMatchSpecW(process_name.c_str(), pattern.c_str()) == TRUE;
-  }
-  if (process_name == pattern) {
-    return true;
-  }
-  if (pattern.find(L'.') == std::wstring::npos) {
-    const std::wstring exe_pattern = pattern + L".exe";
-    return process_name == exe_pattern;
-  }
-  return false;
-}
-
-bool ProcessNameInList(std::wstring_view process_name, std::wstring_view list) {
-  size_t start = 0;
-  while (start < list.size()) {
-    size_t end = list.find_first_of(L",;\r\n", start);
-    if (end == std::wstring_view::npos) {
-      end = list.size();
-    }
-    if (ProcessNameMatchesPattern(std::wstring(process_name),
-                                  std::wstring(list.substr(start, end - start)))) {
-      return true;
-    }
-    start = end + 1;
-  }
-  return false;
 }
 
 bool IsUsableTextRect(const RECT& rect) {
@@ -11589,7 +11555,7 @@ bool TsfTextService::IsStatusTipAllowed(ITfContext* context) const {
   if (process_name.empty()) {
     return true;
   }
-  return !ProcessNameInList(process_name, status_tip_blacklist_);
+  return !fp::StatusTipProcessNameInList(process_name, status_tip_blacklist_);
 }
 
 void TsfTextService::ShowStatusTip(ITfContext* context, StatusTipDetail detail) {

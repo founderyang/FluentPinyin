@@ -151,6 +151,7 @@ add_library(fluent_pinyin_common STATIC
   src/common/logging.cpp
   src/common/path_utils.cpp
   src/common/settings_store.cpp
+  src/common/status_tip_blacklist.cpp
 )
 
 target_include_directories(fluent_pinyin_common PUBLIC src)
@@ -522,6 +523,11 @@ if(BUILD_TESTING)
   )
   target_link_libraries(common_unit PRIVATE fluent_pinyin_common)
 
+  add_executable(common_status_tip_blacklist_unit
+    tests/common_status_tip_blacklist_unit.cpp
+  )
+  target_link_libraries(common_status_tip_blacklist_unit PRIVATE fluent_pinyin_common)
+
   add_executable(core_unit
     tests/core_unit.cpp
   )
@@ -777,6 +783,10 @@ if(BUILD_TESTING)
   add_test(
     NAME common_unit
     COMMAND common_unit
+  )
+  add_test(
+    NAME common_status_tip_blacklist_unit
+    COMMAND common_status_tip_blacklist_unit
   )
   add_test(
     NAME core_unit
