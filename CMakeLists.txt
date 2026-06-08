@@ -481,6 +481,7 @@ if(MSVC)
 endif()
 
 add_executable(fluent_pinyin_devtools WIN32
+  src/devtools/app_runtime_utils.cpp
   src/devtools/cleanup_utils.cpp
   src/devtools/main.cpp
   src/devtools/process_utils.cpp
