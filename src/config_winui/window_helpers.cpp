@@ -1,8 +1,11 @@
 #include "config_winui/window_helpers.h"
 
+#include "common/broadcast_messages.h"
+#include "common/constants.h"
 #include "config_winui/app_paths.h"
 #include "config_winui/settings_ui_helpers.h"
 #include "config_winui/theme_helpers.h"
+#include "config_winui/toolbar_visibility_state.h"
 #include "../tsf/resource.h"
 
 #include <windows.h>
@@ -14,6 +17,9 @@
 #include <string>
 
 namespace fp::config_winui {
+
+using winrt::Microsoft::UI::Xaml::Window;
+using winrt::Windows::Graphics::SizeInt32;
 
 HWND GetWindowHandle(winrt::Microsoft::UI::Xaml::Window const& window) {
   HWND hwnd = nullptr;
@@ -91,6 +97,61 @@ winrt::Windows::Graphics::SizeInt32 ScaleSizeForDpi(
   return winrt::Windows::Graphics::SizeInt32{
       MulDiv(size.Width, static_cast<int>(dpi), 96),
       MulDiv(size.Height, static_cast<int>(dpi), 96)};
+}
+
+namespace {
+
+WNDPROC g_settings_window_proc = nullptr;
+winrt::Windows::Graphics::SizeInt32 g_min_settings_window_size_dips{860, 480};
+
+winrt::Windows::Graphics::SizeInt32 SettingsMinimumWindowSize(HWND hwnd) {
+  const UINT dpi = hwnd != nullptr ? GetDpiForWindow(hwnd) : GetDpiForSystem();
+  return ScaleSizeForDpi(g_min_settings_window_size_dips, dpi);
+}
+
+LRESULT CALLBACK SettingsWindowProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
+  const UINT toolbar_refresh_message =
+      fp::RegisteredBroadcastMessage(fp::kToolbarRefreshMessageName);
+  if (toolbar_refresh_message != 0 && message == toolbar_refresh_message) {
+    SyncToolbarVisibleSwitchesFromSettings();
+  }
+  if (message == WM_GETMINMAXINFO) {
+    auto info = reinterpret_cast<MINMAXINFO*>(lparam);
+    if (info != nullptr) {
+      const SizeInt32 min_size = SettingsMinimumWindowSize(hwnd);
+      info->ptMinTrackSize.x = min_size.Width;
+      info->ptMinTrackSize.y = min_size.Height;
+    }
+  }
+  if (message == WM_DPICHANGED) {
+    const auto* suggested = reinterpret_cast<const RECT*>(lparam);
+    if (suggested != nullptr) {
+      SetWindowPos(hwnd,
+                   nullptr,
+                   suggested->left,
+                   suggested->top,
+                   suggested->right - suggested->left,
+                   suggested->bottom - suggested->top,
+                   SWP_NOACTIVATE | SWP_NOZORDER);
+    }
+    return 0;
+  }
+  if (g_settings_window_proc != nullptr) {
+    return CallWindowProcW(g_settings_window_proc, hwnd, message, wparam, lparam);
+  }
+  return DefWindowProcW(hwnd, message, wparam, lparam);
+}
+
+}  // namespace
+
+void ApplyMinimumWindowSize(Window const& window, SizeInt32 const& min_size) {
+  const HWND hwnd = GetWindowHandle(window);
+  g_min_settings_window_size_dips = min_size;
+  if (hwnd == nullptr || g_settings_window_proc != nullptr) {
+    return;
+  }
+  g_settings_window_proc =
+      reinterpret_cast<WNDPROC>(SetWindowLongPtrW(hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(SettingsWindowProc)));
 }
 
 void CenterWindowOnMonitor(winrt::Microsoft::UI::Xaml::Window const& window) {

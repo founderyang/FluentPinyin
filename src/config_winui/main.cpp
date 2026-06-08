@@ -226,7 +226,6 @@ using fp::config_winui::ApplyWindowIcons;
 using fp::config_winui::CenterWindowOnMonitor;
 using fp::config_winui::DefaultWindowSize;
 using fp::config_winui::GetWindowHandle;
-using fp::config_winui::ScaleSizeForDpi;
 using fp::config_winui::WriteBoolSetting;
 using fp::config_winui::WriteCandidateLayoutSetting;
 using fp::config_winui::WriteIntSetting;
@@ -354,7 +353,6 @@ using fp::config_winui::StatusTipBlacklistIcon;
 using fp::config_winui::StatusTipEnabledIcon;
 using fp::config_winui::SuperAbbrevIcon;
 using fp::config_winui::RegisterToolbarVisibleSwitch;
-using fp::config_winui::SyncToolbarVisibleSwitchesFromSettings;
 using fp::config_winui::ThemeModeIcon;
 using fp::config_winui::ThemePresetLabel;
 using fp::config_winui::ThemePresetRowIcon;
@@ -371,12 +369,7 @@ constexpr double kContentFrameLeftInset = 12.0;
 constexpr double kContentFrameTopInset = 48.0;
 constexpr double kContentFrameRightInset = 24.0;
 constexpr double kContentFrameBottomInset = 22.0;
-constexpr int kMinSettingsWindowWidthDips = 860;
-constexpr int kMinSettingsWindowHeightDips = 480;
 
-WNDPROC g_settings_window_proc = nullptr;
-SizeInt32 g_min_settings_window_size_dips{kMinSettingsWindowWidthDips,
-                                          kMinSettingsWindowHeightDips};
 IReference<bool> NullableBool(bool value) {
   return box_value(value).as<IReference<bool>>();
 }
@@ -420,54 +413,6 @@ void SetFuzzyPinyinRuleChecks(
   for (const auto& [id, check] : checks) {
     check.IsChecked(NullableBool(FuzzyPinyinRuleSelected(enabled_rules, id)));
   }
-}
-
-SizeInt32 SettingsMinimumWindowSize(HWND hwnd) {
-  const UINT dpi = hwnd != nullptr ? GetDpiForWindow(hwnd) : GetDpiForSystem();
-  return ScaleSizeForDpi(g_min_settings_window_size_dips, dpi);
-}
-
-LRESULT CALLBACK SettingsWindowProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
-  const UINT toolbar_refresh_message =
-      fp::RegisteredBroadcastMessage(fp::kToolbarRefreshMessageName);
-  if (toolbar_refresh_message != 0 && message == toolbar_refresh_message) {
-    SyncToolbarVisibleSwitchesFromSettings();
-  }
-  if (message == WM_GETMINMAXINFO) {
-    auto info = reinterpret_cast<MINMAXINFO*>(lparam);
-    if (info != nullptr) {
-      const SizeInt32 min_size = SettingsMinimumWindowSize(hwnd);
-      info->ptMinTrackSize.x = min_size.Width;
-      info->ptMinTrackSize.y = min_size.Height;
-    }
-  }
-  if (message == WM_DPICHANGED) {
-    const auto* suggested = reinterpret_cast<const RECT*>(lparam);
-    if (suggested != nullptr) {
-      SetWindowPos(hwnd,
-                   nullptr,
-                   suggested->left,
-                   suggested->top,
-                   suggested->right - suggested->left,
-                   suggested->bottom - suggested->top,
-                   SWP_NOACTIVATE | SWP_NOZORDER);
-    }
-    return 0;
-  }
-  if (g_settings_window_proc != nullptr) {
-    return CallWindowProcW(g_settings_window_proc, hwnd, message, wparam, lparam);
-  }
-  return DefWindowProcW(hwnd, message, wparam, lparam);
-}
-
-void ApplyMinimumWindowSize(Window const& window, SizeInt32 const& min_size) {
-  const HWND hwnd = GetWindowHandle(window);
-  g_min_settings_window_size_dips = min_size;
-  if (hwnd == nullptr || g_settings_window_proc != nullptr) {
-    return;
-  }
-  g_settings_window_proc =
-      reinterpret_cast<WNDPROC>(SetWindowLongPtrW(hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(SettingsWindowProc)));
 }
 
 ComboBox StringChoiceComboWithIcon(
@@ -1017,7 +962,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
     ApplyDwmWindowFrame(window_);
     const auto default_window_size = DefaultWindowSize(window_);
     ApplyMinimumWindowSize(
-        window_, SizeInt32{kMinSettingsWindowWidthDips, kMinSettingsWindowHeightDips});
+        window_, SizeInt32{860, 480});
     window_.AppWindow().Resize(default_window_size);
     CenterWindowOnMonitor(window_);
   }

@@ -18,6 +18,9 @@ winrt::Windows::Graphics::SizeInt32 ScaleSizeForDpi(
     winrt::Windows::Graphics::SizeInt32 const& size,
     UINT dpi);
 void CenterWindowOnMonitor(winrt::Microsoft::UI::Xaml::Window const& window);
+void ApplyMinimumWindowSize(
+    winrt::Microsoft::UI::Xaml::Window const& window,
+    winrt::Windows::Graphics::SizeInt32 const& min_size);
 void ApplyTitleBarColors(winrt::Microsoft::UI::Xaml::Window const& window);
 void ApplyWindowIcons(winrt::Microsoft::UI::Xaml::Window const& window);
 void ApplyDwmWindowFrame(winrt::Microsoft::UI::Xaml::Window const& window);
