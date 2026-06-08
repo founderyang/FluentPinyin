@@ -221,7 +221,8 @@ Status: already implemented and now guarded by package smoke checks.
 - Extract TSF font-family rules into a focused model.
   Status: done. `src/tsf/font_model.*` owns the MiSans/MiSans TC UI family
   contract, Source Han Sans candidate family selection, fallback family lists,
-  and localized font-name matching with focused unit coverage.
+  localized font-name matching, and Songti exclusion rules for tray glyph
+  selection with focused unit coverage.
 - Extract TSF candidate layout/tool models.
   Status: done for the low-risk pure-data layer. `candidate_layout_model.h`
   owns candidate layout metrics; `candidate_layout_math.*` owns compact/
@@ -232,6 +233,10 @@ Status: already implemented and now guarded by package smoke checks.
   Status: done. `src/tsf/toolbar_model.*` now owns toolbar visible-item parsing
   plus item geometry, toolbar pixel sizing, drag/item hit testing, and icon
   inset rectangles with focused unit coverage.
+- Extract TSF tray icon geometry.
+  Status: done. `src/tsf/tray_icon_model.*` owns tray icon reference units,
+  glyph target proportions, disabled-mark geometry, and unit-to-pixel clamping
+  with focused unit coverage.
 - Share status-tip blacklist parsing and runtime process matching.
   Status: done. `src/common/status_tip_blacklist.*` now owns blacklist token
   normalization, setting parsing/joining, duplicate checks, wildcard process
@@ -256,7 +261,7 @@ already been extracted without moving COM/window lifetimes: input mode state,
 candidate layout math, candidate layout metrics, candidate tool geometry,
 toolbar visible-item and geometry models, context menu command mapping,
 shortcut parsing, font-family rules, and status-tip blacklist matching. The
-remaining window/rendering splits
+tray icon geometry is also extracted. The remaining window/rendering splits
 should be done after a full Release build and UI smoke pass because they touch
 message dispatch, layered-window painting, and TSF edit-session lifetimes.
 
