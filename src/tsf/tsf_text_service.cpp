@@ -137,13 +137,7 @@ constexpr int kToolbarGripWidthDips = 3;
 constexpr int kToolbarGripHeightDips = 16;
 constexpr int kToolbarTextPointSize = 16;
 constexpr int kToolbarTextVerticalOffsetHalfDips = 0;
-constexpr int kToolbarTooltipMinWidthDips = 0;
 constexpr int kToolbarTooltipFontPointSize = 9;
-constexpr int kToolbarTooltipHeightDips = 30;
-constexpr int kToolbarTooltipPaddingDips = 8;
-constexpr int kToolbarTooltipOverhangGuardDips = 2;
-constexpr int kToolbarTooltipCornerRadiusHalfDips = 7;
-constexpr int kToolbarTooltipMouseOffsetYDips = 9;
 constexpr int kToolbarDefaultRightInsetDips = 16;
 constexpr int kToolbarDefaultBottomInsetDips = 16;
 constexpr std::wstring_view kFluentPinyinWebsiteUrl = L"";
@@ -2880,10 +2874,6 @@ std::wstring ToolbarTooltipText(int item,
     default:
       return L"";
   }
-}
-
-int ToolbarTooltipCornerRadius(UINT dpi) {
-  return ScaleHalfDipForDpi(kToolbarTooltipCornerRadiusHalfDips, dpi);
 }
 
 bool IsUsableScreenPoint(POINT point) {
@@ -10438,12 +10428,12 @@ void TsfTextService::PositionToolbarTooltip(int item) {
     ReleaseDC(toolbar_tooltip_window_, dc);
   }
 
-  const int padding = s(kToolbarTooltipPaddingDips);
+  const int padding = ToolbarTooltipPadding(dpi);
   const int width =
-      std::max(s(kToolbarTooltipMinWidthDips),
+      std::max(ToolbarTooltipMinWidth(dpi),
                static_cast<int>(text_size.cx) + padding * 2 +
-                   s(kToolbarTooltipOverhangGuardDips));
-  const int height = s(kToolbarTooltipHeightDips);
+                   ToolbarTooltipOverhangGuard(dpi));
+  const int height = ToolbarTooltipHeight(dpi);
   POINT anchor{};
   if (has_toolbar_tooltip_anchor_) {
     anchor = toolbar_tooltip_anchor_;
@@ -10452,7 +10442,7 @@ void TsfTextService::PositionToolbarTooltip(int item) {
   }
 
   int x = anchor.x - width / 2;
-  int y = anchor.y - height - s(kToolbarTooltipMouseOffsetYDips);
+  int y = anchor.y - height - ToolbarTooltipMouseOffsetY(dpi);
   const RECT work_area = WorkAreaForPoint(anchor);
   if (x + width > work_area.right) {
     x = work_area.right - width;
@@ -10461,10 +10451,10 @@ void TsfTextService::PositionToolbarTooltip(int item) {
     x = work_area.left;
   }
   if (y + height > work_area.bottom) {
-    y = anchor.y + s(kToolbarTooltipMouseOffsetYDips);
+    y = anchor.y + ToolbarTooltipMouseOffsetY(dpi);
   }
   if (y < work_area.top) {
-    y = anchor.y + s(kToolbarTooltipMouseOffsetYDips);
+    y = anchor.y + ToolbarTooltipMouseOffsetY(dpi);
   }
   SetWindowPos(toolbar_tooltip_window_, HWND_TOPMOST, x, y, width, height, SWP_NOACTIVATE);
   SetWindowRgn(toolbar_tooltip_window_, nullptr, FALSE);
@@ -10488,7 +10478,7 @@ void TsfTextService::DrawToolbarTooltip(HDC dc) {
   HGDIOBJ old_font = font != nullptr ? SelectObject(dc, font) : nullptr;
   SetBkMode(dc, TRANSPARENT);
   SetTextColor(dc, palette.tooltip_text);
-  const int padding = s(kToolbarTooltipPaddingDips);
+  const int padding = ToolbarTooltipPadding(dpi);
   RECT text_rect{client.left + padding, client.top, client.right - padding, client.bottom - s(1)};
   const std::wstring text = ToolbarTooltipText(toolbar_tooltip_item_,
                                                ascii_mode_,

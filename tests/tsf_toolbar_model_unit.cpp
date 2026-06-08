@@ -72,6 +72,16 @@ int main() {
   Expect(icon_rect.left > metrics[0].visual_rect.left &&
              icon_rect.right < metrics[0].visual_rect.right,
          "toolbar icon rect applies inset");
+  Expect(fp::tsf::ToolbarTooltipMinWidth(96) == 0,
+         "toolbar tooltip has no forced minimum width at base dpi");
+  Expect(fp::tsf::ToolbarTooltipHeight(96) == 30,
+         "toolbar tooltip height scales at base dpi");
+  Expect(fp::tsf::ToolbarTooltipPadding(192) == 16,
+         "toolbar tooltip padding scales with dpi");
+  Expect(fp::tsf::ToolbarTooltipCornerRadius(96) == 3,
+         "toolbar tooltip corner radius uses half-dip floor scale");
+  Expect(fp::tsf::ToolbarTooltipMouseOffsetY(96) == 9,
+         "toolbar tooltip mouse offset scales at base dpi");
 
   return g_failures == 0 ? 0 : 1;
 }

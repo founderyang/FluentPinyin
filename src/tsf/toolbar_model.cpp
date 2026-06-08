@@ -14,6 +14,12 @@ constexpr int kToolbarTailPaddingHalfDips = 4;
 constexpr int kToolbarFeedbackWidthDips = 24;
 constexpr int kToolbarFeedbackHeightDips = 28;
 constexpr int kToolbarFeedbackEdgeInsetDips = 4;
+constexpr int kToolbarTooltipMinWidthDips = 0;
+constexpr int kToolbarTooltipHeightDips = 30;
+constexpr int kToolbarTooltipPaddingDips = 8;
+constexpr int kToolbarTooltipOverhangGuardDips = 2;
+constexpr int kToolbarTooltipCornerRadiusHalfDips = 7;
+constexpr int kToolbarTooltipMouseOffsetYDips = 9;
 
 struct ToolbarItemVisualDips {
   int left_offset;
@@ -175,6 +181,30 @@ int ToolbarWindowHeightPixels(bool vertical, size_t item_count, UINT dpi) {
   const int base_dips =
       kToolbarDragWidthDips + static_cast<int>(item_count) * kToolbarItemSlotDips;
   return ScaleForDpi(base_dips, dpi) + ScaleToolbarHalfDipsFloor(kToolbarTailPaddingHalfDips, dpi);
+}
+
+int ToolbarTooltipMinWidth(UINT dpi) {
+  return ScaleForDpi(kToolbarTooltipMinWidthDips, dpi);
+}
+
+int ToolbarTooltipHeight(UINT dpi) {
+  return ScaleForDpi(kToolbarTooltipHeightDips, dpi);
+}
+
+int ToolbarTooltipPadding(UINT dpi) {
+  return ScaleForDpi(kToolbarTooltipPaddingDips, dpi);
+}
+
+int ToolbarTooltipOverhangGuard(UINT dpi) {
+  return ScaleForDpi(kToolbarTooltipOverhangGuardDips, dpi);
+}
+
+int ToolbarTooltipCornerRadius(UINT dpi) {
+  return ScaleToolbarHalfDipsFloor(kToolbarTooltipCornerRadiusHalfDips, dpi);
+}
+
+int ToolbarTooltipMouseOffsetY(UINT dpi) {
+  return ScaleForDpi(kToolbarTooltipMouseOffsetYDips, dpi);
 }
 
 std::vector<ToolbarItemMetrics> ToolbarItemsForDpi(UINT dpi,

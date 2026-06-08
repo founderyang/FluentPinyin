@@ -53,6 +53,12 @@ int ScaleToolbarHalfDipsFloor(int half_dips, UINT dpi);
 int ToolbarThicknessPixels(UINT dpi);
 int ToolbarWindowWidthPixels(bool vertical, size_t item_count, UINT dpi);
 int ToolbarWindowHeightPixels(bool vertical, size_t item_count, UINT dpi);
+int ToolbarTooltipMinWidth(UINT dpi);
+int ToolbarTooltipHeight(UINT dpi);
+int ToolbarTooltipPadding(UINT dpi);
+int ToolbarTooltipOverhangGuard(UINT dpi);
+int ToolbarTooltipCornerRadius(UINT dpi);
+int ToolbarTooltipMouseOffsetY(UINT dpi);
 std::vector<ToolbarItemMetrics> ToolbarItemsForDpi(UINT dpi,
                                                    bool vertical,
                                                    const std::vector<int>& visible_items);
