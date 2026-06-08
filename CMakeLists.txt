@@ -486,6 +486,7 @@ add_executable(fluent_pinyin_devtools WIN32
   src/devtools/main.cpp
   src/devtools/process_utils.cpp
   src/devtools/registry_utils.cpp
+  src/devtools/rime_warmup.cpp
 )
 
 target_link_libraries(fluent_pinyin_devtools PRIVATE
