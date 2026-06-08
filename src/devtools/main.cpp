@@ -10,11 +10,11 @@
 #include "devtools/process_utils.h"
 #include "devtools/registry_utils.h"
 #include "devtools/rime_warmup.h"
+#include "devtools/scheduled_task_utils.h"
 
 #include <ctffunc.h>
 #include <msctf.h>
 #include <shellapi.h>
-#include <taskschd.h>
 #include <windows.h>
 
 #include <filesystem>
@@ -255,7 +255,6 @@ bool EnsureCurrentUserFluentPinyinLanguageProfile() {
   return ok;
 }
 
-constexpr std::wstring_view kTaskName = L"FluentPinyinAutoSync";
 bool HasOptionPrefix(std::wstring_view arg) {
   return arg.starts_with(L"--") || arg.starts_with(L"/");
 }
@@ -337,57 +336,6 @@ FontCleanupSummary RemoveFontFilesAndRegistry() {
   return summary;
 }
 
-bool RemoveScheduledTask() {
-  ComPtr<ITaskService> service;
-  HRESULT result = CoCreateInstance(CLSID_TaskScheduler,
-                                    nullptr,
-                                    CLSCTX_INPROC_SERVER,
-                                    IID_ITaskService,
-                                    reinterpret_cast<void**>(service.put()));
-  if (FAILED(result) || !service) {
-    fp::LogWarning(L"installer",
-                   L"scheduled task cleanup: failed to create task service: " +
-                       HresultToString(result));
-    return false;
-  }
-
-  VARIANT empty;
-  VariantInit(&empty);
-  result = service->Connect(empty, empty, empty, empty);
-  if (FAILED(result)) {
-    fp::LogWarning(L"installer",
-                   L"scheduled task cleanup: failed to connect task service: " +
-                       HresultToString(result));
-    return false;
-  }
-
-  ComPtr<ITaskFolder> root;
-  BSTR root_path = SysAllocString(L"\\");
-  result = service->GetFolder(root_path, root.put());
-  SysFreeString(root_path);
-  if (FAILED(result) || !root) {
-    fp::LogWarning(L"installer",
-                   L"scheduled task cleanup: failed to open root folder: " +
-                       HresultToString(result));
-    return false;
-  }
-
-  BSTR task_name = SysAllocString(std::wstring(kTaskName).c_str());
-  result = root->DeleteTask(task_name, 0);
-  SysFreeString(task_name);
-  if (SUCCEEDED(result)) {
-    fp::LogInfo(L"installer", L"scheduled task cleanup: removed task.");
-    return true;
-  }
-  if (HRESULT_CODE(result) == ERROR_FILE_NOT_FOUND) {
-    fp::LogInfo(L"installer", L"scheduled task cleanup: task not present.");
-    return true;
-  }
-  fp::LogWarning(L"installer",
-                 L"scheduled task cleanup: DeleteTask failed: " + HresultToString(result));
-  return false;
-}
-
 int PrepareInstall() {
   const ULONGLONG start_tick = GetTickCount64();
   fp::devtools::CloseLegacyInputHosts();
@@ -451,7 +399,7 @@ int CleanupInstall(const std::filesystem::path& install_dir,
     fp::devtools::RestartTextServicesProcess();
   }
   const auto font_cleanup = RemoveFontFilesAndRegistry();
-  const bool scheduled_task_cleanup_ok = RemoveScheduledTask();
+  const bool scheduled_task_cleanup_ok = fp::devtools::RemoveScheduledTask();
 
   constexpr wchar_t kClsid[] = L"{76e3ad5b-1dd8-4584-b3cd-127df0239720}";
   constexpr wchar_t kProfile[] = L"{21e29f6d-32dc-4f6d-8477-9ed72313c625}";
