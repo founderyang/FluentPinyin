@@ -15,6 +15,7 @@
 #include "tsf/input_mode_state.h"
 #include "tsf/module.h"
 #include "tsf/resource.h"
+#include "tsf/toolbar_model.h"
 #include "tsf/tsf_settings_adapter.h"
 
 #include <ctffunc.h>
@@ -324,67 +325,6 @@ enum CandidateToolId : int {
   kCandidateToolSettings = 5,
   kCandidateToolBrand = 6,
 };
-
-enum ToolbarItemId : int {
-  kToolbarItemNone = 0,
-  kToolbarItemDrag = 1,
-  kToolbarItemInputMode = 2,
-  kToolbarItemShape = 3,
-  kToolbarItemPunctuation = 4,
-  kToolbarItemCharset = 5,
-  kToolbarItemEmoji = 6,
-  kToolbarItemSettings = 7,
-};
-
-struct ToolbarItemDefinition {
-  int id;
-  std::wstring_view setting_id;
-  std::wstring_view custom_label;
-};
-
-constexpr std::array<ToolbarItemDefinition, 5> kToolbarCustomItemDefinitions{{
-    {kToolbarItemInputMode, L"input_mode", L"\u4E2D/\u82F1\u6587"},
-    {kToolbarItemShape, L"shape", L"\u5168/\u534A\u89D2"},
-    {kToolbarItemPunctuation, L"punctuation", L"\u4E2D/\u82F1\u6587\u6807\u70B9"},
-    {kToolbarItemCharset, L"charset", L"\u7B80\u4F53/\u7E41\u4F53\u4E2D\u6587\u5B57\u7B26"},
-    {kToolbarItemEmoji, L"emoji", L"\u8868\u60C5\u7B26\u53F7/\u7B26\u53F7"},
-}};
-
-bool IsToolbarCustomItem(int item) {
-  return std::any_of(kToolbarCustomItemDefinitions.begin(),
-                     kToolbarCustomItemDefinitions.end(),
-                     [item](const ToolbarItemDefinition& definition) {
-                       return definition.id == item;
-                     });
-}
-
-std::wstring_view ToolbarItemSettingId(int item) {
-  for (const auto& definition : kToolbarCustomItemDefinitions) {
-    if (definition.id == item) {
-      return definition.setting_id;
-    }
-  }
-  return {};
-}
-
-std::wstring ToolbarCustomItemLabel(int item) {
-  for (const auto& definition : kToolbarCustomItemDefinitions) {
-    if (definition.id == item) {
-      return std::wstring(definition.custom_label);
-    }
-  }
-  return {};
-}
-
-std::vector<int> DefaultToolbarVisibleItems() {
-  std::vector<int> items;
-  items.reserve(kToolbarCustomItemDefinitions.size());
-  for (const auto& definition : kToolbarCustomItemDefinitions) {
-    items.push_back(definition.id);
-  }
-  items.push_back(kToolbarItemSettings);
-  return items;
-}
 
 enum ContextMenuRow : int {
   kContextMenuRowShape = 0,
@@ -3215,7 +3155,6 @@ struct ToolbarItemMetrics {
   RECT feedback_rect;
 };
 
-std::vector<int> VisibleToolbarItemsWithSettings(const std::vector<int>& items);
 int ToolbarWindowWidthPixels(bool vertical, size_t item_count, UINT dpi);
 int ToolbarWindowHeightPixels(bool vertical, size_t item_count, UINT dpi);
 
@@ -3387,67 +3326,6 @@ std::wstring ToolbarTooltipText(int item,
 
 int ToolbarTooltipCornerRadius(UINT dpi) {
   return ScaleHalfDipForDpi(kToolbarTooltipCornerRadiusHalfDips, dpi);
-}
-
-bool ContainsToolbarItem(const std::vector<int>& items, int item) {
-  return std::find(items.begin(), items.end(), item) != items.end();
-}
-
-std::vector<int> ParseToolbarVisibleItems(std::wstring_view value) {
-  if (fp::TrimWhitespace(value).empty()) {
-    return DefaultToolbarVisibleItems();
-  }
-  std::vector<int> items;
-  size_t start = 0;
-  while (start <= value.size()) {
-    const size_t separator = value.find(L',', start);
-    const size_t end = separator == std::wstring_view::npos ? value.size() : separator;
-    const std::wstring token =
-        fp::ToLowerInvariant(fp::TrimWhitespace(value.substr(start, end - start)));
-    for (const auto& definition : kToolbarCustomItemDefinitions) {
-      if (token == definition.setting_id && !ContainsToolbarItem(items, definition.id)) {
-        items.push_back(definition.id);
-        break;
-      }
-    }
-    if (separator == std::wstring_view::npos) {
-      break;
-    }
-    start = separator + 1;
-  }
-  if (!ContainsToolbarItem(items, kToolbarItemSettings)) {
-    items.push_back(kToolbarItemSettings);
-  }
-  return items.empty() ? DefaultToolbarVisibleItems() : items;
-}
-
-std::wstring SerializeToolbarVisibleItems(const std::vector<int>& items) {
-  std::wstring value;
-  for (int item : items) {
-    const std::wstring_view id = ToolbarItemSettingId(item);
-    if (id.empty()) {
-      continue;
-    }
-    if (!value.empty()) {
-      value += L",";
-    }
-    value += id;
-  }
-  return value;
-}
-
-std::vector<int> VisibleToolbarItemsWithSettings(const std::vector<int>& items) {
-  std::vector<int> visible;
-  visible.reserve(kToolbarCustomItemDefinitions.size());
-  for (const auto& definition : kToolbarCustomItemDefinitions) {
-    if (ContainsToolbarItem(items, definition.id)) {
-      visible.push_back(definition.id);
-    }
-  }
-  if (!ContainsToolbarItem(visible, kToolbarItemSettings)) {
-    visible.push_back(kToolbarItemSettings);
-  }
-  return visible;
 }
 
 int ScaleToolbarHalfDipsFloor(int half_dips, UINT dpi) {
