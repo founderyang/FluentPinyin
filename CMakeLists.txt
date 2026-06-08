@@ -387,6 +387,7 @@ add_executable(fluent_pinyin_settings WIN32
   src/config_winui/hotkey_helpers.cpp
   src/config_winui/lexicon_store.cpp
   src/config_winui/settings_binding.cpp
+  src/config_winui/settings_controls.cpp
   src/config_winui/settings_icons.cpp
   src/config_winui/settings_navigation.cpp
   src/config_winui/settings_options.cpp
