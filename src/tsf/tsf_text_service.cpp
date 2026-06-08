@@ -10,6 +10,7 @@
 #include "common/path_utils.h"
 #include "common/svg_icons.h"
 #include "common/theme.h"
+#include "tsf/candidate_layout_math.h"
 #include "tsf/guids.h"
 #include "tsf/input_mode_state.h"
 #include "tsf/module.h"
@@ -89,8 +90,6 @@ enum class CandidateFontFamily {
 };
 
 constexpr int kExpandedCandidateMaxColumns = 9;
-constexpr int kVerticalExpandedCandidateColumns = 4;
-constexpr int kVerticalExpandedCandidateRows = 9;
 [[maybe_unused]] constexpr int kExpandedCandidatePageSize =
     fp::kDefaultCandidateCount + kExpandedCandidateMaxColumns * 3;
 constexpr int kCandidateToolButtonSize = 18;
@@ -131,7 +130,6 @@ constexpr int kStatusTipIconSizeDips = 24;
 constexpr float kStatusTipDetailIconScale = 0.78f;
 constexpr int kStatusTipMouseOffsetXDips = 4;
 constexpr int kStatusTipMouseOffsetYDips = 7;
-constexpr int kHorizontalExpandedTailRows = 3;
 constexpr int kHorizontalExpandedFooterGapDips = 2;
 constexpr int kHorizontalExpandedFooterHeightDips = 41;
 constexpr int kHorizontalExpandedHeaderSeparatorInsetDips = 5;
@@ -504,50 +502,6 @@ UINT ContextSubmenuCommandForRow(int parent_row, int row, bool toolbar_mode = fa
     return row == 0 ? kMenuCharsetSimplified : kMenuCharsetTraditional;
   }
   return 0;
-}
-
-int CompactCandidateCount(int compact_count) {
-  return fp::ClampCandidateCount(compact_count);
-}
-
-int ExpandedCandidateColumnCount(int compact_count) {
-  return CompactCandidateCount(compact_count);
-}
-
-int ExpandedCandidateColumnCount(bool horizontal, int compact_count) {
-  return horizontal ? ExpandedCandidateColumnCount(compact_count) : kVerticalExpandedCandidateColumns;
-}
-
-int ExpandedCandidateRowCount(bool horizontal) {
-  return horizontal ? 1 + kHorizontalExpandedTailRows : kVerticalExpandedCandidateRows;
-}
-
-int ExpandedCandidatePageSize(bool horizontal, int compact_count) {
-  (void)horizontal;
-  return CompactCandidateCount(compact_count) +
-         fp::kMaxCandidateCount * kHorizontalExpandedTailRows;
-}
-
-int ExpandedCandidatePageSize(int compact_count) {
-  return ExpandedCandidatePageSize(true, compact_count);
-}
-
-int CandidateItemHeightDips(int base_dips, int candidate_font_point_size) {
-  return base_dips +
-         std::max(0, candidate_font_point_size - fp::kBaseCandidateFontPointSize) * 2;
-}
-
-int CandidateRowStepDips(int base_dips, int candidate_font_point_size) {
-  return base_dips +
-         std::max(0, candidate_font_point_size - fp::kBaseCandidateFontPointSize) * 2;
-}
-
-int ScaleCandidateSelectionMark(int base_pixels, int item_height, UINT dpi) {
-  const int base_item_height =
-      MulDiv(CandidateItemHeightDips(33, fp::kBaseCandidateFontPointSize),
-             static_cast<int>(dpi),
-             96);
-  return MulDiv(base_pixels, std::max(1, item_height), std::max(1, base_item_height));
 }
 
 const wchar_t* UiFontFamily(bool traditional = false) {

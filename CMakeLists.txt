@@ -194,6 +194,7 @@ if(MSVC)
 endif()
 
 add_library(fluent_pinyin_tsf SHARED
+  src/tsf/candidate_layout_math.cpp
   src/tsf/class_factory.cpp
   src/tsf/dllmain.cpp
   src/tsf/input_mode_state.cpp
@@ -532,6 +533,12 @@ if(BUILD_TESTING)
   )
   target_link_libraries(tsf_input_mode_state_unit PRIVATE fluent_pinyin_common)
 
+  add_executable(tsf_candidate_layout_math_unit
+    tests/tsf_candidate_layout_math_unit.cpp
+    src/tsf/candidate_layout_math.cpp
+  )
+  target_link_libraries(tsf_candidate_layout_math_unit PRIVATE fluent_pinyin_common)
+
   add_executable(config_settings_binding_unit
     tests/config_settings_binding_unit.cpp
     src/config_winui/settings_binding.cpp
@@ -747,6 +754,10 @@ if(BUILD_TESTING)
   add_test(
     NAME tsf_input_mode_state_unit
     COMMAND tsf_input_mode_state_unit
+  )
+  add_test(
+    NAME tsf_candidate_layout_math_unit
+    COMMAND tsf_candidate_layout_math_unit
   )
   add_test(
     NAME config_settings_binding_unit
