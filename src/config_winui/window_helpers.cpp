@@ -1,5 +1,14 @@
 #include "config_winui/window_helpers.h"
 
+#include "config_winui/app_paths.h"
+#include "config_winui/settings_ui_helpers.h"
+#include "config_winui/theme_helpers.h"
+#include "../tsf/resource.h"
+
+#include <windows.h>
+
+#include <winrt/Microsoft.UI.Windowing.h>
+
 #include <algorithm>
 #include <cmath>
 #include <string>
@@ -104,6 +113,95 @@ void CenterWindowOnMonitor(winrt::Microsoft::UI::Xaml::Window const& window) {
   const int x = monitor_info.rcWork.left + std::max(0, (work_width - window_width) / 2);
   const int y = monitor_info.rcWork.top + std::max(0, (work_height - window_height) / 2);
   SetWindowPos(hwnd, nullptr, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
+void ApplyTitleBarColors(winrt::Microsoft::UI::Xaml::Window const& window) {
+  const auto palette = CurrentSettingsPalette();
+  auto title_bar = window.AppWindow().TitleBar();
+  title_bar.IconShowOptions(Microsoft::UI::Windowing::IconShowOptions::HideIconAndSystemMenu);
+  const auto background = ColorReference(0, 0, 0, 0);
+  title_bar.BackgroundColor(background);
+  title_bar.ForegroundColor(ColorReference(palette.text));
+  title_bar.InactiveBackgroundColor(background);
+  title_bar.InactiveForegroundColor(ColorReference(palette.muted_text));
+  title_bar.ButtonBackgroundColor(background);
+  title_bar.ButtonForegroundColor(ColorReference(palette.text));
+  title_bar.ButtonHoverBackgroundColor(ColorReference(palette.button_hover));
+  title_bar.ButtonHoverForegroundColor(ColorReference(palette.text));
+  title_bar.ButtonPressedBackgroundColor(ColorReference(palette.button_pressed));
+  title_bar.ButtonPressedForegroundColor(ColorReference(palette.text));
+  title_bar.ButtonInactiveBackgroundColor(background);
+  title_bar.ButtonInactiveForegroundColor(ColorReference(palette.muted_text));
+}
+
+void ApplyWindowIcons(winrt::Microsoft::UI::Xaml::Window const& window) {
+  const auto icon_path = WindowIconPath();
+  if (icon_path.empty()) {
+    return;
+  }
+  auto app_window = window.AppWindow();
+  app_window.SetIcon(icon_path);
+  app_window.SetTaskbarIcon(icon_path);
+  app_window.TitleBar().IconShowOptions(Microsoft::UI::Windowing::IconShowOptions::HideIconAndSystemMenu);
+
+  const HWND hwnd = GetWindowHandle(window);
+  if (hwnd == nullptr) {
+    return;
+  }
+  auto load_icon = [](int cx, int cy) -> HICON {
+    return reinterpret_cast<HICON>(
+        LoadImageW(GetModuleHandleW(nullptr),
+                   MAKEINTRESOURCEW(IDI_APP_ICON),
+                   IMAGE_ICON,
+                   cx,
+                   cy,
+                   LR_DEFAULTCOLOR | LR_SHARED));
+  };
+  if (HICON large_icon = load_icon(GetSystemMetrics(SM_CXICON),
+                                   GetSystemMetrics(SM_CYICON))) {
+    SendMessageW(hwnd, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(large_icon));
+  }
+  if (HICON small_icon = load_icon(GetSystemMetrics(SM_CXSMICON),
+                                   GetSystemMetrics(SM_CYSMICON))) {
+    SendMessageW(hwnd, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(small_icon));
+  }
+}
+
+void ApplyDwmWindowFrame(winrt::Microsoft::UI::Xaml::Window const& window) {
+  const HWND hwnd = GetWindowHandle(window);
+  if (hwnd == nullptr) {
+    return;
+  }
+
+  auto dwm = LoadLibraryW(L"dwmapi.dll");
+  if (dwm == nullptr) {
+    return;
+  }
+  using DwmSetWindowAttributeFn = HRESULT(WINAPI*)(HWND, DWORD, LPCVOID, DWORD);
+  auto set_attribute = reinterpret_cast<DwmSetWindowAttributeFn>(
+      GetProcAddress(dwm, "DwmSetWindowAttribute"));
+  if (set_attribute != nullptr) {
+    constexpr DWORD kDwmUseImmersiveDarkMode = 20;
+    constexpr DWORD kDwmWindowCornerPreference = 33;
+    constexpr DWORD kDwmBorderColor = 34;
+    constexpr DWORD kDwmCaptionColor = 35;
+    constexpr DWORD kDwmTextColor = 36;
+    constexpr DWORD kDwmCornerRound = 2;
+
+    const auto palette = CurrentSettingsPalette();
+    const BOOL dark_mode = palette.light ? FALSE : TRUE;
+    const DWORD corner = kDwmCornerRound;
+    const COLORREF border_color = SettingsEdgeColorRef();
+    const COLORREF caption_color =
+        RGB(palette.background.red, palette.background.green, palette.background.blue);
+    const COLORREF text_color = RGB(palette.text.red, palette.text.green, palette.text.blue);
+    set_attribute(hwnd, kDwmUseImmersiveDarkMode, &dark_mode, sizeof(dark_mode));
+    set_attribute(hwnd, kDwmWindowCornerPreference, &corner, sizeof(corner));
+    set_attribute(hwnd, kDwmBorderColor, &border_color, sizeof(border_color));
+    set_attribute(hwnd, kDwmCaptionColor, &caption_color, sizeof(caption_color));
+    set_attribute(hwnd, kDwmTextColor, &text_color, sizeof(text_color));
+  }
+  FreeLibrary(dwm);
 }
 
 }  // namespace fp::config_winui

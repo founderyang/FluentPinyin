@@ -18,5 +18,8 @@ winrt::Windows::Graphics::SizeInt32 ScaleSizeForDpi(
     winrt::Windows::Graphics::SizeInt32 const& size,
     UINT dpi);
 void CenterWindowOnMonitor(winrt::Microsoft::UI::Xaml::Window const& window);
+void ApplyTitleBarColors(winrt::Microsoft::UI::Xaml::Window const& window);
+void ApplyWindowIcons(winrt::Microsoft::UI::Xaml::Window const& window);
+void ApplyDwmWindowFrame(winrt::Microsoft::UI::Xaml::Window const& window);
 
 }  // namespace fp::config_winui
