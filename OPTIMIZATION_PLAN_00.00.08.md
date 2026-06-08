@@ -70,6 +70,8 @@ Status: fixed for 00.00.08.
   not race process shutdown state.
 - The protocol decoder rejects oversized candidate-count arithmetic before
   multiplying field counts.
+- CoreHost and TSF IPC-related diagnostics capture Win32 last-error values
+  before formatting log text.
 
 ### Install, Upgrade, And Uninstall Prompts
 

@@ -401,9 +401,10 @@ void StartParentWatchdog(DWORD parent_process_id) {
   }
   HANDLE parent = OpenProcess(SYNCHRONIZE, FALSE, parent_process_id);
   if (parent == nullptr) {
+    const DWORD error = GetLastError();
     fp::LogWarning(L"corehost",
                    L"Failed to open parent process for lifetime monitoring: " +
-                       std::to_wstring(GetLastError()));
+                       std::to_wstring(error));
     return;
   }
   try {
