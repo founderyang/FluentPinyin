@@ -279,4 +279,339 @@ ComboBox ChoiceCombo(const std::vector<std::wstring>& labels,
   return combo;
 }
 
+Button ActionButton(std::wstring_view text, std::wstring_view glyph) {
+  Button button;
+  ApplySettingsUIFont(button);
+  button.MinWidth(108);
+  button.HorizontalAlignment(HorizontalAlignment::Right);
+  StackPanel content;
+  content.Orientation(Orientation::Horizontal);
+  content.Spacing(8);
+  content.Children().Append(Icon(glyph, kInlineButtonIconHostSize));
+  content.Children().Append(Text(text, 13, FW_SEMIBOLD));
+  button.Content(content);
+  return button;
+}
+
+Button ActionPathButton(std::wstring_view text,
+                        std::wstring_view path,
+                        double scale,
+                        double view_box_size) {
+  const auto palette = CurrentSettingsPalette();
+  Button button;
+  ApplySettingsUIFont(button);
+  button.MinWidth(108);
+  button.HorizontalAlignment(HorizontalAlignment::Right);
+  button.Background(Brush(palette.button));
+  button.BorderBrush(SettingsBorderBrush());
+  button.BorderThickness(SettingsHairlineThickness());
+  button.CornerRadius(Radius(8));
+  const auto background = Brush(palette.button).as<IInspectable>();
+  const auto hover = Brush(palette.button_hover).as<IInspectable>();
+  const auto pressed = Brush(palette.button_pressed).as<IInspectable>();
+  const auto border = SettingsBorderBrush().as<IInspectable>();
+  const auto border_hover = SettingsBorderHoverBrush().as<IInspectable>();
+  const auto foreground = Brush(palette.text).as<IInspectable>();
+  button.Resources().Insert(box_value(L"ButtonBackground"), background);
+  button.Resources().Insert(box_value(L"ButtonBackgroundPointerOver"), hover);
+  button.Resources().Insert(box_value(L"ButtonBackgroundPressed"), pressed);
+  button.Resources().Insert(box_value(L"ButtonBorderBrush"), border);
+  button.Resources().Insert(box_value(L"ButtonBorderBrushPointerOver"), border_hover);
+  button.Resources().Insert(box_value(L"ButtonBorderBrushPressed"), border_hover);
+  button.Resources().Insert(box_value(L"ButtonForeground"), foreground);
+  button.Resources().Insert(box_value(L"ButtonForegroundPointerOver"), foreground);
+  button.Resources().Insert(box_value(L"ButtonForegroundPressed"), foreground);
+  Grid content;
+  content.ColumnSpacing(8);
+  content.VerticalAlignment(VerticalAlignment::Center);
+  ColumnDefinition icon_column;
+  icon_column.Width(GridLengthHelper::FromPixels(kActionButtonIconHostSize));
+  ColumnDefinition text_column;
+  text_column.Width(GridLengthHelper::Auto());
+  content.ColumnDefinitions().Append(icon_column);
+  content.ColumnDefinitions().Append(text_column);
+
+  auto icon = ActionButtonPathIcon(path, scale, view_box_size);
+  Grid::SetColumn(icon, 0);
+  content.Children().Append(icon);
+  auto label = Text(text, 13, FW_SEMIBOLD);
+  label.TextWrapping(TextWrapping::NoWrap);
+  label.VerticalAlignment(VerticalAlignment::Center);
+  Grid::SetColumn(label, 1);
+  content.Children().Append(label);
+  button.Content(content);
+  return button;
+}
+
+Button CompactActionButton(std::wstring_view text, std::wstring_view glyph) {
+  Button button;
+  ApplySettingsUIFont(button);
+  button.MinWidth(86);
+  button.Padding(Thickness{10, 6, 10, 7});
+  button.HorizontalAlignment(HorizontalAlignment::Right);
+  StackPanel content;
+  content.Orientation(Orientation::Horizontal);
+  content.Spacing(6);
+  content.Children().Append(Icon(glyph, kInlineButtonIconHostSize));
+  content.Children().Append(Text(text, 12, FW_SEMIBOLD));
+  button.Content(content);
+  return button;
+}
+
+Button CompactPathActionButton(std::wstring_view text,
+                               std::wstring_view path,
+                               double scale) {
+  Button button;
+  ApplySettingsUIFont(button);
+  button.MinWidth(74);
+  button.Padding(Thickness{8, 5, 9, 6});
+  button.HorizontalAlignment(HorizontalAlignment::Right);
+  Grid content;
+  content.ColumnSpacing(6);
+  content.VerticalAlignment(VerticalAlignment::Center);
+  ColumnDefinition icon_column;
+  icon_column.Width(GridLengthHelper::FromPixels(kInlineButtonIconHostSize));
+  ColumnDefinition text_column;
+  text_column.Width(GridLengthHelper::Auto());
+  content.ColumnDefinitions().Append(icon_column);
+  content.ColumnDefinitions().Append(text_column);
+
+  auto icon = FluentButtonPathIcon(path, scale);
+  Grid::SetColumn(icon, 0);
+  content.Children().Append(icon);
+  auto label = Text(text, 12, FW_SEMIBOLD);
+  label.TextWrapping(TextWrapping::NoWrap);
+  label.VerticalAlignment(VerticalAlignment::Center);
+  Grid::SetColumn(label, 1);
+  content.Children().Append(label);
+  button.Content(content);
+  return button;
+}
+
+Button InlinePathActionButton(std::wstring_view text,
+                              std::wstring_view path,
+                              double scale) {
+  const auto palette = CurrentSettingsPalette();
+  Button button;
+  ApplySettingsUIFont(button);
+  button.MinWidth(50);
+  button.Height(28);
+  button.MinHeight(28);
+  button.Padding(Thickness{5, 2, 6, 3});
+  button.HorizontalAlignment(HorizontalAlignment::Right);
+  button.BorderThickness(UniformThickness(0));
+  auto normal = TransparentBrush().as<IInspectable>();
+  auto hover = Brush(palette.button_hover).as<IInspectable>();
+  auto pressed = Brush(palette.button_pressed).as<IInspectable>();
+  button.Resources().Insert(box_value(L"ButtonBackground"), normal);
+  button.Resources().Insert(box_value(L"ButtonBackgroundPointerOver"), hover);
+  button.Resources().Insert(box_value(L"ButtonBackgroundPressed"), pressed);
+  button.Resources().Insert(box_value(L"ButtonBorderBrush"), normal);
+  button.Resources().Insert(box_value(L"ButtonBorderBrushPointerOver"), normal);
+  button.Resources().Insert(box_value(L"ButtonBorderBrushPressed"), normal);
+  const auto foreground = Brush(palette.text).as<IInspectable>();
+  button.Resources().Insert(box_value(L"ButtonForeground"), foreground);
+  button.Resources().Insert(box_value(L"ButtonForegroundPointerOver"), foreground);
+  button.Resources().Insert(box_value(L"ButtonForegroundPressed"), foreground);
+
+  Grid content;
+  content.ColumnSpacing(4);
+  content.VerticalAlignment(VerticalAlignment::Center);
+  ColumnDefinition icon_column;
+  icon_column.Width(GridLengthHelper::FromPixels(kInlineButtonIconHostSize));
+  ColumnDefinition text_column;
+  text_column.Width(GridLengthHelper::Auto());
+  content.ColumnDefinitions().Append(icon_column);
+  content.ColumnDefinitions().Append(text_column);
+
+  auto icon = FluentButtonPathIcon(path, scale);
+  Grid::SetColumn(icon, 0);
+  content.Children().Append(icon);
+  auto label = Text(text, 13, FW_SEMIBOLD);
+  label.TextWrapping(TextWrapping::NoWrap);
+  label.VerticalAlignment(VerticalAlignment::Center);
+  Grid::SetColumn(label, 1);
+  content.Children().Append(label);
+  button.Content(content);
+  return button;
+}
+
+Border StableInlinePathActionButton(std::wstring_view text,
+                                    std::wstring_view path,
+                                    double scale,
+                                    std::function<void()> on_click) {
+  const auto palette = CurrentSettingsPalette();
+  Border button;
+  button.MinWidth(60);
+  button.Height(28);
+  button.Padding(Thickness{8, 2, 9, 3});
+  button.HorizontalAlignment(HorizontalAlignment::Right);
+  button.VerticalAlignment(VerticalAlignment::Center);
+  button.Background(Brush(palette.button));
+  button.BorderBrush(SettingsBorderBrush());
+  button.BorderThickness(SettingsHairlineThickness());
+  button.CornerRadius(Radius(8));
+  button.UseLayoutRounding(true);
+
+  Grid content;
+  content.ColumnSpacing(5);
+  content.VerticalAlignment(VerticalAlignment::Center);
+  ColumnDefinition icon_column;
+  icon_column.Width(GridLengthHelper::FromPixels(kInlineButtonIconHostSize));
+  ColumnDefinition text_column;
+  text_column.Width(GridLengthHelper::Auto());
+  content.ColumnDefinitions().Append(icon_column);
+  content.ColumnDefinitions().Append(text_column);
+
+  auto icon = FluentButtonPathIcon(path, scale);
+  Grid::SetColumn(icon, 0);
+  content.Children().Append(icon);
+  auto label = Text(text, 12, FW_SEMIBOLD);
+  label.TextWrapping(TextWrapping::NoWrap);
+  label.VerticalAlignment(VerticalAlignment::Center);
+  Grid::SetColumn(label, 1);
+  content.Children().Append(label);
+  button.Child(content);
+
+  auto hovered = std::make_shared<bool>(false);
+  auto pressed = std::make_shared<bool>(false);
+  auto apply_visual = std::make_shared<std::function<void()>>();
+  *apply_visual = [button, label, hovered, pressed, palette]() {
+    if (*pressed) {
+      button.Background(Brush(palette.button_pressed));
+      button.BorderBrush(SettingsBorderHoverBrush());
+    } else if (*hovered) {
+      button.Background(Brush(palette.button_hover));
+      button.BorderBrush(SettingsBorderHoverBrush());
+    } else {
+      button.Background(Brush(palette.button));
+      button.BorderBrush(SettingsBorderBrush());
+    }
+    label.Foreground(Brush(palette.text));
+  };
+
+  button.PointerEntered([hovered, apply_visual](auto const&, auto const&) {
+    *hovered = true;
+    (*apply_visual)();
+  });
+  button.PointerExited([hovered, pressed, apply_visual](auto const&, auto const&) {
+    *hovered = false;
+    *pressed = false;
+    (*apply_visual)();
+  });
+  button.PointerPressed([pressed, apply_visual](auto const&, auto const&) {
+    *pressed = true;
+    (*apply_visual)();
+  });
+  button.PointerReleased([pressed, apply_visual](auto const&, auto const&) {
+    *pressed = false;
+    (*apply_visual)();
+  });
+  button.Tapped([pressed, apply_visual, on_click = std::move(on_click)](auto const&, auto const&) {
+    *pressed = false;
+    (*apply_visual)();
+    if (on_click) {
+      on_click();
+    }
+  });
+  (*apply_visual)();
+  return button;
+}
+
+Border StableIconToolButton(std::wstring_view path,
+                            std::wstring_view tooltip,
+                            double scale,
+                            std::function<void()> on_click,
+                            double width,
+                            double height) {
+  const auto palette = CurrentSettingsPalette();
+  Border button;
+  button.Width(width);
+  button.Height(height);
+  button.MinWidth(width);
+  button.Padding(Thickness{0, 0, 0, 1});
+  button.HorizontalAlignment(HorizontalAlignment::Right);
+  button.VerticalAlignment(VerticalAlignment::Center);
+  button.Background(Brush(palette.button));
+  button.BorderBrush(SettingsBorderBrush());
+  button.BorderThickness(SettingsHairlineThickness());
+  button.CornerRadius(Radius(8));
+  button.UseLayoutRounding(true);
+  button.Child(ActionButtonPathIcon(path, scale));
+  SetSettingsToolTip(button, tooltip);
+
+  auto hovered = std::make_shared<bool>(false);
+  auto pressed = std::make_shared<bool>(false);
+  auto apply_visual = std::make_shared<std::function<void()>>();
+  *apply_visual = [button, hovered, pressed, palette]() {
+    if (*pressed) {
+      button.Background(Brush(palette.button_pressed));
+      button.BorderBrush(SettingsBorderHoverBrush());
+    } else if (*hovered) {
+      button.Background(Brush(palette.button_hover));
+      button.BorderBrush(SettingsBorderHoverBrush());
+    } else {
+      button.Background(Brush(palette.button));
+      button.BorderBrush(SettingsBorderBrush());
+    }
+  };
+
+  button.PointerEntered([hovered, apply_visual](auto const&, auto const&) {
+    *hovered = true;
+    (*apply_visual)();
+  });
+  button.PointerExited([hovered, pressed, apply_visual](auto const&, auto const&) {
+    *hovered = false;
+    *pressed = false;
+    (*apply_visual)();
+  });
+  button.PointerPressed([pressed, apply_visual](auto const&, auto const&) {
+    *pressed = true;
+    (*apply_visual)();
+  });
+  button.PointerReleased([pressed, apply_visual](auto const&, auto const&) {
+    *pressed = false;
+    (*apply_visual)();
+  });
+  button.Tapped([pressed, apply_visual, on_click = std::move(on_click)](auto const&, auto const&) {
+    *pressed = false;
+    (*apply_visual)();
+    if (on_click) {
+      on_click();
+    }
+  });
+  (*apply_visual)();
+  return button;
+}
+
+Button IconToolButton(std::wstring_view path, std::wstring_view tooltip, double scale) {
+  const auto palette = CurrentSettingsPalette();
+  Button button;
+  ApplySettingsUIFont(button);
+  button.Width(36);
+  button.Height(36);
+  button.MinWidth(36);
+  button.Padding(Thickness{0, 0, 0, 1});
+  button.HorizontalAlignment(HorizontalAlignment::Right);
+  button.VerticalAlignment(VerticalAlignment::Center);
+  button.Background(Brush(palette.button));
+  button.BorderBrush(SettingsBorderBrush());
+  button.BorderThickness(SettingsHairlineThickness());
+  button.CornerRadius(Radius(8));
+  const auto background = Brush(palette.button).as<IInspectable>();
+  const auto hover = Brush(palette.button_hover).as<IInspectable>();
+  const auto pressed = Brush(palette.button_pressed).as<IInspectable>();
+  const auto border = SettingsBorderBrush().as<IInspectable>();
+  const auto border_hover = SettingsBorderHoverBrush().as<IInspectable>();
+  button.Resources().Insert(box_value(L"ButtonBackground"), background);
+  button.Resources().Insert(box_value(L"ButtonBackgroundPointerOver"), hover);
+  button.Resources().Insert(box_value(L"ButtonBackgroundPressed"), pressed);
+  button.Resources().Insert(box_value(L"ButtonBorderBrush"), border);
+  button.Resources().Insert(box_value(L"ButtonBorderBrushPointerOver"), border_hover);
+  button.Resources().Insert(box_value(L"ButtonBorderBrushPressed"), border_hover);
+  button.Content(ActionButtonPathIcon(path, scale));
+  SetSettingsToolTip(button, tooltip);
+  return button;
+}
+
 }  // namespace fp::config_winui

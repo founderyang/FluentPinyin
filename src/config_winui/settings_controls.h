@@ -52,5 +52,40 @@ winrt::Microsoft::UI::Xaml::Controls::ComboBox ChoiceCombo(
     const std::vector<std::wstring>& labels,
     int current_index,
     std::function<void(int)> on_select);
+winrt::Microsoft::UI::Xaml::Controls::Button ActionButton(
+    std::wstring_view text,
+    std::wstring_view glyph);
+winrt::Microsoft::UI::Xaml::Controls::Button ActionPathButton(
+    std::wstring_view text,
+    std::wstring_view path,
+    double scale = 0.88,
+    double view_box_size = 20.0);
+winrt::Microsoft::UI::Xaml::Controls::Button CompactActionButton(
+    std::wstring_view text,
+    std::wstring_view glyph);
+winrt::Microsoft::UI::Xaml::Controls::Button CompactPathActionButton(
+    std::wstring_view text,
+    std::wstring_view path,
+    double scale = 0.82);
+winrt::Microsoft::UI::Xaml::Controls::Button InlinePathActionButton(
+    std::wstring_view text,
+    std::wstring_view path,
+    double scale = 0.68);
+winrt::Microsoft::UI::Xaml::Controls::Border StableInlinePathActionButton(
+    std::wstring_view text,
+    std::wstring_view path,
+    double scale,
+    std::function<void()> on_click);
+winrt::Microsoft::UI::Xaml::Controls::Border StableIconToolButton(
+    std::wstring_view path,
+    std::wstring_view tooltip,
+    double scale,
+    std::function<void()> on_click,
+    double width = 36.0,
+    double height = 36.0);
+winrt::Microsoft::UI::Xaml::Controls::Button IconToolButton(
+    std::wstring_view path,
+    std::wstring_view tooltip,
+    double scale = 1.0);
 
 }  // namespace fp::config_winui
