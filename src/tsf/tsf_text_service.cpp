@@ -4412,13 +4412,6 @@ RECT TrayIconTargetRectHr(int units_width,
               std::min(render_height, target_top + target_height)};
 }
 
-bool IsSongtiFace(std::wstring_view face) {
-  return TextFaceMatchesFamilyName(face, L"SimSun") ||
-         TextFaceMatchesFamilyName(face, L"NSimSun") ||
-         TextFaceMatchesFamilyName(face, L"宋体") ||
-         TextFaceMatchesFamilyName(face, L"新宋体");
-}
-
 HFONT CreateTrayStatusFontForPixels(int pixel_height, const wchar_t* family) {
   return CreateFontW(pixel_height,
                      0,

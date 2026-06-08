@@ -98,4 +98,11 @@ CandidateFontFamily CandidateFontFamilyForFace(std::wstring_view face) {
              : CandidateFontFamily::kMiSans;
 }
 
+bool IsSongtiFace(std::wstring_view face) {
+  return TextFaceMatchesFamilyName(face, L"SimSun") ||
+         TextFaceMatchesFamilyName(face, L"NSimSun") ||
+         TextFaceMatchesFamilyName(face, L"\u5B8B\u4F53") ||
+         TextFaceMatchesFamilyName(face, L"\u65B0\u5B8B\u4F53");
+}
+
 }  // namespace fp::tsf

@@ -21,5 +21,6 @@ bool IsBaseUiFontFamily(const wchar_t* family);
 bool TextFaceMatchesFamilyName(std::wstring_view face, std::wstring_view family);
 bool TextFaceMatchesFamily(std::wstring_view face, std::wstring_view family);
 CandidateFontFamily CandidateFontFamilyForFace(std::wstring_view face);
+bool IsSongtiFace(std::wstring_view face);
 
 }  // namespace fp::tsf

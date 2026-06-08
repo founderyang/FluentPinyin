@@ -53,6 +53,10 @@ int main() {
   Expect(fp::tsf::CandidateFontFamilyForFace(L"MiSans") ==
              fp::tsf::CandidateFontFamily::kMiSans,
          "MiSans face selects MiSans candidate family");
+  Expect(fp::tsf::IsSongtiFace(L"SimSun"), "SimSun is treated as Songti");
+  Expect(fp::tsf::IsSongtiFace(L"\u65B0\u5B8B\u4F53"),
+         "Chinese NSimSun alias is treated as Songti");
+  Expect(!fp::tsf::IsSongtiFace(L"MiSans"), "MiSans is not Songti");
 
   return g_failures == 0 ? 0 : 1;
 }
