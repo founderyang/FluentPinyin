@@ -120,10 +120,16 @@ Status: already implemented and now guarded by package smoke checks.
 - Extract shared CoreHost IPC message framing helpers into `common`.
   Status: done. CoreHost and TSF now share length-prefixed read/write helpers.
 - Extract common process module path helpers into `common/path_utils`.
-  Status: mostly done for exe-hosted modules. Settings UI, toolbar host,
-  devtools, and config app paths now share executable/module helpers and a
-  safe system-directory current working directory helper. TSF keeps its
-  DLL-module path resolver because it runs inside arbitrary host processes.
+  Status: done for the shared path helper layer. Settings UI, toolbar host,
+  devtools, config app paths, TSF registration, and TSF runtime module lookup
+  now share executable/module helpers, including `HMODULE`-based DLL path
+  resolution for in-process TSF hosts and a safe system-directory current
+  working directory helper.
+- Extract common process information helpers into `common`.
+  Status: done. `src/common/process_info.*` now owns current process command
+  line retrieval, current process image-name lookup, and simple command-line
+  contains checks. TSF toolbar-host detection and settings startup switch/page
+  parsing now consume the shared helper without changing their public behavior.
 - Extract common string helpers into `common/encoding`.
   Status: mostly done for sync, TSF toolbar/status-tip parsing, settings
   hotkeys/status-tip blacklist, and devtools paths. Domain-specific lexicon and
@@ -242,6 +248,17 @@ Status: already implemented and now guarded by package smoke checks.
   normalization, setting parsing/joining, duplicate checks, wildcard process
   matching, and list matching. The settings UI keeps only persisted-setting
   wrappers, while TSF uses the shared runtime matcher.
+- Share common DPI and Win32 rectangle helpers.
+  Status: done. `src/common/dpi.h` owns normal DIP scaling, half-DIP scaling,
+  and half-DIP floor scaling; `src/common/win32_geometry.h` owns positive-area
+  checks and inclusive point-in-rect hit testing. TSF models and the remaining
+  TSF host code now use the shared helpers with focused unit coverage.
+- Extract TSF tooltip and status-tip geometry.
+  Status: done for pure geometry. Candidate tool tooltip guard sizing now
+  lives with the candidate tool model; toolbar tooltip dimensions, padding,
+  corner radius, and mouse offset live in `src/tsf/toolbar_model.*`; status-tip
+  text/icon gap, detail icon size, and mouse offsets live in
+  `src/tsf/status_tip_model.*` with focused unit coverage.
 
 ### Phase 2: TSF Split
 
@@ -259,9 +276,11 @@ Split `src/tsf/tsf_text_service.cpp` by responsibility:
 Status: in progress for 00.00.08. The highest-confidence pure model seams have
 already been extracted without moving COM/window lifetimes: input mode state,
 candidate layout math, candidate layout metrics, candidate tool geometry,
-toolbar visible-item and geometry models, context menu command mapping,
-shortcut parsing, font-family rules, and status-tip blacklist matching. The
-tray icon geometry is also extracted. The remaining window/rendering splits
+toolbar visible-item and geometry models, toolbar/candidate tooltip geometry,
+status-tip geometry, context menu command mapping, shortcut parsing,
+font-family rules, and status-tip blacklist matching. The tray icon geometry,
+shared DPI scaling, shared Win32 rectangle hit testing, and shared process/path
+helpers are also extracted. The remaining window/rendering splits
 should be done after a full Release build and UI smoke pass because they touch
 message dispatch, layered-window painting, and TSF edit-session lifetimes.
 
