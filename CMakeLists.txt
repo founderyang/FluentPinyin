@@ -483,6 +483,7 @@ endif()
 add_executable(fluent_pinyin_devtools WIN32
   src/devtools/cleanup_utils.cpp
   src/devtools/main.cpp
+  src/devtools/process_utils.cpp
 )
 
 target_link_libraries(fluent_pinyin_devtools PRIVATE
