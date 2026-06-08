@@ -1,6 +1,10 @@
 #include "config_winui/settings_options.h"
 
+#include "common/candidate_font.h"
 #include "common/constants.h"
+#include "config_winui/settings_binding.h"
+
+#include <cstddef>
 
 namespace fp::config_winui {
 
@@ -87,6 +91,48 @@ std::wstring DefaultInputModeChoiceIconText(std::wstring_view value) {
 
 std::wstring DefaultCharsetChoiceIconText(std::wstring_view value) {
   return value == fp::kCharsetTraditional ? L"繁" : L"简";
+}
+
+std::wstring DefaultInputModeIconText() {
+  return DefaultInputModeChoiceIconText(
+      ReadStringSetting(fp::kDefaultInputModeSetting, fp::kDefaultInputMode));
+}
+
+std::wstring FirstIconText(std::wstring_view value) {
+  if (value.empty()) {
+    return L"-";
+  }
+  return std::wstring(value.substr(0, 1));
+}
+
+std::wstring BoolIconText(bool value) {
+  return value ? L"\u5f00" : L"\u5173";
+}
+
+std::wstring ChoiceIconText(const std::vector<StringSettingChoice>& choices,
+                            std::wstring_view value) {
+  for (const auto& [label, choice_value] : choices) {
+    if (choice_value == value) {
+      return FirstIconText(label);
+    }
+  }
+  return choices.empty() ? L"-" : FirstIconText(choices.front().first);
+}
+
+std::wstring IntChoiceIconText(const std::vector<std::wstring>& labels, int value) {
+  if (value >= 0 && value < static_cast<int>(labels.size())) {
+    return FirstIconText(labels[static_cast<size_t>(value)]);
+  }
+  return labels.empty() ? L"-" : FirstIconText(labels.front());
+}
+
+std::wstring DefaultCharsetIconText() {
+  return DefaultCharsetChoiceIconText(
+      ReadStringSetting(fp::kDefaultCharsetSetting, fp::kDefaultCharset));
+}
+
+std::wstring CandidateFontIconText(std::wstring_view value) {
+  return fp::IsSourceHanSansCandidateFontFamily(value) ? L"\u6e90" : L"\u7c73";
 }
 
 int SyncAutoIntervalMinutesFromValue(std::wstring_view value) {

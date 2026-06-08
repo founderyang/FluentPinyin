@@ -579,9 +579,14 @@ if(BUILD_TESTING)
 
   add_executable(config_settings_options_unit
     tests/config_settings_options_unit.cpp
+    src/config_winui/settings_binding.cpp
     src/config_winui/settings_options.cpp
   )
-  target_link_libraries(config_settings_options_unit PRIVATE fluent_pinyin_common)
+  target_link_libraries(config_settings_options_unit PRIVATE
+    fluent_pinyin_common
+    advapi32
+    user32
+  )
 
   add_executable(config_settings_navigation_unit
     tests/config_settings_navigation_unit.cpp

@@ -105,13 +105,18 @@ using fp::config_winui::CurrentThemeModeSetting;
 using fp::config_winui::CurrentThemePresetSetting;
 using fp::config_winui::DefaultCharsetChoiceIconText;
 using fp::config_winui::DefaultCharsetChoices;
+using fp::config_winui::DefaultCharsetIconText;
 using fp::config_winui::DefaultInputModeChoiceIconText;
 using fp::config_winui::DefaultInputModeChoices;
+using fp::config_winui::DefaultInputModeIconText;
 using fp::config_winui::DefaultPunctuationChoices;
 using fp::config_winui::DefaultPresetForThemeMode;
 using fp::config_winui::DefaultShapeChoices;
 using fp::config_winui::DoublePinyinSchemeChoices;
 using fp::config_winui::EffectiveThemePreset;
+using fp::config_winui::BoolIconText;
+using fp::config_winui::CandidateFontIconText;
+using fp::config_winui::ChoiceIconText;
 using fp::config_winui::CurrentFuzzyPinyinCustomRuleCount;
 using fp::config_winui::CurrentFuzzyPinyinCustomRulesText;
 using fp::config_winui::CurrentFuzzyPinyinRules;
@@ -129,6 +134,8 @@ using fp::config_winui::ParseFuzzyPinyinRuleSetting;
 using fp::config_winui::SplitFuzzyPinyinCustomRule;
 using fp::config_winui::InputSchemeChoices;
 using fp::config_winui::InputSchemeIconText;
+using fp::config_winui::FirstIconText;
+using fp::config_winui::IntChoiceIconText;
 using fp::config_winui::NormalizeShortcutDisplay;
 using fp::config_winui::ShortcutDisplayForKey;
 using fp::config_winui::IsShortcutModifierKey;
@@ -812,44 +819,6 @@ Grid TriangleStatusIcon(bool right) {
   return root;
 }
 
-std::wstring DefaultInputModeIconText() {
-  return DefaultInputModeChoiceIconText(
-      ReadStringSetting(fp::kDefaultInputModeSetting, fp::kDefaultInputMode));
-}
-
-std::wstring FirstIconText(std::wstring_view value) {
-  if (value.empty()) {
-    return L"-";
-  }
-  return std::wstring(value.substr(0, 1));
-}
-
-std::wstring BoolIconText(bool value) {
-  return value ? L"开" : L"关";
-}
-
-std::wstring ChoiceIconText(const std::vector<std::pair<std::wstring, std::wstring>>& choices,
-                            std::wstring_view value) {
-  for (const auto& [label, choice_value] : choices) {
-    if (choice_value == value) {
-      return FirstIconText(label);
-    }
-  }
-  return choices.empty() ? L"-" : FirstIconText(choices.front().first);
-}
-
-std::wstring IntChoiceIconText(const std::vector<std::wstring>& labels, int value) {
-  if (value >= 0 && value < static_cast<int>(labels.size())) {
-    return FirstIconText(labels[static_cast<size_t>(value)]);
-  }
-  return labels.empty() ? L"-" : FirstIconText(labels.front());
-}
-
-std::wstring DefaultCharsetIconText() {
-  return DefaultCharsetChoiceIconText(
-      ReadStringSetting(fp::kDefaultCharsetSetting, fp::kDefaultCharset));
-}
-
 Grid CandidateLayoutIcon(std::wstring_view layout) {
   Grid root;
   root.Width(kSettingIconHostSize);
@@ -1330,10 +1299,6 @@ ComboBox CandidateFontSizeCombo() {
     RequestCandidateWindowVisualRefresh();
     RequestCandidateWindowVisualRefreshDeferred(120);
   });
-}
-
-std::wstring CandidateFontIconText(std::wstring_view value) {
-  return fp::IsSourceHanSansCandidateFontFamily(value) ? L"源" : L"米";
 }
 
 ComboBox CandidateFontFamilyCombo(TextBlock const& icon_label) {

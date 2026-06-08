@@ -23,6 +23,14 @@ const std::vector<BoolSettingChoice>& DefaultPunctuationChoices();
 std::wstring InputSchemeIconText(std::wstring_view value);
 std::wstring DefaultInputModeChoiceIconText(std::wstring_view value);
 std::wstring DefaultCharsetChoiceIconText(std::wstring_view value);
+std::wstring DefaultInputModeIconText();
+std::wstring FirstIconText(std::wstring_view value);
+std::wstring BoolIconText(bool value);
+std::wstring ChoiceIconText(const std::vector<StringSettingChoice>& choices,
+                            std::wstring_view value);
+std::wstring IntChoiceIconText(const std::vector<std::wstring>& labels, int value);
+std::wstring DefaultCharsetIconText();
+std::wstring CandidateFontIconText(std::wstring_view value);
 int SyncAutoIntervalMinutesFromValue(std::wstring_view value);
 
 }  // namespace fp::config_winui
