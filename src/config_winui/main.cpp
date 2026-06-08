@@ -11,6 +11,7 @@
 #include "config_winui/fuzzy_pinyin_rules.h"
 #include "config_winui/fuzzy_pinyin_rules_dialog.h"
 #include "config_winui/hotkey_recorder_controls.h"
+#include "config_winui/hotkeys_page.h"
 #include "config_winui/lexicon_dialogs.h"
 #include "config_winui/lexicon_store.h"
 #include "config_winui/settings_app_lifecycle.h"
@@ -211,11 +212,9 @@ using fp::config_winui::CandidateFontFamilyCombo;
 using fp::config_winui::CandidateFontSizeCombo;
 using fp::config_winui::InputSchemeCombo;
 using fp::config_winui::IntChoiceCombo;
-using fp::config_winui::HotkeyRecorderButton;
 using fp::config_winui::RimeConfigSwitch;
 using fp::config_winui::SettingSwitch;
 using fp::config_winui::SettingTextBox;
-using fp::config_winui::SetHotkeyRecorderDisplay;
 using fp::config_winui::StringChoiceCombo;
 using fp::config_winui::StringChoiceComboWithIcon;
 using fp::config_winui::WanxiangModeIcon;
@@ -1163,101 +1162,6 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
         176));
     return Scroll(page);
   }
-  Border HotkeyBindingRow(std::wstring_view title,
-                          std::wstring_view key,
-                          std::wstring_view fallback,
-                          std::wstring_view glyph) {
-    return HotkeyBindingRowWithIcon(title, key, fallback, Icon(glyph, 16));
-  }
-
-  Border HotkeyBindingRowWithIcon(std::wstring_view title,
-                                  std::wstring_view key,
-                                  std::wstring_view fallback,
-                                  UIElement const& icon_content) {
-    StackPanel controls;
-    controls.Orientation(Orientation::Horizontal);
-    controls.Spacing(8);
-    auto editor = HotkeyRecorderButton(key, fallback);
-    controls.Children().Append(editor);
-
-    auto clear = StableInlinePathActionButton(
-        L"清除",
-        kFluentIconDismissCircle20RegularPath,
-        0.84,
-        [editor, key = std::wstring(key)]() {
-          WriteStringSetting(key, L"");
-          SetHotkeyRecorderDisplay(editor, key, L"");
-          RequestInputStateRefreshDeferred(80);
-        });
-    SetSettingsToolTip(clear, L"清除");
-    controls.Children().Append(clear);
-
-    auto reset = StableInlinePathActionButton(
-        L"恢复默认",
-        kFluentIconArrowClockwise20RegularPath,
-        0.84,
-        [editor, key = std::wstring(key), fallback = std::wstring(fallback)]() {
-          WriteStringSetting(key, fallback);
-          SetHotkeyRecorderDisplay(editor, key, fallback);
-          RequestInputStateRefreshDeferred(80);
-        });
-    SetSettingsToolTip(reset, L"恢复默认");
-    controls.Children().Append(reset);
-
-    return SettingWideRowWithIcon(title,
-                                  L"点击后按下新的组合键，或恢复默认值。",
-                                  controls,
-                                  icon_content,
-                                  L"已联动");
-  }
-
-  UIElement BuildHotkeysPage() {
-    auto page = PageShell(L"热键", L"状态切换和候选导航。");
-    page.Children().Append(SectionHeader(L"状态切换", true));
-    page.Children().Append(HotkeyBindingRowWithIcon(
-        L"中/英文模式",
-        fp::kShortcutToolbarInputModeSetting,
-        fp::kDefaultShortcutToolbarInputMode,
-        TextIcon(L"中")));
-    page.Children().Append(HotkeyBindingRowWithIcon(
-        L"全/半角",
-        fp::kShortcutToolbarShapeSetting,
-        fp::kDefaultShortcutToolbarShape,
-        ShapeStatusIcon(false)));
-    page.Children().Append(HotkeyBindingRowWithIcon(
-        L"中/英文标点",
-        fp::kShortcutToolbarPunctuationSetting,
-        fp::kDefaultShortcutToolbarPunctuation,
-        PunctuationStatusIcon(true)));
-    page.Children().Append(HotkeyBindingRowWithIcon(
-        L"简体/繁体",
-        fp::kShortcutToolbarCharsetSetting,
-        fp::kDefaultShortcutToolbarCharset,
-        TextIcon(L"简")));
-    page.Children().Append(HotkeyBindingRowWithIcon(
-        L"表情符号/符号",
-        fp::kShortcutToolbarEmojiSetting,
-        fp::kDefaultShortcutToolbarEmoji,
-        EmojiStatusIcon()));
-    page.Children().Append(SectionHeader(L"候选导航"));
-    page.Children().Append(HotkeyBindingRowWithIcon(
-        L"展开/收起候选框",
-        fp::kShortcutCandidateExpandSetting,
-        fp::kDefaultShortcutCandidateExpand,
-        ChevronStatusIcon(kFluentChevronDown20Path)));
-    page.Children().Append(HotkeyBindingRowWithIcon(
-        L"上一页",
-        fp::kShortcutCandidatePreviousPageSetting,
-        fp::kDefaultShortcutCandidatePreviousPage,
-        TriangleStatusIcon(false)));
-    page.Children().Append(HotkeyBindingRowWithIcon(
-        L"下一页",
-        fp::kShortcutCandidateNextPageSetting,
-        fp::kDefaultShortcutCandidateNextPage,
-        TriangleStatusIcon(true)));
-    return Scroll(page);
-  }
-
   UIElement BuildSyncPage() {
     auto page = PageShell(L"同步", L"剪贴板、配置、词库和备份。");
     page.Children().Append(SectionHeader(L"同步内容", true));
