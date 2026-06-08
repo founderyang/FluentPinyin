@@ -195,6 +195,7 @@ endif()
 
 add_library(fluent_pinyin_tsf SHARED
   src/tsf/candidate_layout_math.cpp
+  src/tsf/candidate_tool_model.cpp
   src/tsf/class_factory.cpp
   src/tsf/context_menu_model.cpp
   src/tsf/dllmain.cpp
@@ -542,6 +543,12 @@ if(BUILD_TESTING)
   )
   target_link_libraries(tsf_candidate_layout_math_unit PRIVATE fluent_pinyin_common)
 
+  add_executable(tsf_candidate_tool_model_unit
+    tests/tsf_candidate_tool_model_unit.cpp
+    src/tsf/candidate_tool_model.cpp
+  )
+  target_link_libraries(tsf_candidate_tool_model_unit PRIVATE fluent_pinyin_common)
+
   add_executable(tsf_toolbar_model_unit
     tests/tsf_toolbar_model_unit.cpp
     src/tsf/toolbar_model.cpp
@@ -779,6 +786,10 @@ if(BUILD_TESTING)
   add_test(
     NAME tsf_candidate_layout_math_unit
     COMMAND tsf_candidate_layout_math_unit
+  )
+  add_test(
+    NAME tsf_candidate_tool_model_unit
+    COMMAND tsf_candidate_tool_model_unit
   )
   add_test(
     NAME tsf_toolbar_model_unit
