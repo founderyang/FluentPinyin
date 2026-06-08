@@ -3,6 +3,7 @@
 #include "common/candidate_font.h"
 #include "common/encoding.h"
 #include "common/theme.h"
+#include "config_winui/about_page.h"
 #include "config_winui/app_paths.h"
 #include "config_winui/candidate_layout_settings.h"
 #include "config_winui/default_settings.h"
@@ -106,7 +107,6 @@ using fp::config_winui::NormalizeSettingsPageTag;
 using fp::config_winui::CandidateLayoutChoices;
 using fp::config_winui::ReadCandidateLayoutSetting;
 using fp::config_winui::OpenPath;
-using fp::config_winui::OpenUrl;
 using fp::config_winui::ClearSettingsPaletteOverride;
 using fp::config_winui::CurrentSettingsPalette;
 using fp::config_winui::CurrentThemeModeSetting;
@@ -179,7 +179,6 @@ using fp::config_winui::RequestInputStateRefresh;
 using fp::config_winui::RequestInputStateRefreshDeferred;
 using fp::config_winui::RequestToolbarHostRefresh;
 using fp::config_winui::RequestToolbarHostShutdown;
-using fp::config_winui::RunTool;
 using fp::config_winui::ReadManagedDictionaryManifest;
 using fp::config_winui::ShowManagedDictionariesDialog;
 using fp::config_winui::ShowPhraseLexiconDialog;
@@ -332,7 +331,6 @@ using fp::config_winui::kFluentTriangleRight12FilledPath;
 using fp::config_winui::kFluentWeatherMoon20FilledPath;
 using fp::config_winui::kFluentWeatherMoon24Path;
 using fp::config_winui::kFluentWeatherSunny20RegularPath;
-using fp::config_winui::kGitHubMark24Path;
 using fp::config_winui::PunctuationStatusIcon;
 using fp::config_winui::ShapeStatusIcon;
 using fp::config_winui::SmartFuzzyPinyinIcon;
@@ -1306,40 +1304,6 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
                                                   actions,
                                                   FluentPathIcon(kFluentIconArchive20RegularPath, 0.94),
                                                   L"已接入"));
-    return Scroll(page);
-  }
-
-  UIElement BuildAboutPage() {
-    auto page = PageShell(L"关于", L"版本和更新。");
-    page.Children().Append(SectionHeader(L"更新", true));
-    auto check_button = ActionPathButton(L"更新", kFluentIconArrowClockwise20RegularPath, 0.84);
-    check_button.Click([](auto const&, auto const&) {
-      RunTool(L"fluent-pinyin-updater.exe", L"update");
-    });
-    page.Children().Append(SettingRowWithIcon(L"更新",
-                                              L"从 GitHub 下载并安装最新版本。",
-                                              check_button,
-                                              FluentPathIcon(kFluentIconArrowClockwise20RegularPath, 0.94),
-                                              L"已接通"));
-    page.Children().Append(SectionHeader(L"版本信息"));
-    Grid version_spacer;
-    version_spacer.Width(1);
-    version_spacer.Height(1);
-    page.Children().Append(SettingRowWithIcon(std::wstring(fp::kProductName),
-                                              L"版本 " + std::wstring(fp::kProductVersion),
-                                              version_spacer,
-                                              TextIcon(L"畅"),
-                                              L"",
-                                              1.0));
-    auto repo_button = ActionPathButton(L"打开 GitHub", kGitHubMark24Path, 0.76, 24.0);
-    repo_button.Click([](auto const&, auto const&) {
-      OpenUrl(fp::kGitHubRepoUrl);
-    });
-    page.Children().Append(SettingRowWithIcon(L"GitHub 开源地址",
-                                              std::wstring(fp::kGitHubRepoUrl),
-                                              repo_button,
-                                              FluentPathIcon(kGitHubMark24Path, 0.78, 24.0),
-                                              L"开源"));
     return Scroll(page);
   }
 
