@@ -11,6 +11,7 @@
 #include "common/status_tip_blacklist.h"
 #include "common/svg_icons.h"
 #include "common/theme.h"
+#include "common/win32_geometry.h"
 #include "tsf/candidate_layout_math.h"
 #include "tsf/candidate_layout_model.h"
 #include "tsf/candidate_tool_model.h"
@@ -62,7 +63,6 @@ namespace {
 
 std::wstring AsciiToWide(std::string_view value);
 bool IsUsableScreenPoint(POINT point);
-bool PtInRectInclusive(const RECT& rect, int x, int y);
 std::filesystem::path ModuleDirectory();
 std::filesystem::path InstalledSiblingExecutable(std::wstring_view name);
 bool IsToolbarHostProcess();
@@ -2820,13 +2820,6 @@ void DrawExpandChevron(HDC dc,
                      direction == 0 ? -0.150f : 0.0f,
                      0.005f,
                      1.12f);
-}
-
-bool PtInRectInclusive(const RECT& rect, int x, int y) {
-  if (rect.right <= rect.left || rect.bottom <= rect.top) {
-    return false;
-  }
-  return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
 }
 
 std::wstring ToolbarTooltipText(int item,
@@ -12216,7 +12209,7 @@ LRESULT TsfTextService::CandidateWindowProc(HWND window,
       for (size_t index = 0; index < layout.candidate_rects.size(); ++index) {
         const RECT& rect = layout.candidate_rects[index];
         if (index < candidates_.size() && IsSelectableCandidateRect(rect) &&
-            PtInRectInclusive(rect, x, y)) {
+            fp::PointInRectInclusive(rect, x, y)) {
           selected_candidate_index_ = index;
           CommitCandidateFromMouse(index);
           break;

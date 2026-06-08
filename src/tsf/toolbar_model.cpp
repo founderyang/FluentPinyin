@@ -1,6 +1,7 @@
 #include "tsf/toolbar_model.h"
 
 #include "common/encoding.h"
+#include "common/win32_geometry.h"
 
 #include <algorithm>
 
@@ -30,13 +31,6 @@ struct ToolbarItemVisualDips {
 
 int ScaleForDpi(int value, UINT dpi) {
   return MulDiv(value, static_cast<int>(dpi), 96);
-}
-
-bool PtInRectInclusive(const RECT& rect, int x, int y) {
-  if (rect.right <= rect.left || rect.bottom <= rect.top) {
-    return false;
-  }
-  return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
 }
 
 ToolbarItemVisualDips ToolbarItemVisualMetricsDips(int item) {
@@ -304,7 +298,7 @@ int ToolbarItemAtPoint(UINT dpi, bool vertical, const std::vector<int>& visible_
   }
   const std::vector<ToolbarItemMetrics> items = ToolbarItemsForDpi(dpi, vertical, visible_items);
   for (const auto& item : items) {
-    if (PtInRectInclusive(item.hit_rect, x, y)) {
+    if (fp::PointInRectInclusive(item.hit_rect, x, y)) {
       return item.id;
     }
   }

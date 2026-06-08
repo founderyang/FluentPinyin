@@ -1,11 +1,9 @@
 #include "tsf/candidate_tool_model.h"
 
+#include "common/win32_geometry.h"
+
 namespace fp::tsf {
 namespace {
-
-bool PtInRectInclusive(const RECT& rect, int x, int y) {
-  return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
-}
 
 int ScaleForDpi(int value, UINT dpi) {
   return MulDiv(value, static_cast<int>(dpi), 96);
@@ -58,22 +56,22 @@ RECT CandidateToolIconRect(const CandidateLayoutMetrics& layout, int tool) {
 }
 
 int CandidateToolAtPoint(const CandidateLayoutMetrics& layout, int x, int y) {
-  if (PtInRectInclusive(layout.previous_page_rect, x, y)) {
+  if (fp::PointInRectInclusive(layout.previous_page_rect, x, y)) {
     return kCandidateToolPrevious;
   }
-  if (PtInRectInclusive(layout.next_page_rect, x, y)) {
+  if (fp::PointInRectInclusive(layout.next_page_rect, x, y)) {
     return kCandidateToolNext;
   }
-  if (PtInRectInclusive(layout.emoji_rect, x, y)) {
+  if (fp::PointInRectInclusive(layout.emoji_rect, x, y)) {
     return kCandidateToolEmoji;
   }
-  if (PtInRectInclusive(layout.expand_rect, x, y)) {
+  if (fp::PointInRectInclusive(layout.expand_rect, x, y)) {
     return kCandidateToolExpand;
   }
-  if (PtInRectInclusive(layout.settings_rect, x, y)) {
+  if (fp::PointInRectInclusive(layout.settings_rect, x, y)) {
     return kCandidateToolSettings;
   }
-  if (PtInRectInclusive(layout.brand_rect, x, y)) {
+  if (fp::PointInRectInclusive(layout.brand_rect, x, y)) {
     return kCandidateToolBrand;
   }
   return kCandidateToolNone;
