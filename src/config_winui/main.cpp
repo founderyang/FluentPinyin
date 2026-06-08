@@ -5,6 +5,7 @@
 #include "common/theme.h"
 #include "config_winui/about_page.h"
 #include "config_winui/advanced_page.h"
+#include "config_winui/appearance_page.h"
 #include "config_winui/app_paths.h"
 #include "config_winui/candidate_layout_settings.h"
 #include "config_winui/default_settings.h"
@@ -26,7 +27,6 @@
 #include "config_winui/settings_icons.h"
 #include "config_winui/shell_actions.h"
 #include "config_winui/status_tip_blacklist.h"
-#include "config_winui/status_tip_blacklist_dialog.h"
 #include "config_winui/sync_page.h"
 #include "config_winui/theme_helpers.h"
 #include "config_winui/theme_preset_dialog.h"
@@ -107,7 +107,6 @@ using fp::config_winui::ReadCandidateLayoutSetting;
 using fp::config_winui::OpenPath;
 using fp::config_winui::ClearSettingsPaletteOverride;
 using fp::config_winui::CurrentSettingsPalette;
-using fp::config_winui::CurrentThemeModeSetting;
 using fp::config_winui::DefaultCharsetChoiceIconText;
 using fp::config_winui::DefaultCharsetChoices;
 using fp::config_winui::DefaultCharsetIconText;
@@ -115,12 +114,9 @@ using fp::config_winui::DefaultInputModeChoiceIconText;
 using fp::config_winui::DefaultInputModeChoices;
 using fp::config_winui::DefaultInputModeIconText;
 using fp::config_winui::DefaultPunctuationChoices;
-using fp::config_winui::DefaultPresetForThemeMode;
 using fp::config_winui::DefaultShapeChoices;
 using fp::config_winui::DoublePinyinSchemeChoices;
-using fp::config_winui::EffectiveThemePreset;
 using fp::config_winui::BoolIconText;
-using fp::config_winui::CandidateFontIconText;
 using fp::config_winui::ChoiceIconText;
 using fp::config_winui::InputSchemeChoices;
 using fp::config_winui::InputSchemeIconText;
@@ -158,8 +154,6 @@ using fp::config_winui::Text;
 using fp::config_winui::TextIcon;
 using fp::config_winui::TransparentBrush;
 using fp::config_winui::UniformThickness;
-using fp::config_winui::CurrentStatusTipBlacklistCount;
-using fp::config_winui::ShowStatusTipBlacklistDialog;
 using fp::config_winui::RequestApplyInputConfig;
 using fp::config_winui::RequestApplyInputConfigDeferred;
 using fp::config_winui::RequestCandidateWindowVisualRefresh;
@@ -169,13 +163,7 @@ using fp::config_winui::RequestInputStateRefreshDeferred;
 using fp::config_winui::RequestToolbarHostRefresh;
 using fp::config_winui::RequestToolbarHostShutdown;
 using fp::config_winui::SetSettingsPaletteOverride;
-using fp::config_winui::SettingsThemePalette;
-using fp::config_winui::ThemeModeDisplayText;
-using fp::config_winui::ThemeModeIndex;
-using fp::config_winui::ThemeModeValueForIndex;
 using fp::config_winui::ShowThemePresetDialog;
-using fp::config_winui::ThemePreview;
-using fp::config_winui::ThemePreviewPalette;
 using fp::config_winui::WanxiangModeDefinition;
 using fp::config_winui::ApplyDwmWindowFrame;
 using fp::config_winui::ApplyTitleBarColors;
@@ -191,8 +179,6 @@ using fp::config_winui::EnsureUiFontsLoaded;
 using fp::config_winui::ModuleDirectory;
 using fp::config_winui::BoolChoiceCombo;
 using fp::config_winui::CandidateCountCombo;
-using fp::config_winui::CandidateFontFamilyCombo;
-using fp::config_winui::CandidateFontSizeCombo;
 using fp::config_winui::InputSchemeCombo;
 using fp::config_winui::IntChoiceCombo;
 using fp::config_winui::SettingSwitch;
@@ -230,7 +216,6 @@ using fp::config_winui::StatusBadge;
 using fp::config_winui::ThemeComboItem;
 using fp::config_winui::ActionButtonPathIcon;
 using fp::config_winui::AutoPinyinCorrectionIcon;
-using fp::config_winui::CandidateFontSizeIcon;
 using fp::config_winui::CandidateLayoutIcon;
 using fp::config_winui::ChevronStatusIcon;
 using fp::config_winui::CustomPhrasesStateIcon;
@@ -315,13 +300,7 @@ using fp::config_winui::kFluentWeatherSunny20RegularPath;
 using fp::config_winui::PunctuationStatusIcon;
 using fp::config_winui::ShapeStatusIcon;
 using fp::config_winui::SmartFuzzyPinyinIcon;
-using fp::config_winui::StatusTipBlacklistIcon;
-using fp::config_winui::StatusTipEnabledIcon;
 using fp::config_winui::SuperAbbrevIcon;
-using fp::config_winui::RegisterToolbarVisibleSwitch;
-using fp::config_winui::ThemeModeIcon;
-using fp::config_winui::ToolbarVisibleSwitch;
-using fp::config_winui::ToolbarVisibleIcon;
 using fp::config_winui::TriangleStatusIcon;
 using fp::config_winui::UserLexiconStateIcon;
 
@@ -478,7 +457,10 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
     } else if (tag == L"advanced") {
       page = BuildAdvancedPage();
     } else if (tag == L"appearance") {
-      page = BuildAppearancePage();
+      page = fp::config_winui::BuildAppearancePage(
+          window_.Content().as<FrameworkElement>().XamlRoot(),
+          [this]() { ShowThemePresetEditor(); },
+          [this]() { ApplyThemeAndRefreshCurrentPage(); });
     } else if (tag == L"lexicon") {
       page = fp::config_winui::BuildLexiconPage(
           SettingsWindowHandle(), window_.Content().as<FrameworkElement>().XamlRoot());
@@ -544,11 +526,6 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
                                state_icon,
                                require_enabled,
                                suppress_toggle_dialog);
-  }
-
-  void ShowStatusTipBlacklistEditor(TextBlock const& count_icon) {
-    ShowStatusTipBlacklistDialog(window_.Content().as<FrameworkElement>().XamlRoot(),
-                                 count_icon);
   }
 
   void ShowThemePresetEditor() {
@@ -837,143 +814,6 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
         reset_button,
         FluentPathIcon(kFluentIconApprovalsApp20RegularPath, 0.96),
         L"已联动"));
-    return Scroll(page);
-  }
-
-  UIElement BuildAppearancePage() {
-    auto page = PageShell(L"外观", L"候选窗口、状态提示、工具栏和主题。");
-    page.Children().Append(SectionHeader(L"候选窗口", true));
-    auto candidate_font_icon = TextIcon(
-        CandidateFontIconText(ReadStringSetting(fp::kCandidateFontFamilySetting,
-                                                fp::kDefaultCandidateFontFamily)));
-    page.Children().Append(SettingRowWithIcon(
-        L"候选项字体",
-        L"切换候选窗口字体。",
-        CandidateFontFamilyCombo(candidate_font_icon),
-        candidate_font_icon,
-        L"已联动"));
-    page.Children().Append(SettingRowWithIcon(
-        L"候选项字体大小",
-        L"按小、中、大、特大档位调整。",
-        CandidateFontSizeCombo(),
-        CandidateFontSizeIcon(),
-        L"已联动"));
-    page.Children().Append(SectionHeader(L"桌面显示"));
-    Grid toolbar_icon;
-    toolbar_icon.Width(kSettingIconHostSize);
-    toolbar_icon.Height(kSettingIconHostSize);
-    toolbar_icon.HorizontalAlignment(HorizontalAlignment::Center);
-    toolbar_icon.VerticalAlignment(VerticalAlignment::Center);
-    SetIconChild(toolbar_icon,
-                 ToolbarVisibleIcon(ReadBoolSettingMigrated(fp::kToolbarVisibleSetting,
-                                                            false,
-                                                            fp::kLegacyToolbarVisibleSetting)));
-    auto toolbar_switch = ToolbarVisibleSwitch([toolbar_icon](bool visible) {
-      SetIconChild(toolbar_icon, ToolbarVisibleIcon(visible));
-      if (!visible) {
-        RequestToolbarHostShutdown();
-      }
-      RequestToolbarHostRefresh();
-    });
-    toolbar_switch.Toggled([toolbar_switch, toolbar_icon](auto const&, auto const&) {
-      SetIconChild(toolbar_icon, ToolbarVisibleIcon(toolbar_switch.IsOn()));
-    });
-    RegisterToolbarVisibleSwitch(toolbar_switch);
-    page.Children().Append(SettingRowWithIcon(L"输入法工具栏",
-                                              L"在桌面显示可拖动的输入法工具栏。",
-                                              toolbar_switch,
-                                              toolbar_icon,
-                                              L"已联动"));
-    Grid status_tip_icon;
-    status_tip_icon.Width(kSettingIconHostSize);
-    status_tip_icon.Height(kSettingIconHostSize);
-    status_tip_icon.HorizontalAlignment(HorizontalAlignment::Center);
-    status_tip_icon.VerticalAlignment(VerticalAlignment::Center);
-    SetIconChild(status_tip_icon,
-                 StatusTipEnabledIcon(ReadBoolSetting(fp::kStatusTipEnabledSetting, true)));
-    page.Children().Append(SettingRowWithIcon(
-        L"输入状态提示",
-        L"切换输入状态时，在鼠标附近显示紧凑提示。",
-        SettingSwitch(fp::kStatusTipEnabledSetting,
-                      true,
-                      [status_tip_icon](bool enabled) {
-                        SetIconChild(status_tip_icon, StatusTipEnabledIcon(enabled));
-                        RequestInputStateRefreshDeferred(80);
-                      }),
-        status_tip_icon,
-        L"已联动"));
-    auto status_tip_blacklist_edit = StableIconToolButton(
-        kFluentIconCommentEdit20RegularPath,
-        L"编辑黑名单",
-        0.92,
-        [this]() {
-          TextBlock unused_count_icon;
-          ShowStatusTipBlacklistEditor(unused_count_icon);
-        });
-    page.Children().Append(SettingRowWithIcon(
-        L"状态提示黑名单",
-        L"对指定进程关闭状态提示。",
-        status_tip_blacklist_edit,
-        StatusTipBlacklistIcon(),
-        L"已联动"));
-    page.Children().Append(SectionHeader(L"主题和材质"));
-    Grid theme_icon;
-    theme_icon.Width(kSettingIconHostSize);
-    theme_icon.Height(kSettingIconHostSize);
-    theme_icon.HorizontalAlignment(HorizontalAlignment::Center);
-    theme_icon.VerticalAlignment(VerticalAlignment::Center);
-    SetIconChild(theme_icon, ThemeModeIcon(CurrentThemeModeSetting()));
-    ComboBox theme_combo;
-    ConfigureSettingCombo(theme_combo);
-    const std::array<std::wstring_view, 4> theme_labels{L"跟随系统", L"浅色", L"深色", L"预设"};
-    for (const auto label : theme_labels) {
-      theme_combo.Items().Append(ThemeComboItem(label));
-    }
-    auto suppress_theme_selection = std::make_shared<bool>(false);
-    theme_combo.SelectedIndex(ThemeModeIndex(CurrentThemeModeSetting()));
-    theme_combo.SelectionChanged([this,
-                                   theme_combo,
-                                   theme_icon,
-                                   suppress_theme_selection](auto const&, auto const&) {
-      if (*suppress_theme_selection) {
-        return;
-      }
-      const int selected = theme_combo.SelectedIndex();
-      if (selected < 0) {
-        return;
-      }
-      const std::wstring value = ThemeModeValueForIndex(selected);
-      if (value == fp::kThemeModeCustom) {
-        ShowThemePresetEditor();
-        return;
-      }
-      WriteStringSetting(fp::kThemeModeSetting, value);
-      WriteStringSetting(fp::kLegacyThemeSetting, value);
-      WriteStringSetting(fp::kThemePresetSetting, DefaultPresetForThemeMode(value));
-      SetIconChild(theme_icon, ThemeModeIcon(value));
-      RequestInputStateRefreshDeferred(80);
-      RequestToolbarHostRefresh();
-      ApplyThemeAndRefreshCurrentPage();
-    });
-    auto theme_preset_button = StableIconToolButton(
-        kFluentIconKeyboard20RegularPath,
-        L"预设",
-        1.02,
-        [this]() { ShowThemePresetEditor(); });
-    StackPanel theme_controls;
-    theme_controls.Orientation(Orientation::Horizontal);
-    theme_controls.Spacing(8);
-    theme_controls.HorizontalAlignment(HorizontalAlignment::Right);
-    theme_controls.VerticalAlignment(VerticalAlignment::Center);
-    theme_controls.Children().Append(theme_combo);
-    theme_controls.Children().Append(theme_preset_button);
-    page.Children().Append(SettingRowWithIcon(
-        L"主题",
-        L"选择系统、浅色、深色或预设。",
-        theme_controls,
-        theme_icon,
-        L"已联动",
-        176.0));
     return Scroll(page);
   }
 
