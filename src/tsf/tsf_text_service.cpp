@@ -22,6 +22,7 @@
 #include "tsf/resource.h"
 #include "tsf/shortcut_model.h"
 #include "tsf/toolbar_model.h"
+#include "tsf/tray_icon_model.h"
 #include "tsf/tsf_settings_adapter.h"
 
 #include <ctffunc.h>
@@ -4316,12 +4317,6 @@ enum class LangBarItemKind {
   kInputMode,
 };
 
-constexpr int kTrayIconReferenceSize = 36;
-constexpr int kTrayStatusGlyphWidthUnits = 29;
-constexpr int kTrayStatusGlyphHeightUnits = 33;
-constexpr int kTrayDisabledCircleSideUnits = kTrayStatusGlyphHeightUnits;
-constexpr int kTrayDisabledMarkSideUnits = 16;
-
 unsigned char TrayIconSourceAlpha(const unsigned char* pixel) {
   return std::max(pixel[0], std::max(pixel[1], pixel[2]));
 }
@@ -4390,26 +4385,6 @@ void DownsampleTrayIcon(const std::vector<unsigned char>& high_res,
       }
     }
   }
-}
-
-int TrayIconUnitsToPixels(int units, int dimension) {
-  return std::clamp(MulDiv(units, dimension, kTrayIconReferenceSize), 1, dimension);
-}
-
-RECT TrayIconTargetRectHr(int units_width,
-                          int units_height,
-                          int render_width,
-                          int render_height) {
-  const int target_width =
-      TrayIconUnitsToPixels(units_width, render_width);
-  const int target_height =
-      TrayIconUnitsToPixels(units_height, render_height);
-  const int target_left = std::max(0, (render_width - target_width) / 2);
-  const int target_top = std::max(0, (render_height - target_height) / 2);
-  return RECT{target_left,
-              target_top,
-              std::min(render_width, target_left + target_width),
-              std::min(render_height, target_top + target_height)};
 }
 
 HFONT CreateTrayStatusFontForPixels(int pixel_height, const wchar_t* family) {

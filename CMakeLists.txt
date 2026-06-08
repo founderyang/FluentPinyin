@@ -205,6 +205,7 @@ add_library(fluent_pinyin_tsf SHARED
   src/tsf/rime_core_client.cpp
   src/tsf/shortcut_model.cpp
   src/tsf/toolbar_model.cpp
+  src/tsf/tray_icon_model.cpp
   src/tsf/registration.cpp
   src/tsf/tsf_settings_adapter.cpp
   src/tsf/tsf_text_service.cpp
@@ -562,6 +563,12 @@ if(BUILD_TESTING)
   )
   target_link_libraries(tsf_toolbar_model_unit PRIVATE fluent_pinyin_common)
 
+  add_executable(tsf_tray_icon_model_unit
+    tests/tsf_tray_icon_model_unit.cpp
+    src/tsf/tray_icon_model.cpp
+  )
+  target_link_libraries(tsf_tray_icon_model_unit PRIVATE fluent_pinyin_common)
+
   add_executable(tsf_context_menu_model_unit
     tests/tsf_context_menu_model_unit.cpp
     src/tsf/context_menu_model.cpp
@@ -811,6 +818,10 @@ if(BUILD_TESTING)
   add_test(
     NAME tsf_toolbar_model_unit
     COMMAND tsf_toolbar_model_unit
+  )
+  add_test(
+    NAME tsf_tray_icon_model_unit
+    COMMAND tsf_tray_icon_model_unit
   )
   add_test(
     NAME tsf_context_menu_model_unit
