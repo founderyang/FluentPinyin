@@ -9,6 +9,7 @@
 #include "common/encoding.h"
 #include "common/logging.h"
 #include "common/path_utils.h"
+#include "common/process_info.h"
 #include "common/status_tip_blacklist.h"
 #include "common/svg_icons.h"
 #include "common/theme.h"
@@ -6131,30 +6132,15 @@ std::filesystem::path ModuleDirectory() {
   return fp::GetModuleDirectory(g_module_instance);
 }
 
-std::wstring CurrentProcessImageName() {
-  std::wstring buffer(32768, L'\0');
-  DWORD length = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
-  if (length == 0 || length >= buffer.size()) {
-    return {};
-  }
-  buffer.resize(length);
-  return std::filesystem::path(buffer).filename().wstring();
-}
-
-std::wstring CurrentProcessCommandLine() {
-  const wchar_t* command_line = GetCommandLineW();
-  return command_line != nullptr ? std::wstring(command_line) : std::wstring();
-}
-
 bool IsToolbarHostProcess() {
-  std::wstring image_name = CurrentProcessImageName();
+  std::wstring image_name = fp::GetCurrentProcessImageName();
   std::transform(image_name.begin(), image_name.end(), image_name.begin(), [](wchar_t ch) {
     return static_cast<wchar_t>(std::towlower(ch));
   });
   if (image_name != L"fluent-pinyin-ui.exe") {
     return false;
   }
-  std::wstring command_line = CurrentProcessCommandLine();
+  std::wstring command_line = fp::GetCurrentProcessCommandLine();
   std::transform(command_line.begin(), command_line.end(), command_line.begin(), [](wchar_t ch) {
     return static_cast<wchar_t>(std::towlower(ch));
   });

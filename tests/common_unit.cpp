@@ -3,6 +3,7 @@
 #include "common/encoding.h"
 #include "common/logging.h"
 #include "common/path_utils.h"
+#include "common/process_info.h"
 #include "common/settings_store.h"
 
 #include <filesystem>
@@ -71,6 +72,16 @@ void TestPaths() {
   Expect(std::filesystem::is_directory(test_dir), "EnsureDirectory target is a directory");
   std::error_code error;
   std::filesystem::remove(test_dir, error);
+}
+
+void TestProcessInfo() {
+  const std::wstring command_line = fp::GetCurrentProcessCommandLine();
+  Expect(!command_line.empty(),
+         "current process command line is available");
+  Expect(!fp::GetCurrentProcessImageName().empty(),
+         "current process image name is available");
+  Expect(fp::CurrentProcessCommandLineContains(command_line.substr(0, 1)),
+         "command line contains helper finds an existing token");
 }
 
 void TestLogFlushPolicy() {
@@ -205,6 +216,7 @@ int main() {
   TestEncodingRoundTrip();
   TestEncodingInvalidInput();
   TestPaths();
+  TestProcessInfo();
   TestLogFlushPolicy();
   TestCandidateFontSettings();
   TestBundledFontSettings();

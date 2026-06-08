@@ -1,6 +1,7 @@
 #include "config_winui/settings_app_lifecycle.h"
 
 #include "common/constants.h"
+#include "common/process_info.h"
 #include "config_winui/app_paths.h"
 #include "config_winui/settings_navigation.h"
 #include "config_winui/settings_refresh.h"
@@ -21,8 +22,7 @@ constexpr std::wstring_view kWindowsAppRuntimeInstallerName =
 }  // namespace
 
 std::wstring InitialPageTagFromProcess() {
-  const wchar_t* command_line = GetCommandLineW();
-  return InitialSettingsPageTag(command_line != nullptr ? command_line : L"");
+  return InitialSettingsPageTag(fp::GetCurrentProcessCommandLine());
 }
 
 void ShowWindowsAppRuntimeMissingMessage(long result) {
@@ -41,8 +41,7 @@ void ShowWindowsAppRuntimeMissingMessage(long result) {
 }
 
 bool HasCommandLineSwitch(std::wstring_view switch_name) {
-  const std::wstring command = GetCommandLineW() != nullptr ? GetCommandLineW() : L"";
-  return command.find(std::wstring(switch_name)) != std::wstring::npos;
+  return fp::CurrentProcessCommandLineContains(switch_name);
 }
 
 int RunAutoSyncCommand() {
