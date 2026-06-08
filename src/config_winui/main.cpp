@@ -4,6 +4,7 @@
 #include "common/encoding.h"
 #include "common/theme.h"
 #include "config_winui/about_page.h"
+#include "config_winui/advanced_page.h"
 #include "config_winui/app_paths.h"
 #include "config_winui/candidate_layout_settings.h"
 #include "config_winui/default_settings.h"
@@ -192,7 +193,6 @@ using fp::config_winui::ShowThemePresetDialog;
 using fp::config_winui::ThemePreview;
 using fp::config_winui::ThemePreviewPalette;
 using fp::config_winui::WanxiangModeDefinition;
-using fp::config_winui::WanxiangModeDefinitions;
 using fp::config_winui::ApplyDwmWindowFrame;
 using fp::config_winui::ApplyTitleBarColors;
 using fp::config_winui::ApplyWindowIcons;
@@ -211,13 +211,10 @@ using fp::config_winui::CandidateFontFamilyCombo;
 using fp::config_winui::CandidateFontSizeCombo;
 using fp::config_winui::InputSchemeCombo;
 using fp::config_winui::IntChoiceCombo;
-using fp::config_winui::RimeConfigSwitch;
 using fp::config_winui::SettingSwitch;
 using fp::config_winui::SettingTextBox;
 using fp::config_winui::StringChoiceCombo;
 using fp::config_winui::StringChoiceComboWithIcon;
-using fp::config_winui::WanxiangModeIcon;
-using fp::config_winui::WanxiangModeSwitch;
 using fp::config_winui::NavItem;
 using fp::config_winui::ClearToolbarVisibleSwitches;
 using fp::config_winui::ActivateExistingSettingsWindow;
@@ -871,30 +868,6 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
         reset_button,
         FluentPathIcon(kFluentIconApprovalsApp20RegularPath, 0.96),
         L"已联动"));
-    return Scroll(page);
-  }
-
-  UIElement BuildAdvancedPage() {
-    auto page = PageShell(L"高级", L"扩展输入模式。");
-    page.Children().Append(SectionHeader(L"进阶输入", true));
-    page.Children().Append(SettingRowWithIcon(L"人名输入",
-                                              L"启用人名候选偏好。",
-                                              RimeConfigSwitch(fp::kNameInputSetting, true),
-                                              TextIcon(L"名"),
-                                              L"已保存"));
-    page.Children().Append(SectionHeader(L"基础模式"));
-    const auto& modes = WanxiangModeDefinitions();
-    for (size_t index = 0; index < modes.size(); ++index) {
-      if (index == 10) {
-        page.Children().Append(SectionHeader(L"扩展模式"));
-      }
-      const auto& mode = modes[index];
-      page.Children().Append(SettingRowWithIcon(mode.title,
-                                                mode.subtitle,
-                                                WanxiangModeSwitch(mode),
-                                                WanxiangModeIcon(mode.icon),
-                                                L"已联动"));
-    }
     return Scroll(page);
   }
 

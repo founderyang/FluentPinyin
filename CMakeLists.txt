@@ -379,6 +379,7 @@ add_custom_target(fluent_pinyin_winui_projection DEPENDS "${FP_WINUI_PROJECTION_
 add_executable(fluent_pinyin_settings WIN32
   src/config_winui/main.cpp
   src/config_winui/about_page.cpp
+  src/config_winui/advanced_page.cpp
   src/config_winui/app_paths.cpp
   src/config_winui/candidate_layout_settings.cpp
   src/config_winui/default_settings.cpp
