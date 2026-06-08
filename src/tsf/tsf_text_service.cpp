@@ -21,6 +21,7 @@
 #include "tsf/module.h"
 #include "tsf/resource.h"
 #include "tsf/shortcut_model.h"
+#include "tsf/status_tip_model.h"
 #include "tsf/toolbar_model.h"
 #include "tsf/tray_icon_model.h"
 #include "tsf/tsf_settings_adapter.h"
@@ -94,11 +95,6 @@ constexpr int kCandidateWindowClassExtraLastWidth = 0;
 constexpr int kCandidateWindowClassExtraLastHeight = sizeof(LONG_PTR);
 constexpr int kCandidateToolTooltipFontPointSize = 11;
 constexpr int kCandidateToolTooltipOverhangGuardDips = 2;
-constexpr int kStatusTipTextIconGapDips = 6;
-constexpr int kStatusTipIconSizeDips = 24;
-constexpr float kStatusTipDetailIconScale = 0.78f;
-constexpr int kStatusTipMouseOffsetXDips = 4;
-constexpr int kStatusTipMouseOffsetYDips = 7;
 constexpr int kHorizontalExpandedFooterGapDips = 2;
 constexpr int kHorizontalExpandedFooterHeightDips = 41;
 constexpr int kHorizontalExpandedHeaderSeparatorInsetDips = 5;
@@ -345,13 +341,6 @@ void ApplySuggestedDpiRect(HWND window, LPARAM lparam, UINT flags = 0) {
                suggested->right - suggested->left,
                suggested->bottom - suggested->top,
                SWP_NOACTIVATE | SWP_NOZORDER | flags);
-}
-
-int StatusTipDetailIconSize(UINT dpi) {
-  const int base_size = ScaleForDpi(kStatusTipIconSizeDips, dpi);
-  return std::max(
-      1,
-      static_cast<int>(std::lround(static_cast<float>(base_size) * kStatusTipDetailIconScale)));
 }
 
 UINT ReadableDpiForWindow(HWND window) {
@@ -11581,7 +11570,7 @@ void TsfTextService::PositionStatusTip(ITfContext* context) {
   auto s = [dpi](int value) { return ScaleForDpi(value, dpi); };
   const int height = CandidateToolTooltipHeight(dpi);
   const int horizontal_padding = CandidateToolTooltipHorizontalPadding(dpi);
-  const int text_icon_gap = s(kStatusTipTextIconGapDips);
+  const int text_icon_gap = StatusTipTextIconGap(dpi);
   const int icon_size = StatusTipDetailIconSize(dpi);
   int width = s(54);
 
@@ -11616,16 +11605,18 @@ void TsfTextService::PositionStatusTip(ITfContext* context) {
   }
   const RECT work_area = WorkAreaForPoint(anchor);
 
-  int x = anchor.x + s(kStatusTipMouseOffsetXDips);
-  int y = anchor.y + s(kStatusTipMouseOffsetYDips);
+  const int mouse_offset_x = StatusTipMouseOffsetX(dpi);
+  const int mouse_offset_y = StatusTipMouseOffsetY(dpi);
+  int x = anchor.x + mouse_offset_x;
+  int y = anchor.y + mouse_offset_y;
   if (x + width > work_area.right) {
-    x = anchor.x - width - s(kStatusTipMouseOffsetXDips);
+    x = anchor.x - width - mouse_offset_x;
   }
   if (x < work_area.left) {
     x = work_area.left;
   }
   if (y + height > work_area.bottom) {
-    y = anchor.y - height - s(kStatusTipMouseOffsetYDips);
+    y = anchor.y - height - mouse_offset_y;
   }
   if (y < work_area.top) {
     y = work_area.top;
@@ -11661,7 +11652,7 @@ void TsfTextService::DrawStatusTip(HDC dc) {
   SetBkMode(dc, TRANSPARENT);
   SetTextColor(dc, palette.tooltip_text);
   const int horizontal_padding = CandidateToolTooltipHorizontalPadding(dpi);
-  const int text_icon_gap = s(kStatusTipTextIconGapDips);
+  const int text_icon_gap = StatusTipTextIconGap(dpi);
   const int icon_size = StatusTipDetailIconSize(dpi);
   const int center_y = client.top + (client.bottom - client.top) / 2;
   RECT detail_rect{client.right - horizontal_padding - icon_size,
