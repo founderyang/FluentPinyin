@@ -193,7 +193,7 @@ if(FP_WITH_OPENCC)
 endif()
 set_target_properties(fluent_pinyin_core PROPERTIES OUTPUT_NAME "fluent-pinyin-core")
 if(MSVC)
-  target_precompile_headers(fluent_pinyin_core REUSE_FROM fluent_pinyin_common)
+  target_precompile_headers(fluent_pinyin_core PRIVATE src/common/pch.h)
 endif()
 
 add_library(fluent_pinyin_tsf SHARED
@@ -273,7 +273,7 @@ target_link_libraries(fluent_pinyin_corehost PRIVATE
 
 set_target_properties(fluent_pinyin_corehost PROPERTIES OUTPUT_NAME "fluent-pinyin-corehost")
 if(MSVC)
-  target_precompile_headers(fluent_pinyin_corehost REUSE_FROM fluent_pinyin_common)
+  target_precompile_headers(fluent_pinyin_corehost PRIVATE src/common/pch.h)
 endif()
 
 add_executable(fluent_pinyin_ui WIN32
@@ -295,7 +295,7 @@ target_link_libraries(fluent_pinyin_ui PRIVATE
 
 set_target_properties(fluent_pinyin_ui PROPERTIES OUTPUT_NAME "fluent-pinyin-ui")
 if(MSVC)
-  target_precompile_headers(fluent_pinyin_ui REUSE_FROM fluent_pinyin_common)
+  target_precompile_headers(fluent_pinyin_ui PRIVATE src/common/pch.h)
 endif()
 
 set(FP_WINUI_PACKAGE_ROOT "${CMAKE_SOURCE_DIR}/packages/winui" CACHE PATH
@@ -518,7 +518,7 @@ target_link_libraries(fluent_pinyin_devtools PRIVATE
 
 set_target_properties(fluent_pinyin_devtools PROPERTIES OUTPUT_NAME "fluent-pinyin-devtools")
 if(MSVC)
-  target_precompile_headers(fluent_pinyin_devtools REUSE_FROM fluent_pinyin_common)
+  target_precompile_headers(fluent_pinyin_devtools PRIVATE src/common/pch.h)
 endif()
 
 if(BUILD_TESTING)
