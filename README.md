@@ -67,6 +67,12 @@ signtool verify /pa /v .\dist\release\FluentPinyin.msi
 - `WINDOWS_SIGNING_CERTIFICATE_SHA256`
 - `WINDOWS_SIGNING_CERTIFICATE_SHA1`
 
+发布完成后可验证 GitHub Release 状态、资产和线上 MSI 签名：
+
+```text
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify_github_release.ps1 -Tag v00.00.08 -ExpectedPublisherSha256Thumbprint <证书 SHA-256 thumbprint> -ExpectedPublisherSha1Thumbprint <证书 SHA-1 thumbprint>
+```
+
 发布前完成本机安装后，可运行安装验证：
 
 ```text

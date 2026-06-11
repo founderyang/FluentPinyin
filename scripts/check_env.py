@@ -30,6 +30,17 @@ def print_tool(name):
     return ""
 
 
+def find_wix_tool():
+    path = shutil.which("wix.exe")
+    if path:
+        return path
+    program_files = Path(os.environ.get("ProgramFiles", r"C:\Program Files"))
+    fallback = program_files / "WiX Toolset v7.0" / "bin" / "wix.exe"
+    if fallback.exists():
+        return str(fallback)
+    return ""
+
+
 def find_visual_studio_build_tools():
     if shutil.which("cl.exe"):
         return ("cl.exe is on PATH", True)
@@ -127,7 +138,11 @@ def main():
     ok = ok and has_msvc
 
     print_tool("git")
-    print_tool("wix.exe")
+    wix = find_wix_tool()
+    if wix:
+        print(f"wix.exe: {wix}")
+    else:
+        print("wix.exe: not found")
     print_tool("gh")
 
     if not args.skip_build_dir_check:

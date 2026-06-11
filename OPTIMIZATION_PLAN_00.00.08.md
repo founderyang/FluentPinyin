@@ -337,6 +337,11 @@ for the current checkout path.
 - Updater fail-closed behavior for an unconfigured publisher is covered by
   build/package validation that rejects empty or mismatched publisher
   thumbprints before installer release.
+- Final GitHub Release verification is automated by
+  `scripts/verify_github_release.ps1` and the manual `Release` workflow when
+  `publish=true`. The gate checks that the release is public, required assets
+  are uploaded, the published `FluentPinyin.msi` downloads successfully, and the
+  MSI signer certificate matches the configured SHA-256 publisher thumbprint.
 
 Remaining release-gate checks require a signed release artifact and/or a live
 Windows input-method session:

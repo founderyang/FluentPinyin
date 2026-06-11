@@ -69,6 +69,15 @@ jobs:
             throw "WINDOWS_SIGNING_CERTIFICATE_SHA1 must be a 40-character SHA-1 certificate thumbprint."
           }
 
+      - name: Install WiX
+        shell: pwsh
+        run: |
+          dotnet tool install --global wix --version 7.0.0
+          "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+      - name: Check environment
+        run: python scripts/check_env.py --skip-build-dir-check
+
       - name: Prepare packages
         run: python scripts/prepare_packages.py
 
@@ -155,3 +164,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.event.inputs.tag }}
         run: gh release edit $env:RELEASE_TAG --draft=false
+
+      - name: Verify published release
+        if: ${{ github.event.inputs.publish == 'true' }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.inputs.tag }}
+          FP_UPDATER_PUBLISHER_THUMBPRINTS: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_SHA256 }}
+          WINDOWS_SIGNING_CERTIFICATE_SHA1: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_SHA1 }}
+        run: |
+          tests/package_smoke.ps1 -PayloadDir dist/FluentPinyin -ReleaseDir dist/release -MaxPayloadMb 700 -RequireMsi
+          scripts/verify_github_release.ps1 -Tag $env:RELEASE_TAG
