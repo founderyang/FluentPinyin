@@ -42,13 +42,30 @@ cmake -S . -B .\build-release -G "Visual Studio 17 2022" -A x64
 cmake --build .\build-release --config Release --parallel
 ```
 
-生成发行安装包：
+生成本地 smoke 安装包：
 
 ```text
-python .\scripts\package_release.py
+python .\scripts\package_release.py --skip-installers
 ```
 
-生成的文件位于 `dist\release`，其中 `FluentPinyin.msi` 是最终安装包。默认安装路径为 `C:\Program Files\FluentPinyin`。
+正式发行安装包必须使用真实代码签名证书 thumbprint 重新配置、构建、打包和签名：
+
+```text
+cmake -S . -B .\build-release -G "Visual Studio 17 2022" -A x64 -DFP_UPDATER_PUBLISHER_THUMBPRINTS=<证书 SHA-256 thumbprint>
+cmake --build .\build-release --config Release --parallel
+python .\scripts\package_release.py --updater-publisher-thumbprints <同一个 SHA-256 thumbprint>
+signtool sign /fd SHA256 /tr "http://timestamp.digicert.com" /td SHA256 /sha1 <证书 SHA-1 thumbprint> .\dist\release\FluentPinyin.msi
+signtool verify /pa /v .\dist\release\FluentPinyin.msi
+```
+
+生成的文件位于 `dist\release`，其中签名后的 `FluentPinyin.msi` 是最终安装包。默认安装路径为 `C:\Program Files\FluentPinyin`。
+
+也可以使用 GitHub Actions 的 `Release` 手动工作流发布正式安装包。运行前需要配置仓库 secrets：
+
+- `WINDOWS_SIGNING_CERTIFICATE_PFX_BASE64`
+- `WINDOWS_SIGNING_CERTIFICATE_PASSWORD`
+- `WINDOWS_SIGNING_CERTIFICATE_SHA256`
+- `WINDOWS_SIGNING_CERTIFICATE_SHA1`
 
 发布前完成本机安装后，可运行安装验证：
 

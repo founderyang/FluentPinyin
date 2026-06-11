@@ -1,0 +1,157 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish"
+        required: true
+        default: "v00.00.08"
+      publish:
+        description: "Publish the GitHub release after uploading assets"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event.inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  windows-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag }}
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            packages/downloads
+            packages/licenses
+            packages/winui
+            third_party/librime
+            schemas/wanxiang/current
+          key: fluent-pinyin-deps-${{ runner.os }}-${{ hashFiles('scripts/package_dependencies.json', 'scripts/prepare_packages.py') }}
+          restore-keys: |
+            fluent-pinyin-deps-${{ runner.os }}-
+
+      - name: Check signing secrets
+        shell: pwsh
+        env:
+          SIGNING_PFX_BASE64: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_PFX_BASE64 }}
+          SIGNING_PFX_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_PASSWORD }}
+          SIGNING_CERT_SHA256: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_SHA256 }}
+          SIGNING_CERT_SHA1: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_SHA1 }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          foreach ($item in @(
+            @{ Name = "WINDOWS_SIGNING_CERTIFICATE_PFX_BASE64"; Value = $env:SIGNING_PFX_BASE64 },
+            @{ Name = "WINDOWS_SIGNING_CERTIFICATE_PASSWORD"; Value = $env:SIGNING_PFX_PASSWORD },
+            @{ Name = "WINDOWS_SIGNING_CERTIFICATE_SHA256"; Value = $env:SIGNING_CERT_SHA256 },
+            @{ Name = "WINDOWS_SIGNING_CERTIFICATE_SHA1"; Value = $env:SIGNING_CERT_SHA1 }
+          )) {
+            if ([string]::IsNullOrWhiteSpace($item.Value)) {
+              throw "Missing required repository secret: $($item.Name)"
+            }
+          }
+          if ($env:SIGNING_CERT_SHA256 -notmatch '^[0-9A-Fa-f]{64}$') {
+            throw "WINDOWS_SIGNING_CERTIFICATE_SHA256 must be a 64-character SHA-256 thumbprint."
+          }
+          if ($env:SIGNING_CERT_SHA1 -notmatch '^[0-9A-Fa-f]{40}$') {
+            throw "WINDOWS_SIGNING_CERTIFICATE_SHA1 must be a 40-character SHA-1 certificate thumbprint."
+          }
+
+      - name: Prepare packages
+        run: python scripts/prepare_packages.py
+
+      - name: Configure
+        shell: pwsh
+        env:
+          FP_UPDATER_PUBLISHER_THUMBPRINTS: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_SHA256 }}
+        run: |
+          cmake -S . -B build-release -A x64 -DCMAKE_BUILD_TYPE=Release "-DFP_UPDATER_PUBLISHER_THUMBPRINTS=$env:FP_UPDATER_PUBLISHER_THUMBPRINTS"
+
+      - name: Build
+        run: cmake --build build-release --config Release --parallel
+
+      - name: Test
+        run: ctest --test-dir build-release -C Release --output-on-failure --output-junit build-release/ctest-release.xml
+
+      - name: Package MSI
+        shell: pwsh
+        env:
+          FP_UPDATER_PUBLISHER_THUMBPRINTS: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_SHA256 }}
+        run: |
+          python scripts/package_release.py --updater-publisher-thumbprints $env:FP_UPDATER_PUBLISHER_THUMBPRINTS
+
+      - name: Import signing certificate
+        shell: pwsh
+        env:
+          SIGNING_PFX_BASE64: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_PFX_BASE64 }}
+          SIGNING_PFX_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_PASSWORD }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $certPath = Join-Path $env:RUNNER_TEMP "fluent-pinyin-signing.pfx"
+          [IO.File]::WriteAllBytes($certPath, [Convert]::FromBase64String($env:SIGNING_PFX_BASE64))
+          $password = ConvertTo-SecureString -String $env:SIGNING_PFX_PASSWORD -AsPlainText -Force
+          Import-PfxCertificate -FilePath $certPath -CertStoreLocation Cert:\CurrentUser\My -Password $password | Out-Null
+
+      - name: Sign MSI
+        shell: pwsh
+        env:
+          SIGNING_CERT_SHA1: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_SHA1 }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
+            Where-Object { $_.FullName -match "\\x64\\signtool.exe$" } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+          if (-not $signtool) {
+            throw "signtool.exe was not found."
+          }
+          & $signtool.FullName sign /fd SHA256 /tr "http://timestamp.digicert.com" /td SHA256 /sha1 $env:SIGNING_CERT_SHA1 dist\release\FluentPinyin.msi
+          & $signtool.FullName verify /pa /v dist\release\FluentPinyin.msi
+
+      - name: Verify package MSI
+        shell: pwsh
+        run: tests/package_smoke.ps1 -PayloadDir dist/FluentPinyin -ReleaseDir dist/release -MaxPayloadMb 700 -RequireMsi
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: FluentPinyin-${{ github.event.inputs.tag }}-release
+          path: |
+            build-release/ctest-release.xml
+            dist/release/FluentPinyin.msi
+            dist/release/payload-size-report.txt
+            dist/release/payload-resource-manifest.json
+
+      - name: Upload assets to draft release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          gh release upload $env:RELEASE_TAG `
+            dist/release/FluentPinyin.msi `
+            dist/release/payload-size-report.txt `
+            dist/release/payload-resource-manifest.json `
+            --clobber
+
+      - name: Publish release
+        if: ${{ github.event.inputs.publish == 'true' }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.inputs.tag }}
+        run: gh release edit $env:RELEASE_TAG --draft=false
