@@ -2,6 +2,7 @@
 #include "tsf/guids.h"
 #include "common/broadcast_messages.h"
 #include "common/encoding.h"
+#include "common/path_utils.h"
 #include "devtools/app_runtime_utils.h"
 #include "devtools/install_commands.h"
 #include "devtools/process_utils.h"

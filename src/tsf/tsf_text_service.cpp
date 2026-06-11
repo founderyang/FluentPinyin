@@ -7215,7 +7215,8 @@ void TsfTextService::SaveToolbarSetting() const {
       {std::wstring(fp::kToolbarVisibleSetting), toolbar_visible_ ? L"1" : L"0"},
       {std::wstring(fp::kToolbarPositionUserSetting), save_position_user ? L"1" : L"0"},
       {std::wstring(fp::kToolbarLayoutSetting),
-       toolbar_vertical_layout_ ? fp::kToolbarLayoutVertical : fp::kToolbarLayoutHorizontal},
+       std::wstring(toolbar_vertical_layout_ ? fp::kToolbarLayoutVertical
+                                             : fp::kToolbarLayoutHorizontal)},
       {std::wstring(fp::kToolbarItemsSetting),
        SerializeToolbarVisibleItems(toolbar_visible_items_)},
       {L"toolbar_visible", L"0"},

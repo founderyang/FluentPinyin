@@ -5,6 +5,8 @@ param(
   [Parameter(Mandatory = $true)]
   [string]$ReleaseDir,
 
+  [string]$ExpectedVersion = "",
+
   [double]$MaxPayloadMb = 0,
 
   [switch]$RequireMsi
@@ -29,6 +31,24 @@ function Assert-True {
   }
 }
 
+function Get-ExpectedProductVersion {
+  if (-not [string]::IsNullOrWhiteSpace($ExpectedVersion)) {
+    return $ExpectedVersion
+  }
+
+  $projectRoot = Split-Path -Parent $PSScriptRoot
+  $cmakeLists = Join-Path $projectRoot "CMakeLists.txt"
+  Assert-PathExists $cmakeLists
+  $cmakeText = Get-Content -LiteralPath $cmakeLists -Raw -Encoding UTF8
+  $match = [regex]::Match($cmakeText, "project\(FluentPinyin VERSION ([0-9.]+)")
+  if (-not $match.Success) {
+    throw "Cannot determine expected product version from CMakeLists.txt"
+  }
+  return $match.Groups[1].Value
+}
+
+$resolvedExpectedVersion = Get-ExpectedProductVersion
+
 foreach ($file in @(
   "fluent-pinyin-core.dll",
   "fluent-pinyin-tsf.dll",
@@ -43,6 +63,12 @@ foreach ($file in @(
 )) {
   Assert-PathExists (Join-Path $PayloadDir $file)
 }
+
+$readme = Get-Content -LiteralPath (Join-Path $PayloadDir "README.txt") -Raw -Encoding UTF8
+$localizedName = -join ([char]0x6D41, [char]0x7545, [char]0x62FC, [char]0x97F3)
+$localizedInstallPath = -join ([char]0x9ED8, [char]0x8BA4, [char]0x5B89, [char]0x88C5, [char]0x8DEF, [char]0x5F84)
+Assert-True ($readme -match "$localizedName $([regex]::Escape($resolvedExpectedVersion))") "Payload README is not localized or has the wrong version"
+Assert-True ($readme -match $localizedInstallPath) "Payload README is missing localized install path text"
 
 foreach ($dir in @(
   "rime-data",

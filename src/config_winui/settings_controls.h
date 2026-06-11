@@ -16,6 +16,8 @@ winrt::Microsoft::UI::Xaml::Controls::Border StatusBadge(std::wstring_view statu
 winrt::Microsoft::UI::Xaml::Controls::StackPanel PageShell(
     std::wstring_view title,
     std::wstring_view subtitle);
+winrt::Microsoft::UI::Xaml::Controls::ScrollViewer Scroll(
+    winrt::Microsoft::UI::Xaml::UIElement const& content);
 winrt::Microsoft::UI::Xaml::Controls::TextBlock SectionHeader(
     std::wstring_view title,
     bool first = false);

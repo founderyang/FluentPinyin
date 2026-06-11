@@ -35,7 +35,7 @@ jobs:
             fluent-pinyin-deps-${{ runner.os }}-
 
       - name: Check environment
-        run: python scripts/check_env.py
+        run: python scripts/check_env.py --skip-build-dir-check
 
       - name: Prepare packages
         run: python scripts/prepare_packages.py
@@ -94,7 +94,7 @@ jobs:
             fluent-pinyin-deps-${{ runner.os }}-
 
       - name: Check environment
-        run: python scripts/check_env.py
+        run: python scripts/check_env.py --skip-build-dir-check
 
       - name: Prepare packages
         run: python scripts/prepare_packages.py

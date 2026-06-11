@@ -1,5 +1,6 @@
 #include "config_winui/settings_app.h"
 
+#include "config_winui/app_paths.h"
 #include "config_winui/settings_app_lifecycle.h"
 #include "config_winui/settings_ui_helpers.h"
 

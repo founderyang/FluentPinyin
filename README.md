@@ -30,6 +30,7 @@ wix eula accept wix7
 准备本地依赖：
 
 ```text
+python .\scripts\check_env.py
 python .\scripts\prepare_packages.py
 python .\scripts\generate-icons.py
 ```

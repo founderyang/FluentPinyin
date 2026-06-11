@@ -10,6 +10,8 @@
 
 #include <windows.h>
 
+#undef GetCurrentTime
+
 #include <winrt/Microsoft.UI.Windowing.h>
 
 #include <algorithm>
@@ -20,6 +22,7 @@ namespace fp::config_winui {
 
 using winrt::Microsoft::UI::Xaml::Window;
 using winrt::Windows::Graphics::SizeInt32;
+namespace Windowing = winrt::Microsoft::UI::Windowing;
 
 HWND GetWindowHandle(winrt::Microsoft::UI::Xaml::Window const& window) {
   HWND hwnd = nullptr;
@@ -179,7 +182,7 @@ void CenterWindowOnMonitor(winrt::Microsoft::UI::Xaml::Window const& window) {
 void ApplyTitleBarColors(winrt::Microsoft::UI::Xaml::Window const& window) {
   const auto palette = CurrentSettingsPalette();
   auto title_bar = window.AppWindow().TitleBar();
-  title_bar.IconShowOptions(Microsoft::UI::Windowing::IconShowOptions::HideIconAndSystemMenu);
+  title_bar.IconShowOptions(Windowing::IconShowOptions::HideIconAndSystemMenu);
   const auto background = ColorReference(0, 0, 0, 0);
   title_bar.BackgroundColor(background);
   title_bar.ForegroundColor(ColorReference(palette.text));
@@ -203,7 +206,7 @@ void ApplyWindowIcons(winrt::Microsoft::UI::Xaml::Window const& window) {
   auto app_window = window.AppWindow();
   app_window.SetIcon(icon_path);
   app_window.SetTaskbarIcon(icon_path);
-  app_window.TitleBar().IconShowOptions(Microsoft::UI::Windowing::IconShowOptions::HideIconAndSystemMenu);
+  app_window.TitleBar().IconShowOptions(Windowing::IconShowOptions::HideIconAndSystemMenu);
 
   const HWND hwnd = GetWindowHandle(window);
   if (hwnd == nullptr) {

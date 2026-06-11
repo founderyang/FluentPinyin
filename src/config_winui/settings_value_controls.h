@@ -82,6 +82,8 @@ winrt::Microsoft::UI::Xaml::Controls::ToggleSwitch SettingSwitch(
     winrt::Microsoft::UI::Xaml::Controls::TextBlock const& icon_label,
     std::function<std::wstring(bool)> icon_text = {},
     std::function<void(bool)> on_change = {});
+void RequestPinyinConfigRestart(bool enabled);
+void RequestRimeOptionRefresh(bool enabled);
 winrt::Microsoft::UI::Xaml::UIElement WanxiangModeIcon(std::wstring_view value);
 winrt::Microsoft::UI::Xaml::Controls::ToggleSwitch RimeConfigSwitch(
     std::wstring_view key,

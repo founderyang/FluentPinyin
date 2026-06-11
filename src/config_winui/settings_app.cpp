@@ -10,6 +10,7 @@
 #include "config_winui/hotkeys_page.h"
 #include "config_winui/lexicon_page.h"
 #include "config_winui/settings_app_lifecycle.h"
+#include "config_winui/settings_binding.h"
 #include "config_winui/settings_controls.h"
 #include "config_winui/settings_navigation.h"
 #include "config_winui/settings_refresh.h"
@@ -60,7 +61,12 @@ namespace XamlTypeInfo = Microsoft::UI::Xaml::XamlTypeInfo;
 using Windows::Foundation::IInspectable;
 using Windows::Graphics::SizeInt32;
 using Windows::UI::Xaml::Interop::TypeName;
+using fp::config_winui::ApplyMinimumWindowSize;
+using fp::config_winui::BuildAboutPage;
+using fp::config_winui::BuildAdvancedPage;
+using fp::config_winui::BuildHotkeysPage;
 using fp::config_winui::ResetSettingsCache;
+using fp::config_winui::ResetDefaultSettings;
 using fp::config_winui::NormalizeSettingsPageTag;
 using fp::config_winui::ClearSettingsPaletteOverride;
 using fp::config_winui::CurrentSettingsPalette;
@@ -332,7 +338,7 @@ class SettingsApp : public ApplicationT<SettingsApp, Markup::IXamlMetadataProvid
   std::unordered_map<std::wstring, UIElement> page_cache_;
 };
 
-int RunWinUiApp() {
+int RunWinUiAppImpl() {
   try {
     PACKAGE_VERSION min_version{};
     min_version.Major = 8000;
@@ -367,3 +373,11 @@ int RunWinUiApp() {
 }
 
 }  // namespace
+
+namespace fp::config_winui {
+
+int RunWinUiApp() {
+  return RunWinUiAppImpl();
+}
+
+}  // namespace fp::config_winui

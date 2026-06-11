@@ -83,6 +83,21 @@ StackPanel PageShell(std::wstring_view title, std::wstring_view subtitle) {
   return page;
 }
 
+ScrollViewer Scroll(UIElement const& content) {
+  ScrollViewer viewer;
+  viewer.Content(content);
+  viewer.VerticalScrollBarVisibility(ScrollBarVisibility::Auto);
+  viewer.HorizontalScrollBarVisibility(ScrollBarVisibility::Disabled);
+  viewer.VerticalScrollMode(ScrollMode::Enabled);
+  viewer.HorizontalScrollMode(ScrollMode::Disabled);
+  viewer.ZoomMode(ZoomMode::Disabled);
+  viewer.IsScrollInertiaEnabled(true);
+  viewer.BringIntoViewOnFocusChange(false);
+  viewer.HorizontalAlignment(HorizontalAlignment::Stretch);
+  viewer.Background(SettingsSurfaceBrush());
+  return viewer;
+}
+
 TextBlock SectionHeader(std::wstring_view title, bool first) {
   auto header = Text(title, 16, FW_SEMIBOLD);
   header.Foreground(SettingsTextBrush());

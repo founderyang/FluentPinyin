@@ -2,7 +2,10 @@
 
 #include "common/theme.h"
 
-#include <windef.h>
+#include <windows.h>
+
+#undef GetCurrentTime
+
 #include <winrt/Microsoft.UI.Xaml.Controls.h>
 #include <winrt/Microsoft.UI.Xaml.Media.h>
 #include <winrt/Microsoft.UI.Xaml.Shapes.h>

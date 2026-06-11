@@ -1,5 +1,6 @@
 #include "tsf/candidate_layout_math.h"
 
+#include "common/candidate_font.h"
 #include "common/constants.h"
 
 #include <iostream>

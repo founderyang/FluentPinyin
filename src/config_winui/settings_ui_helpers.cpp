@@ -7,6 +7,7 @@
 
 #include <winrt/Microsoft.UI.Xaml.Markup.h>
 #include <winrt/Microsoft.UI.Xaml.Shapes.h>
+#include <winrt/Windows.Foundation.Collections.h>
 #include <winrt/Windows.UI.Text.h>
 
 #include <algorithm>

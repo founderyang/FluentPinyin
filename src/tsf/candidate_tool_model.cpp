@@ -107,7 +107,7 @@ RECT CandidateToolFeedbackRect(RECT rect, int tool, UINT dpi, bool centered_tool
     if (rect_width <= rect_height + fp::ScaleForDpi(4, dpi)) {
       return rect;
     }
-    const int vertical_inset = fp::ScaleHalfDipForDpi(3, dpi);
+    const int vertical_inset = fp::ScaleHalfDipFloorForDpi(3, dpi);
     const int bottom_inset = fp::ScaleHalfDipForDpi(7, dpi);
     RECT feedback{rect.left,
                   rect.top + vertical_inset,
@@ -161,7 +161,7 @@ int CandidateToolTooltipOverlap(UINT dpi) {
 }
 
 int CandidateToolTooltipCornerRadius(UINT dpi) {
-  return fp::ScaleHalfDipForDpi(kCandidateToolTooltipCornerRadiusHalfDips, dpi);
+  return fp::ScaleHalfDipFloorForDpi(kCandidateToolTooltipCornerRadiusHalfDips, dpi);
 }
 
 }  // namespace fp::tsf

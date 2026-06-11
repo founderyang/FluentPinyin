@@ -31,6 +31,7 @@ namespace {
 using namespace winrt;
 using namespace Microsoft::UI::Xaml;
 using namespace Microsoft::UI::Xaml::Controls;
+using Windows::Foundation::IReference;
 
 IReference<bool> NullableBool(bool value) {
   return box_value(value).as<IReference<bool>>();

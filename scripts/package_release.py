@@ -288,6 +288,52 @@ def product_version_from_cmake():
     return match.group(1)
 
 
+def normalized_path(path):
+    return os.path.normcase(str(Path(path).resolve(strict=False)))
+
+
+def read_cmake_cache_value(build_dir, key):
+    cache = build_dir / "CMakeCache.txt"
+    if not cache.exists():
+        raise RuntimeError(f"Missing CMake cache: {cache}. Reconfigure the build first.")
+    prefix = f"{key}:"
+    for line in cache.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.startswith(prefix) and "=" in line:
+            return line.split("=", 1)[1].strip()
+    raise RuntimeError(f"CMake cache does not contain {key}: {cache}")
+
+
+def read_generated_product_version(build_dir):
+    constants = build_dir / "generated" / "common" / "constants.h"
+    if not constants.exists():
+        raise RuntimeError(
+            f"Missing generated constants: {constants}. Reconfigure the build first."
+        )
+    text = constants.read_text(encoding="utf-8", errors="replace")
+    match = re.search(r'kProductVersion\s*=\s*L"([^"]+)"', text)
+    if not match:
+        raise RuntimeError(f"Unable to read generated product version from {constants}")
+    return match.group(1)
+
+
+def validate_build_matches_checkout(build_dir, product_version):
+    configured_source = read_cmake_cache_value(build_dir, "CMAKE_HOME_DIRECTORY")
+    if normalized_path(configured_source) != normalized_path(ROOT):
+        raise RuntimeError(
+            f"Build directory {build_dir} was configured for {configured_source}, "
+            f"but the current checkout is {ROOT}. Reconfigure this build directory "
+            "before packaging."
+        )
+
+    built_version = read_generated_product_version(build_dir)
+    if built_version != product_version:
+        raise RuntimeError(
+            f"Build directory {build_dir} contains product version {built_version}, "
+            f"but packaging requested {product_version}. Reconfigure and rebuild "
+            "before packaging."
+        )
+
+
 def normalize_thumbprints(value):
     thumbprints = set()
     invalid = []
@@ -453,6 +499,7 @@ def main():
     product_version = args.product_version.strip() or product_version_from_cmake()
     updater_publisher_thumbprints = args.updater_publisher_thumbprints.strip()
     build_dir = (ROOT / args.build_dir).resolve()
+    validate_build_matches_checkout(build_dir, product_version)
     bin_dir = build_dir / "bin" / args.config
     if not bin_dir.exists():
         raise RuntimeError(f"Cannot find build output: {bin_dir}")

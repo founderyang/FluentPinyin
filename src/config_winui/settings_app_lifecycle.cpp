@@ -5,6 +5,7 @@
 #include "config_winui/app_paths.h"
 #include "config_winui/settings_navigation.h"
 #include "config_winui/settings_refresh.h"
+#include "config_winui/window_helpers.h"
 #include "sync/sync_service.h"
 
 #include <windows.h>

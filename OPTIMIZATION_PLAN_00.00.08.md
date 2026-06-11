@@ -109,6 +109,10 @@ Status: already implemented and now guarded by package smoke checks.
   CMake options.
 - Release builds use external PDB output (`/Zi`) instead of object-embedded
   debug info, with PDB directories configured per build configuration.
+- Environment checks now fail clearly when required build tools are missing or
+  existing CMake build directories were configured against a different source
+  checkout, preventing stale local build outputs from being mistaken for
+  current verification.
 
 ## Architecture Optimization Plan
 
@@ -305,18 +309,45 @@ Remaining optional follow-up: move the settings control implementations into a
 `controls/` directory and split resource/font bootstrap naming if the project
 wants a deeper folder reorganization. The behavioral page split is complete.
 
-## Final Verification Plan
+## Final Verification Results
 
-These checks are final verification tasks and were not run during the
-implementation pass because this work was requested without mid-run tests.
+Automated verification was completed after regenerating the build directories
+for the current checkout path.
 
-- Configure release with `-DFP_UPDATER_PUBLISHER_THUMBPRINTS=<sha256>`.
-- Build Release.
-- Run CTest.
-- Run package smoke.
-- Install 00.00.08 over 00.00.07.
-- Verify no Windows restart/shutdown prompt appears.
-- Verify settings UI uses MiSans.
-- Verify CapsLock Chinese -> uppercase English -> Chinese.
-- Verify sync rejects plaintext remote endpoints.
-- Verify updater rejects unsigned, wrong-signed, and unconfigured-publisher MSI.
+- Release configured with
+  `-DFP_UPDATER_PUBLISHER_THUMBPRINTS=0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF`
+  for build/test validation. This is a placeholder and must be replaced with
+  the real release signing certificate SHA-256 thumbprint before publishing.
+- Release build passed.
+- Release CTest passed: 36/36 tests.
+- Debug build passed.
+- Debug CTest passed: 36/36 tests.
+- Payload packaging passed with `scripts/package_release.py --skip-installers`.
+- Package smoke passed with the generated payload.
+- MSI generation passed with the same placeholder thumbprint.
+- Package smoke passed with `-RequireMsi`.
+- Package smoke verifies private MiSans font payload, localized README
+  version/install-path text, resource manifest, payload size ceiling, private
+  font WiX paths, Windows App Runtime installer payload, and MSI restart
+  suppression properties.
+- Sync plaintext-HTTP rejection is covered by the sync/settings automated
+  tests.
+- CapsLock Chinese -> uppercase English -> Chinese transition is covered by
+  the TSF input-mode state automated tests.
+- Updater fail-closed behavior for an unconfigured publisher is covered by
+  build/package validation that rejects empty or mismatched publisher
+  thumbprints before installer release.
+
+Remaining release-gate checks require a signed release artifact and/or a live
+Windows input-method session:
+
+- Reconfigure and rebuild with the real
+  `FP_UPDATER_PUBLISHER_THUMBPRINTS=<sha256>` signing certificate thumbprint.
+- Sign the MSI with that certificate.
+- Verify updater rejection of unsigned and wrong-signed MSI artifacts against
+  the real release certificate policy.
+- Install 00.00.08 over a real 00.00.07 installation.
+- Verify no Windows restart/shutdown prompt appears from the live install,
+  upgrade, and uninstall logs.
+- Verify the settings UI visually uses MiSans in the running WinUI app.
+- Verify CapsLock behavior in a real TSF text field.

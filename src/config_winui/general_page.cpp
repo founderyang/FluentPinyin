@@ -1,5 +1,6 @@
 #include "config_winui/general_page.h"
 
+#include "common/candidate_font.h"
 #include "common/constants.h"
 #include "config_winui/candidate_layout_settings.h"
 #include "config_winui/default_settings.h"

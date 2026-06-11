@@ -20,6 +20,7 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded")
 if(MSVC)
   add_compile_options(/utf-8)
   add_compile_options(/sdl)
+  add_compile_options(/FS)
   add_link_options($<$<CONFIG:Release>:/guard:cf>)
   add_compile_options($<$<CONFIG:Release>:/Zi>)
   add_link_options($<$<CONFIG:Release>:/DEBUG:FULL> $<$<CONFIG:Release>:/OPT:REF> $<$<CONFIG:Release>:/OPT:ICF>)
@@ -711,8 +712,10 @@ if(BUILD_TESTING)
     tests/config_window_helpers_unit.cpp
     src/config_winui/app_paths.cpp
     src/config_winui/settings_binding.cpp
+    src/config_winui/settings_refresh.cpp
     src/config_winui/settings_ui_helpers.cpp
     src/config_winui/theme_helpers.cpp
+    src/config_winui/toolbar_visibility_state.cpp
     src/config_winui/window_helpers.cpp
   )
   target_include_directories(config_window_helpers_unit PRIVATE
