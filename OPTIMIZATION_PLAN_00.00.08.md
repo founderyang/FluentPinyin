@@ -347,6 +347,10 @@ for the current checkout path.
   `v00.00.08` point at the same commit, the draft release and draft assets are
   present, and all required signing secrets have been configured before the
   workflow is triggered.
+- Signed release dispatch is wrapped by `scripts/publish_signed_release.ps1`,
+  which runs the prereq check first, triggers the manual Release workflow with
+  `publish=true`, waits for completion, and then runs the published-release
+  verifier against the online MSI.
 
 Remaining release-gate checks require a signed release artifact and/or a live
 Windows input-method session:

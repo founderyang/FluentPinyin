@@ -73,6 +73,12 @@ signtool verify /pa /v .\dist\release\FluentPinyin.msi
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check_release_prereqs.ps1 -Tag v00.00.08
 ```
 
+前置条件全部通过后，可一键触发签名发布、等待工作流完成并验证线上 MSI：
+
+```text
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\publish_signed_release.ps1 -Tag v00.00.08
+```
+
 发布完成后可验证 GitHub Release 状态、资产和线上 MSI 签名：
 
 ```text
