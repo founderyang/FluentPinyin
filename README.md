@@ -67,6 +67,12 @@ signtool verify /pa /v .\dist\release\FluentPinyin.msi
 - `WINDOWS_SIGNING_CERTIFICATE_SHA256`
 - `WINDOWS_SIGNING_CERTIFICATE_SHA1`
 
+签名材料配置后，触发正式发布前可先检查发布前置条件：
+
+```text
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check_release_prereqs.ps1 -Tag v00.00.08
+```
+
 发布完成后可验证 GitHub Release 状态、资产和线上 MSI 签名：
 
 ```text

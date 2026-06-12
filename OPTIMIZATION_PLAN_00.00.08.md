@@ -342,6 +342,11 @@ for the current checkout path.
   `publish=true`. The gate checks that the release is public, required assets
   are uploaded, the published `FluentPinyin.msi` downloads successfully, and the
   MSI signer certificate matches the configured SHA-256 publisher thumbprint.
+- Signed-release readiness is checked by `scripts/check_release_prereqs.ps1`.
+  The check verifies that the Release workflow is active, `main` and
+  `v00.00.08` point at the same commit, the draft release and draft assets are
+  present, and all required signing secrets have been configured before the
+  workflow is triggered.
 
 Remaining release-gate checks require a signed release artifact and/or a live
 Windows input-method session:
